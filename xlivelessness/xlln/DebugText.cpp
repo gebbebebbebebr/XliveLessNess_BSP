@@ -12,8 +12,8 @@ static bool DebugTextDisplay = false;
 static FILE* debugFile = NULL;
 static bool initialisedDebugText = false;
 
-static const int blacklistlen = 12;
-static const char* blacklist[blacklistlen] = { "XLiveRender", "XNetGetEthernetLinkStatus", "XLiveInput", "XLivePreTranslateMessage", "XLivePBufferGetByte", "XSocketWSAGetLastError", "XSocketRecvFrom", "XNotifyGetNext", "XUserCheckPrivilege", "XNetGetConnectStatus", "XSocketHTONL", "XSocketAccept" };
+static const char* blacklist[] = { "XLiveRender", "XNetGetEthernetLinkStatus", "XLiveInput", "XLivePreTranslateMessage", "XLivePBufferGetByte", "XSocketWSAGetLastError", "XNotifyGetNext", "XUserCheckPrivilege", "XNetGetConnectStatus", "XSocketHTONL", "XSocketAccept", "XSocketRecvFrom" };
+static const int blacklistlen = sizeof(blacklist)/sizeof(char*);
 
 
 int getDebugTextArrayMaxLen() {

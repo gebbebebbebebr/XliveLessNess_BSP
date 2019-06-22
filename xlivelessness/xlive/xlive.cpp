@@ -435,6 +435,8 @@ HRESULT WINAPI XLiveInitialize(XLIVE_INITIALIZE_INFO *pPii)
 
 	srand((unsigned int)time(NULL));
 
+	XLLNPostInitCallbacks();
+
 	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
 		unsigned int adapter_name_buflen = strnlen_s(pPii->pszAdapterName, 49) + 1;
 		xlive_preferred_network_adapter_name = (char*)malloc(adapter_name_buflen);

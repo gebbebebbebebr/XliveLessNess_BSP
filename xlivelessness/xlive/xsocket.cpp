@@ -289,7 +289,7 @@ INT WINAPI XSocketRecv(SOCKET s, char * buf, int len, int flags)
 INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
 {
 	if (result > 0) {
-		//addDebugText(__func__);
+		addDebugText(__func__);
 		const u_long niplong = ((struct sockaddr_in*)from)->sin_addr.s_addr;
 		const WORD hPort = ntohs(((struct sockaddr_in*)from)->sin_port);
 		const WORD port_base = (hPort / 1000) * 1000;
@@ -307,6 +307,16 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					CustomMemCpy(buf, (void*)((DWORD)buf + cpHeaderLen), result - cpHeaderLen, true);
 					result -= cpHeaderLen;
 					break;
+				}
+				case XLLNCustomPacketType::STOCK_PACKET_FORWARDED: {
+					((struct sockaddr_in*)from)->sin_addr.s_addr = ((XNADDR*)(buf + cpHeaderLen))->inaOnline.s_addr;
+					//TODO ports?
+					CustomMemCpy(buf, (void*)((DWORD)buf + cpHeaderLen + sizeof(XNADDR)), result - cpHeaderLen + sizeof(XNADDR), true);
+					result -= cpHeaderLen + sizeof(XNADDR);
+					if (result <= 0) {
+						goto RETURN_LE_ZERO;
+					}
+					return result;
 				}
 				case XLLNCustomPacketType::UNKNOWN_USER_ASK:
 				case XLLNCustomPacketType::UNKNOWN_USER_REPLY: {
@@ -340,7 +350,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				}
 				case XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE:
 				case XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE: {
-					LiveOverLanRecieve(s, from, *fromlen, hostpair, buf, result);
+					LiveOverLanRecieve(s, from, *fromlen, hostpair, (const LIVE_SERVER_DETAILS*)buf, result);
 					return 0;
 				}
 				default: {
@@ -351,6 +361,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		}
 		
 		if (result <= 0) {
+			RETURN_LE_ZERO:
 			if (result < 0) {
 				XllnDebugBreak("XLLN: ERROR XSocketRecvFrom result became less than 0!");
 			}
@@ -400,7 +411,7 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 	ADDRESS_FAMILY af = ((struct sockaddr_in*)to)->sin_family;
 
 	if (hIpv4 == INADDR_BROADCAST || hIpv4 == INADDR_ANY) {
-		//addDebugText("XSocketSendTo() - Broadcast.");
+		addDebugText("XSocketSendTo() - Broadcast.");
 
 		((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(xlive_network_adapter.hBroadcast);
 
@@ -449,7 +460,8 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 	// Check if the first byte is the same as the custom XLLN packets.
 	// If so wrap the data in a new message.
 	if (buf[0] == XLLN_CUSTOM_PACKET_SENTINEL) {
-		int altBufLen = len + 2;
+		addDebugText("Stock 00 Packet Adapted.");
+		const int altBufLen = len + 2;
 		// Check overflow condition.
 		if (altBufLen < 0) {
 			WSASetLastError(WSAEMSGSIZE);

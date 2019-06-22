@@ -287,7 +287,7 @@ typedef struct
 typedef struct
 {
 	IN_ADDR     ina;                            // IP address (zero if not static/DHCP)
-	IN_ADDR     inaOnline;                      // Online IP address (zero if not online)
+	IN_ADDR     inaOnline;                      // Secure Addr. Online IP address (zero if not online)
 	WORD        wPortOnline;                    // Online port
 	BYTE        abEnet[6];                      // Ethernet MAC address
 	BYTE        abOnline[20];                   // Online identification

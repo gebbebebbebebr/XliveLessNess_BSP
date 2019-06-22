@@ -12,28 +12,11 @@
 
 static BOOL xlive_xlocator_initialized = FALSE;
 
-#pragma pack(push) // Save current alignment setting.
-#pragma pack(1) // Specify single-byte alignment.
-typedef struct {
-	BYTE bSentinel;
-	BYTE bCustomPacketType;
-	XUID xuid;
-	DWORD dwServerType;
-	XNKID xnkid;
-	XNKEY xnkey;
-	DWORD dwMaxPublicSlots;
-	DWORD dwMaxPrivateSlots;
-	DWORD dwFilledPublicSlots;
-	DWORD dwFilledPrivateSlots;
-	DWORD cProperties;
-	DWORD pProperties;
-} LIVE_SERVER_DETAILS;
-#pragma pack(pop) // Return to original alignment setting.
-
 CRITICAL_SECTION xlive_xlocator_enumerators_lock;
 std::map<HANDLE, std::vector<std::pair<DWORD, WORD>>> xlive_xlocator_enumerators;
-std::atomic<bool> xlln_xlocator_custom_live = FALSE;
-std::atomic<bool> xlln_xlocator_custom_lan = FALSE;
+
+CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
+VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = NULL;
 
 std::map<std::pair<DWORD, WORD>, XLOCATOR_SESSION*> liveoverlan_sessions;
 CRITICAL_SECTION liveoverlan_sessions_lock;
@@ -97,17 +80,24 @@ static VOID LiveOverLanBroadcast()
 			// Broadcast.
 			addDebugText("LiveOverLan Advertise Broadcast.");
 
-			if (!xlive_liveoverlan_socket) {
-				XllnDebugBreak("xlive_liveoverlan_socket never got initialized!");
+			EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+			if (liveoverlan_broadcast_handler) {
+				liveoverlan_broadcast_handler(local_session_details);
+				LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 			}
+			else {
+				LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+				if (!xlive_liveoverlan_socket) {
+					XllnDebugBreak("xlive_liveoverlan_socket never got initialized!");
+				}
 
-			SOCKADDR_IN SendStruct;
-			SendStruct.sin_port = htons(1001);
-			SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-			SendStruct.sin_family = AF_INET;
+				SOCKADDR_IN SendStruct;
+				SendStruct.sin_port = htons(1001);
+				SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+				SendStruct.sin_family = AF_INET;
 
-			XllnSocketSendTo(xlive_liveoverlan_socket, (char*)local_session_details, local_session_details->pProperties + sizeof(LIVE_SERVER_DETAILS), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
-
+				XllnSocketSendTo(xlive_liveoverlan_socket, (char*)local_session_details, local_session_details->ADV.propsSize + sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::ADV), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
+			}
 		}
 		LeaveCriticalSection(&liveoverlan_broadcast_lock);
 
@@ -127,15 +117,19 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 	}
 	XLOCATOR_SEARCHRESULT* xlocator_result = new XLOCATOR_SEARCHRESULT;
 	LIVE_SERVER_DETAILS* session_details = (LIVE_SERVER_DETAILS*)buf;
-	xlocator_result->serverID = session_details->xuid;
-	xlocator_result->dwServerType = session_details->dwServerType;
-	xlocator_result->xnkid = session_details->xnkid;
-	xlocator_result->xnkey = session_details->xnkey;
-	xlocator_result->dwMaxPublicSlots = session_details->dwMaxPublicSlots;
-	xlocator_result->dwMaxPrivateSlots = session_details->dwMaxPrivateSlots;
-	xlocator_result->dwFilledPublicSlots = session_details->dwFilledPublicSlots;
-	xlocator_result->dwFilledPrivateSlots = session_details->dwFilledPrivateSlots;
-	xlocator_result->cProperties = session_details->cProperties;
+	xlocator_result->serverID = session_details->ADV.xuid;
+	xlocator_result->dwServerType = session_details->ADV.dwServerType;
+
+	// This needs to be correctly populated for the client to be able to connect (fix XNADDR at some point).
+	xlocator_result->serverAddress = session_details->ADV.xnAddr;
+	xlocator_result->xnkid = session_details->ADV.xnkid;
+	xlocator_result->xnkey = session_details->ADV.xnkey;
+
+	xlocator_result->dwMaxPublicSlots = session_details->ADV.dwMaxPublicSlots;
+	xlocator_result->dwMaxPrivateSlots = session_details->ADV.dwMaxPrivateSlots;
+	xlocator_result->dwFilledPublicSlots = session_details->ADV.dwFilledPublicSlots;
+	xlocator_result->dwFilledPrivateSlots = session_details->ADV.dwFilledPrivateSlots;
+	xlocator_result->cProperties = session_details->ADV.cProperties;
 	try {
 		xlocator_result->pProperties = new XUSER_PROPERTY[xlocator_result->cProperties];
 	}
@@ -153,7 +147,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		return FALSE;
 	}
 
-	BYTE *propertiesBuf = (BYTE*)((DWORD)&session_details->pProperties + sizeof(DWORD));
+	BYTE *propertiesBuf = (BYTE*)((DWORD)&session_details->ADV.pProperties + sizeof(DWORD));
 	DWORD i = 0;
 	for (; i < xlocator_result->cProperties; i++) {
 		xlocator_result->pProperties[i].dwPropertyId = *((DWORD*)propertiesBuf);
@@ -228,7 +222,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		__debugbreak();
 	}
 
-	propertiesBuf = (BYTE*)((DWORD)&session_details->pProperties + sizeof(DWORD));
+	propertiesBuf = (BYTE*)((DWORD)&session_details->ADV.pProperties + sizeof(DWORD));
 	i = 0;
 	for (; i < xlocator_result->cProperties; i++) {
 		propertiesBuf += sizeof(DWORD); //dwPropertyId
@@ -360,16 +354,17 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	}
 
 	LIVE_SERVER_DETAILS *new_local_sd = (LIVE_SERVER_DETAILS*)malloc(buflen);
-	new_local_sd->xuid = *xuid;
-	new_local_sd->dwServerType = dwServerType;
-	new_local_sd->xnkid = xnkid;
-	new_local_sd->xnkey = xnkey;
-	new_local_sd->dwMaxPublicSlots = dwMaxPublicSlots;
-	new_local_sd->dwMaxPrivateSlots = dwMaxPrivateSlots;
-	new_local_sd->dwFilledPublicSlots = dwFilledPublicSlots;
-	new_local_sd->dwFilledPrivateSlots = dwFilledPrivateSlots;
-	new_local_sd->cProperties = local_session_properties.size();
-	BYTE *propertiesBuf = (BYTE*)&new_local_sd->pProperties;
+	new_local_sd->ADV.xuid = *xuid;
+	new_local_sd->ADV.xnAddr = xlive_local_users[0].pxna;
+	new_local_sd->ADV.dwServerType = dwServerType;
+	new_local_sd->ADV.xnkid = xnkid;
+	new_local_sd->ADV.xnkey = xnkey;
+	new_local_sd->ADV.dwMaxPublicSlots = dwMaxPublicSlots;
+	new_local_sd->ADV.dwMaxPrivateSlots = dwMaxPrivateSlots;
+	new_local_sd->ADV.dwFilledPublicSlots = dwFilledPublicSlots;
+	new_local_sd->ADV.dwFilledPrivateSlots = dwFilledPrivateSlots;
+	new_local_sd->ADV.cProperties = local_session_properties.size();
+	BYTE *propertiesBuf = (BYTE*)&new_local_sd->ADV.pProperties;
 	*((DWORD*)propertiesBuf) = buflen - sizeof(LIVE_SERVER_DETAILS);
 	propertiesBuf += sizeof(DWORD);
 	for (auto const &prop : local_session_properties) {
@@ -439,8 +434,8 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 		}
 	}
 
-	new_local_sd->bSentinel = XLLN_CUSTOM_PACKET_SENTINEL;
-	new_local_sd->bCustomPacketType = XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE;
+	new_local_sd->HEAD.bSentinel = XLLN_CUSTOM_PACKET_SENTINEL;
+	new_local_sd->HEAD.bCustomPacketType = XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE;
 
 	EnterCriticalSection(&liveoverlan_broadcast_lock);
 	if (local_session_details)
@@ -448,16 +443,14 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	local_session_details = new_local_sd;
 	LeaveCriticalSection(&liveoverlan_broadcast_lock);
 }
-VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<DWORD, WORD> hostpair, char *buf, INT &len)
+VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<DWORD, WORD> hostpair, const LIVE_SERVER_DETAILS *session_details, INT &len)
 {
-	const int headerLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
-	const LIVE_SERVER_DETAILS *session_details = (const LIVE_SERVER_DETAILS*)buf;
-	if (buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)] == XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE) {
-		if (len != headerLen + sizeof(session_details->xuid)) {
+	if (session_details->HEAD.bCustomPacketType == XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE) {
+		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
 			addDebugText("LiveOverLAN: ERROR Received INVALID Broadcast Unadvertise.");
 			return;
 		}
-		const XUID &unregisterXuid = session_details->xuid;// Unused (also struct only valid/filled until here).
+		const XUID &unregisterXuid = session_details->UNADV.xuid;// Unused.
 		addDebugText("Received Broadcast Unadvertise");
 		EnterCriticalSection(&liveoverlan_sessions_lock);
 		liveoverlan_sessions.erase(hostpair);
@@ -473,18 +466,27 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 		XLOCATOR_SEARCHRESULT *searchresult = 0;
 		if (!xlive_users_hostpair.count(hostpair)) {
 			addDebugText("Received Broadcast - NO USER");
-			SendUnknownUserAskRequest(socket, buf, len, to, tolen);
+			SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen);
 		}
-		else if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)buf, len)) {
+		else if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
 			addDebugText("Received Broadcast");
 			EnterCriticalSection(&liveoverlan_sessions_lock);
+			// Delete the old entry if there already is one.
 			if (liveoverlan_sessions.count(hostpair)) {
 				XLOCATOR_SESSION *oldsession = liveoverlan_sessions[hostpair];
 				LiveOverLanDelete(oldsession->searchresult);
 				delete oldsession;
 			}
+			// fill in serverAddress as it is not populated from LOLBReceive.
 			if (xlive_users_hostpair.count(hostpair)) {
-				memcpy_s(&searchresult->serverAddress, sizeof(XNADDR), xlive_users_hostpair[hostpair], sizeof(XNADDR));
+				XNADDR *host = xlive_users_hostpair[hostpair];
+				// If the online address is zero the user is not online / it is the relay server.
+				if (host->inaOnline.s_addr != 0) {
+					searchresult->serverAddress = *host;
+				}
+			}
+			else {
+				XllnDebugBreak("ERROR XLocator does not have a server XNADDR.");
 			}
 			XLOCATOR_SESSION *newsession = new XLOCATOR_SESSION;
 			newsession->searchresult = searchresult;
@@ -671,24 +673,31 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 
 	LiveOverLanStopBroadcast();
 
-	const DWORD buflen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type) + sizeof(XUID);
-	BYTE unadvertiseData[buflen];
-	unadvertiseData[0] = XLLN_CUSTOM_PACKET_SENTINEL;
-	unadvertiseData[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)] = XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE;
-	*((XUID*)&unadvertiseData[sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type)]) = xlive_users_info[dwUserIndex]->xuid;
+	LIVE_SERVER_DETAILS unadvertiseData;
+	unadvertiseData.HEAD.bSentinel = XLLN_CUSTOM_PACKET_SENTINEL;
+	unadvertiseData.HEAD.bCustomPacketType = XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE;
+	unadvertiseData.UNADV.xuid = xlive_users_info[dwUserIndex]->xuid;
 
 	addDebugText("LiveOverLan Unadvertise Broadcast.");
 
-	if (!xlive_liveoverlan_socket) {
-		XllnDebugBreak("xlive_liveoverlan_socket never got initialized!");
+	EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+	if (liveoverlan_broadcast_handler) {
+		liveoverlan_broadcast_handler(&unadvertiseData);
+		LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	}
+	else {
+		LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+		if (!xlive_liveoverlan_socket) {
+			XllnDebugBreak("xlive_liveoverlan_socket never got initialized!");
+		}
 
-	SOCKADDR_IN SendStruct;
-	SendStruct.sin_port = htons(1001);
-	SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-	SendStruct.sin_family = AF_INET;
+		SOCKADDR_IN SendStruct;
+		SendStruct.sin_port = htons(1001);
+		SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+		SendStruct.sin_family = AF_INET;
 
-	XllnSocketSendTo(xlive_liveoverlan_socket, (char*)unadvertiseData, buflen, 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
+		XllnSocketSendTo(xlive_liveoverlan_socket, (char*)&unadvertiseData, sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::UNADV), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
+	}
 
 	if (pXOverlapped) {
 		//asynchronous

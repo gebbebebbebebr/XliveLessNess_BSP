@@ -23,6 +23,20 @@ static DWORD xlln_login_player_h[] = { MYMENU_LOGIN1, MYMENU_LOGIN2, MYMENU_LOGI
 
 BOOL xlln_debug = FALSE;
 
+CRITICAL_SECTION xlln_critsec_post_init_funcs;
+std::map<DWORD, bool> xlln_post_init_funcs;
+
+VOID XLLNPostInitCallbacks()
+{
+	EnterCriticalSection(&xlln_critsec_post_init_funcs);
+	typedef BOOL(WINAPI *tXLLNPostInitFunc)();
+	for (std::map<DWORD, bool>::iterator it = xlln_post_init_funcs.begin(); it != xlln_post_init_funcs.end(); it++) {
+		tXLLNPostInitFunc callbackFunc = (tXLLNPostInitFunc)it->first;
+		BOOL result = callbackFunc();
+	}
+	LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+}
+
 static HMENU CreateDLLWindowMenu(HINSTANCE hModule)
 {
 	HMENU hMenu;
@@ -171,6 +185,8 @@ namespace XLLNModifyPropertyType {
 		UNKNOWN = 0,
 		FPS_LIMIT,
 		CUSTOM_LOCAL_USER_hIPv4,
+		LiveOverLan_BROADCAST_HANDLER,
+		POST_INIT_FUNC,
 	};
 }
 
@@ -194,6 +210,7 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *
 		else {
 			return ERROR_NOT_SUPPORTED;
 		}
+		return ERROR_SUCCESS;
 	}
 	else if (propertyId == XLLNModifyPropertyType::CUSTOM_LOCAL_USER_hIPv4) {
 		EnterCriticalSection(&xlive_critsec_custom_local_user_hipv4);
@@ -221,12 +238,56 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *
 			xlive_custom_local_user_hipv4 = *newValue;
 		}
 		LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
+		return ERROR_SUCCESS;
 	}
-	else {
-		return ERROR_UNKNOWN_PROPERTY;
+	else if (propertyId == XLLNModifyPropertyType::LiveOverLan_BROADCAST_HANDLER) {
+		EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+		if (!newValue && !oldValue) {
+			if (liveoverlan_broadcast_handler == NULL) {
+				LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+				return ERROR_NOT_FOUND;
+			}
+			liveoverlan_broadcast_handler = NULL;
+			LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+			return ERROR_SUCCESS;
+		}
+		if (newValue && !oldValue && liveoverlan_broadcast_handler != NULL) {
+			LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+			return ERROR_ALREADY_REGISTERED;
+		}
+		if (oldValue) {
+			*oldValue = (DWORD)liveoverlan_broadcast_handler;
+		}
+		if (newValue) {
+			liveoverlan_broadcast_handler = (VOID(WINAPI*)(LIVE_SERVER_DETAILS*))*newValue;
+		}
+		LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+		return ERROR_SUCCESS;
+	}
+	else if (propertyId == XLLNModifyPropertyType::POST_INIT_FUNC) {
+		if (oldValue && newValue) {
+			return ERROR_INVALID_PARAMETER;
+		}
+		EnterCriticalSection(&xlln_critsec_post_init_funcs);
+		if (oldValue) {
+			if (!xlln_post_init_funcs.count((DWORD)oldValue)) {
+				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+				return ERROR_NOT_FOUND;
+			}
+			xlln_post_init_funcs.erase((DWORD)oldValue);
+		}
+		else {
+			if (xlln_post_init_funcs.count((DWORD)newValue)) {
+				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+				return ERROR_ALREADY_REGISTERED;
+			}
+			xlln_post_init_funcs[(DWORD)newValue] = false;
+		}
+		LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+		return ERROR_SUCCESS;
 	}
 
-	return ERROR_SUCCESS;
+	return ERROR_UNKNOWN_PROPERTY;
 }
 
 // #41143
@@ -439,7 +500,9 @@ INT InitXLLN(HMODULE hModule)
 		Sleep(500L);
 	}
 
+	InitializeCriticalSection(&xlln_critsec_post_init_funcs);
 	InitializeCriticalSection(&xlive_critsec_custom_local_user_hipv4);
+	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 
 	wchar_t mutex_name[40];
 	DWORD mutex_last_error;
@@ -465,6 +528,8 @@ INT InitXLLN(HMODULE hModule)
 
 INT UninitXLLN()
 {
+	DeleteCriticalSection(&xlln_critsec_post_init_funcs);
 	DeleteCriticalSection(&xlive_critsec_custom_local_user_hipv4);
+	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	return 0;
 }

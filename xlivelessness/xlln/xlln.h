@@ -20,6 +20,7 @@
 
 DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
 DWORD WINAPI XLLNLogout(DWORD dwUserIndex);
+VOID XLLNPostInitCallbacks();
 INT InitXLLN(HMODULE hModule);
 INT UninitXLLN();
 INT ShowXLLN(DWORD dwShowType);
