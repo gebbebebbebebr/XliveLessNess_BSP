@@ -24,6 +24,4 @@ BOOL UninitXSocket();
 
 VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen);
 
-INT WINAPI XWSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData);
-INT WINAPI XWSACleanup();
 INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr *to, int tolen);

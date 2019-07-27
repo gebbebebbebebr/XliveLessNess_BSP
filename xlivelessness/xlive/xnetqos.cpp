@@ -85,6 +85,13 @@ DWORD WINAPI XNetQosLookup(UINT cxna, XNADDR * apxna[], XNKID * apxnkid[], XNKEY
 	return S_OK;
 }
 
+// #71
+VOID XNetQosServiceLookup()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #72
 INT WINAPI XNetQosRelease(XNQOS* pxnqos)
 {
@@ -102,4 +109,11 @@ INT WINAPI XNetQosRelease(XNQOS* pxnqos)
 	}
 	// We need to clean-up all XNetQoSLookup data here, listener data should be cleaned up inside the Listen function Only.
 	return S_OK;
+}
+
+// #77
+VOID XNetQosGetListenStats()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }

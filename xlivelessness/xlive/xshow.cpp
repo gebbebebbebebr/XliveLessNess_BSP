@@ -197,6 +197,13 @@ DWORD WINAPI XShowKeyboardUI(DWORD dwUserIndex, DWORD dwFlags, LPCWSTR wseDefaul
 	return ERROR_IO_PENDING;
 }
 
+// #5218
+VOID XShowArcadeUI()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5250
 DWORD WINAPI XShowAchievementsUI(DWORD dwUserIndex)
 {
@@ -243,6 +250,13 @@ DWORD WINAPI XShowSigninUI(DWORD cPanes, DWORD dwFlags)
 	return ERROR_FUNCTION_FAILED;
 }
 
+// #5266
+VOID XShowMessageBoxUI()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5271
 DWORD WINAPI XShowPlayersUI(DWORD dwUserIndex)
 {
@@ -267,4 +281,25 @@ DWORD WINAPI XShowFriendsUI(DWORD dwUserIndex)
 
 	ShowXLLN(XLLN_SHOW_HOME);
 	return ERROR_SUCCESS;
+}
+
+// #5299
+VOID XShowGuideKeyRemapUI()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5365
+VOID XShowMarketplaceUI()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5366
+VOID XShowMarketplaceDownloadItemsUI()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }

@@ -845,6 +845,13 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 	return S_OK;
 }
 
+// #5235
+VOID XLocatorCreateServerEnumeratorByIDs()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 typedef struct {
 	DWORD ukn1;
 	DWORD ukn2;

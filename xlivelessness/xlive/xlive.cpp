@@ -6,6 +6,7 @@
 #include "xnet.h"
 #include "../xlln/xlln.h"
 #include "xsocket.h"
+#include "xwsa.h"
 #include "xlocator.h"
 #include "xsession.h"
 #include "NetEntity.h"
@@ -298,6 +299,41 @@ BOOL WINAPI XCustomGetLastActionPress(DWORD *pdwUserIndex, DWORD *pdwActionIndex
 	return FALSE;
 }
 
+// #474
+VOID XCustomSetDynamicActions()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #476
+VOID XCustomGetLastActionPressEx()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #477
+VOID XCustomRegisterDynamicActions()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #478
+VOID XCustomUnregisterDynamicActions()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #479
+VOID XCustomGetCurrentGamercard()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 BOOL XNotifyGetNextHelper(ULONGLONG notificationArea, PDWORD pdwId, PULONG_PTR pParam)
 {
 	if (notificationArea & XNOTIFY_SYSTEM) {
@@ -472,7 +508,6 @@ HRESULT WINAPI XLiveInitialize(XLIVE_INITIALIZE_INFO *pPii)
 	snprintf(debugText, 50, "XLive Base Port %hd.", xlive_base_port);
 	addDebugText(debugText);
 
-
 	INT error_XSocket = InitXSocket();
 	CreateLocalUser();
 	INT error_NetEntity = InitNetEntity();
@@ -552,6 +587,13 @@ HRESULT WINAPI XLiveUnregisterDataSection(int a1)
 	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
 }
 
+// #5012
+VOID XLiveUpdateHashes()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5016
 HRESULT WINAPI XLivePBufferAllocate(DWORD dwSize, XLIVE_PROTECTED_BUFFER **pxebBuffer)
 {
@@ -572,6 +614,13 @@ HRESULT WINAPI XLivePBufferAllocate(DWORD dwSize, XLIVE_PROTECTED_BUFFER **pxebB
 	(*pxebBuffer)->dwSize = dwSize;
 
 	return S_OK;
+}
+
+// #5017
+VOID XLivePBufferFree()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5018
@@ -609,6 +658,20 @@ HRESULT WINAPI XLivePBufferSetByte(XLIVE_PROTECTED_BUFFER *xebBuffer, DWORD dwOf
 	return S_OK;
 }
 
+// #5020
+VOID XLivePBufferGetDWORD()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5021
+VOID XLivePBufferSetDWORD()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5022
 HRESULT WINAPI XLiveGetUpdateInformation(PXLIVEUPDATE_INFORMATION pXLiveUpdateInfo)
 {
@@ -630,6 +693,13 @@ HRESULT WINAPI XLiveUpdateSystem(LPCWSTR lpwszRelaunchCmdLine)
 	return S_FALSE;
 }
 
+// #5025
+VOID XLiveGetLiveIdError()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5026
 HRESULT WINAPI XLiveSetSponsorToken(LPCWSTR lpwszToken, DWORD dwTitleId)
 {
@@ -637,6 +707,13 @@ HRESULT WINAPI XLiveSetSponsorToken(LPCWSTR lpwszToken, DWORD dwTitleId)
 	if (!lpwszToken || wcsnlen_s(lpwszToken, 30) != 29)
 		return E_INVALIDARG;
 	return S_OK;
+}
+
+// #5027
+VOID XLiveUninstallTitle()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5028
@@ -696,6 +773,55 @@ HRESULT WINAPI XLiveSetDebugLevel(XLIVE_DEBUG_LEVEL xdlLevel, XLIVE_DEBUG_LEVEL 
 	return S_OK;
 }
 
+// #5032
+VOID XLiveVerifyArcadeLicense()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5034
+VOID XLiveProtectData()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5035
+VOID XLiveUnprotectData()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5036
+VOID XLiveCreateProtectedDataContext()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5037
+VOID XLiveQueryProtectedDataInformation()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5038
+VOID XLiveCloseProtectedDataContext()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5039
+VOID XLiveVerifyDataFile()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5251
 BOOL WINAPI XCloseHandle(HANDLE hObject)
 {
@@ -724,6 +850,13 @@ DWORD WINAPI XCancelOverlapped(PXOVERLAPPED pOverlapped)
 		return ERROR_INVALID_PARAMETER;
 	//TODO XCancelOverlapped
 	return ERROR_SUCCESS;
+}
+
+// #5255
+VOID XEnumerateBack()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5256
@@ -946,7 +1079,7 @@ DWORD WINAPI XUserGetName(DWORD dwUserIndex, LPSTR szUserName, DWORD cchUserName
 VOID XUserAreUsersFriends()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5265
@@ -986,7 +1119,7 @@ DWORD WINAPI XUserCheckPrivilege(DWORD dwUserIndex, XPRIVILEGE_TYPE PrivilegeTyp
 VOID XUserGetSigninInfo()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5270: Requires XNotifyGetNext to process the listener.
@@ -1006,11 +1139,18 @@ HANDLE WINAPI XNotifyCreateListener(ULONGLONG qwAreas)
 	return g_dwFakeListener;
 }
 
+// #5273
+VOID XUserReadGamerPictureByKey()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5274
 VOID XUserAwardGamerPicture()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5276
@@ -1083,6 +1223,13 @@ DWORD WINAPI XUserWriteAchievements(DWORD dwNumAchievements, CONST XUSER_ACHIEVE
 		//return result;
 	}
 	return ERROR_SUCCESS;
+}
+
+// #5279
+VOID XUserReadAchievementPicture()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5280
@@ -1179,6 +1326,13 @@ DWORD WINAPI XUserReadStats(DWORD dwTitleId, DWORD dwNumXuids, CONST XUID *pXuid
 	return ERROR_SUCCESS;
 }
 
+// #5282
+VOID XUserReadGamerPicture()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5284
 DWORD WINAPI XUserCreateStatsEnumeratorByRank(DWORD dwTitleId, DWORD dwRankStart, DWORD dwNumRows, DWORD dwNumStatsSpecs, const XUSER_STATS_SPEC *pSpecs, DWORD *pcbBuffer, PHANDLE ph)
 {
@@ -1212,6 +1366,13 @@ DWORD WINAPI XUserCreateStatsEnumeratorByRank(DWORD dwTitleId, DWORD dwRankStart
 	*ph = CreateMutex(NULL, NULL, NULL);
 
 	return ERROR_SUCCESS;
+}
+
+// #5285
+VOID XUserCreateStatsEnumeratorByRating()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5286
@@ -1249,18 +1410,88 @@ DWORD WINAPI XUserCreateStatsEnumeratorByXuid(DWORD dwTitleId, XUID XuidPivot, D
 	return ERROR_SUCCESS;
 }
 
+// #5287
+VOID XUserResetStatsView()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5288
+VOID XUserGetProperty()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5289
+VOID XUserGetContext()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5290
+VOID XUserGetReputationStars()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5291
+VOID XUserResetStatsViewAllUsers()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5292
 VOID XUserSetContextEx()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5293
 VOID XUserSetPropertyEx()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
+}
+
+// #5294
+VOID XLivePBufferGetByteArray()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5295
+VOID XLivePBufferSetByteArray()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5296
+VOID XLiveGetLocalOnlinePort()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5297
+VOID XLiveInitializeEx()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5298
+VOID XLiveGetGuideKey()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5303
@@ -1305,6 +1536,13 @@ DWORD WINAPI XStringVerify(DWORD dwFlags, const CHAR *szLocale, DWORD dwNumStrin
 	return ERROR_SUCCESS;
 }
 
+// #5304
+VOID XStorageUploadFromMemoryGetProgress()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5305
 DWORD WINAPI XStorageUploadFromMemory(DWORD dwUserIndex, const WCHAR *wszServerPath, DWORD dwBufferSize, const BYTE *pbBuffer, XOVERLAPPED *pXOverlapped)
 {
@@ -1339,6 +1577,20 @@ DWORD WINAPI XStorageUploadFromMemory(DWORD dwUserIndex, const WCHAR *wszServerP
 	return ERROR_SUCCESS;
 }
 
+// #5306
+VOID XStorageEnumerate()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5307
+VOID XStorageDownloadToMemoryGetProgress()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5308
 DWORD WINAPI XStorageDelete(DWORD dwUserIndex, const WCHAR *wszServerPath, XOVERLAPPED *pXOverlapped)
 {
@@ -1369,6 +1621,13 @@ DWORD WINAPI XStorageDelete(DWORD dwUserIndex, const WCHAR *wszServerPath, XOVER
 	return ERROR_SUCCESS;
 }
 
+// #5309
+VOID XStorageBuildServerPathByXuid()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5310
 DWORD WINAPI XOnlineStartup()
 {
@@ -1390,13 +1649,6 @@ DWORD WINAPI XOnlineCleanup()
 		return XWSACleanup();
 	}
 	return WSANOTINITIALISED;
-}
-
-// #5324
-VOID XOnlineGetNatType()
-{
-	TRACE_FX();
-	__debugbreak();
 }
 
 // #5312
@@ -1422,6 +1674,13 @@ DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, 
 	*ph = CreateMutex(NULL, NULL, NULL);
 
 	return ERROR_SUCCESS;
+}
+
+// #5313
+VOID XPresenceInitialize()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5315
@@ -1507,6 +1766,13 @@ DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees,
 	return ERROR_SUCCESS;
 }
 
+// #5324
+VOID XOnlineGetNatType()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5331
 DWORD WINAPI XUserReadProfileSettings(
 	DWORD dwTitleId,
@@ -1563,11 +1829,53 @@ DWORD WINAPI XUserReadProfileSettings(
 	return ERROR_SUCCESS;
 }
 
+// #5334
+VOID XOnlineGetServiceInfo()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5335
+VOID XTitleServerCreateEnumerator()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5337
 VOID XUserWriteProfileSettings()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
+}
+
+// #5338
+VOID XPresenceSubscribe()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5339
+VOID XUserReadProfileSettingsByXuid()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5340
+VOID XPresenceCreateEnumerator()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5341
+VOID XPresenceUnsubscribe()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5344
@@ -1651,4 +1959,179 @@ DWORD WINAPI XStorageDownloadToMemory(
 		//return result;
 	}
 	return ERROR_SUCCESS;
+}
+
+// #5346
+VOID XUserEstimateRankForRating()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5347
+VOID XLiveProtectedLoadLibrary()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5348
+VOID XLiveProtectedCreateFile()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5349
+VOID XLiveProtectedVerifyFile()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5350
+VOID XLiveContentCreateAccessHandle()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5351
+VOID XLiveContentInstallPackage()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5352
+VOID XLiveContentUninstall()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5354
+VOID XLiveContentVerifyInstalledPackage()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5355
+VOID XLiveContentGetPath()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5356
+VOID XLiveContentGetDisplayName()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5357
+VOID XLiveContentGetThumbnail()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5358
+VOID XLiveContentInstallLicense()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5359
+VOID XLiveGetUPnPState()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5360
+VOID XLiveContentCreateEnumerator()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5361
+VOID XLiveContentRetrieveOffersByDate()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5362
+VOID XLiveMarketplaceDoesContentIdMatch()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5363
+VOID XLiveContentGetLicensePath()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5367
+VOID XContentGetMarketplaceCounts()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5370
+VOID XMarketplaceConsumeAssets()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5371
+VOID XMarketplaceCreateAssetEnumerator()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5372
+VOID XMarketplaceCreateOfferEnumerator()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5374
+VOID XMarketplaceGetDownloadStatus()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5375
+VOID XMarketplaceGetImageUrl()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5376
+VOID XMarketplaceCreateOfferEnumeratorByOffering()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #5377
+VOID XUserFindUsers()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }

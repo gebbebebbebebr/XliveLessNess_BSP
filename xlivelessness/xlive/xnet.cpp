@@ -106,6 +106,20 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 	return S_OK;
 }
 
+// #58
+VOID XNetServerToInAddr()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #59
+VOID XNetTsAddrToInAddr()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #60
 INT WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR *pxna, XNKID *pxnkid)
 {
@@ -121,12 +135,33 @@ INT WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR *pxna, XNKID *pxnkid)
 	return E_FAIL;
 }
 
+// #61
+VOID XNetInAddrToServer()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #62
+VOID XNetInAddrToString()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #63
 INT WINAPI XNetUnregisterInAddr(const IN_ADDR ina)
 {
 	TRACE_FX();
 	UnregisterSecureAddr(ina);
 	return S_OK;
+}
+
+// #64
+VOID XNetXnAddrToMachineId()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #65
@@ -191,6 +226,13 @@ DWORD WINAPI XNetGetTitleXnAddr(XNADDR *pAddr)
 	return XNET_GET_XNADDR_STATIC | XNET_GET_XNADDR_ETHERNET | XNET_GET_XNADDR_ONLINE;
 }
 
+// #74
+VOID XNetGetDebugXnAddr()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #75
 DWORD WINAPI XNetGetEthernetLinkStatus()
 {
@@ -198,6 +240,55 @@ DWORD WINAPI XNetGetEthernetLinkStatus()
 	if (!xlive_net_initialized)
 		return XNET_ETHERNET_LINK_INACTIVE;
 	return XNET_ETHERNET_LINK_ACTIVE | XNET_ETHERNET_LINK_100MBPS | XNET_ETHERNET_LINK_FULL_DUPLEX;
+}
+
+// #76
+VOID XNetGetBroadcastVersionStatus()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #78
+VOID XNetGetOpt()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #79
+VOID XNetSetOpt()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #80
+VOID XNetStartupEx()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #81
+VOID XNetReplaceKey()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #82
+VOID XNetGetXnAddrPlatform()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
+// #83
+VOID XNetGetSystemLinkPort()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #84
@@ -208,4 +299,11 @@ INT WINAPI XNetSetSystemLinkPort(WORD wSystemLinkPort)
 	WORD hPort = ntohs(wSystemLinkPort);
 
 	return ERROR_SUCCESS;
+}
+
+// #5023
+VOID XNetGetCurrentAdapter()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }

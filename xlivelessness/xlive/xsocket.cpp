@@ -105,26 +105,6 @@ static VOID CustomMemCpy(void *dst, void *src, rsize_t len, bool directionAscend
 	}
 }
 
-// #1
-INT WINAPI XWSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData)
-{
-	TRACE_FX();
-	INT result = WSAStartup(wVersionRequested, lpWSAData);
-	return result;
-}
-
-// #2
-INT WINAPI XWSACleanup()
-{
-	TRACE_FX();
-	INT result = WSACleanup();
-	if (result != ERROR_SUCCESS) {
-		//TODO Store error in XWSAGetLastError().
-		return SOCKET_ERROR;
-	}
-	return result;
-}
-
 // #3
 SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 {
@@ -576,6 +556,13 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 	}
 
 	return result;
+}
+
+// #26
+VOID XSocketInet_Addr()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #27

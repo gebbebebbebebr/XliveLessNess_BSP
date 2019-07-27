@@ -133,6 +133,13 @@ DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, PXOVERLAPPED pXOverla
 	return ERROR_SUCCESS;
 }
 
+// #5319
+VOID XSessionSearchEx()
+{
+	TRACE_FX();
+	FUNC_STUB();
+}
+
 // #5320
 VOID XSessionSearchByID()
 {
@@ -173,6 +180,13 @@ DWORD WINAPI XSessionModify(HANDLE hSession, DWORD dwFlags, DWORD dwMaxPublicSlo
 		//return result;
 	}
 	return ERROR_SUCCESS;
+}
+
+// #5323
+VOID XSessionMigrateHost()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5325
@@ -267,6 +281,13 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 		//return result;
 	}
 	return ERROR_SUCCESS;
+}
+
+// #5328
+VOID XSessionGetDetails()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
 
 // #5329
@@ -412,4 +433,11 @@ DWORD WINAPI XSessionModifySkill(HANDLE hSession, DWORD dwXuidCount, const XUID 
 		//return result;
 	}
 	return ERROR_SUCCESS;
+}
+
+// #5343
+VOID XSessionCalculateSkill()
+{
+	TRACE_FX();
+	FUNC_STUB();
 }
