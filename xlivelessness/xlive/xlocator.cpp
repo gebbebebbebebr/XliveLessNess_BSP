@@ -5,6 +5,7 @@
 #include "../xlln/DebugText.h"
 #include "xnet.h"
 #include "xlive.h"
+#include "NetEntity.h"
 #include <thread>
 #include <condition_variable>
 #include <atomic>
@@ -355,7 +356,7 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 
 	LIVE_SERVER_DETAILS *new_local_sd = (LIVE_SERVER_DETAILS*)malloc(buflen);
 	new_local_sd->ADV.xuid = *xuid;
-	new_local_sd->ADV.xnAddr = xlive_local_users[0].pxna;
+	new_local_sd->ADV.xnAddr = xlive_local_xnAddr;
 	new_local_sd->ADV.dwServerType = dwServerType;
 	new_local_sd->ADV.xnkid = xnkid;
 	new_local_sd->ADV.xnkey = xnkey;
@@ -443,7 +444,7 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	local_session_details = new_local_sd;
 	LeaveCriticalSection(&liveoverlan_broadcast_lock);
 }
-VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<DWORD, WORD> hostpair, const LIVE_SERVER_DETAILS *session_details, INT &len)
+VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<DWORD, WORD> host_pair_resolved, const LIVE_SERVER_DETAILS *session_details, INT &len)
 {
 	if (session_details->HEAD.bCustomPacketType == XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE) {
 		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
@@ -453,7 +454,7 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 		const XUID &unregisterXuid = session_details->UNADV.xuid;// Unused.
 		addDebugText("Received Broadcast Unadvertise");
 		EnterCriticalSection(&liveoverlan_sessions_lock);
-		liveoverlan_sessions.erase(hostpair);
+		liveoverlan_sessions.erase(host_pair_resolved);
 		LeaveCriticalSection(&liveoverlan_sessions_lock);
 	}
 	else {
@@ -464,7 +465,9 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 		}
 
 		XLOCATOR_SEARCHRESULT *searchresult = 0;
-		if (!xlive_users_hostpair.count(hostpair)) {
+
+		XNADDR xnAddr;
+		if (NetEntityGetHostPairResolved(xnAddr, host_pair_resolved) != ERROR_SUCCESS) {
 			addDebugText("Received Broadcast - NO USER");
 			SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen);
 		}
@@ -472,28 +475,23 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 			addDebugText("Received Broadcast");
 			EnterCriticalSection(&liveoverlan_sessions_lock);
 			// Delete the old entry if there already is one.
-			if (liveoverlan_sessions.count(hostpair)) {
-				XLOCATOR_SESSION *oldsession = liveoverlan_sessions[hostpair];
+			if (liveoverlan_sessions.count(host_pair_resolved)) {
+				XLOCATOR_SESSION *oldsession = liveoverlan_sessions[host_pair_resolved];
 				LiveOverLanDelete(oldsession->searchresult);
 				delete oldsession;
 			}
 			// fill in serverAddress as it is not populated from LOLBReceive.
-			if (xlive_users_hostpair.count(hostpair)) {
-				XNADDR *host = xlive_users_hostpair[hostpair];
-				// If the online address is zero the user is not online / it is the relay server.
-				if (host->inaOnline.s_addr != 0) {
-					searchresult->serverAddress = *host;
-				}
+			// If the online address is zero the user is not online / it is the relay server.
+			if (xnAddr.inaOnline.s_addr != 0) {
+				searchresult->serverAddress = xnAddr;
 			}
-			else {
-				XllnDebugBreak("ERROR XLocator does not have a server XNADDR.");
-			}
+
 			XLOCATOR_SESSION *newsession = new XLOCATOR_SESSION;
 			newsession->searchresult = searchresult;
 			time_t ltime;
 			time(&ltime);
 			newsession->broadcastTime = (unsigned long)ltime;
-			liveoverlan_sessions[hostpair] = newsession;
+			liveoverlan_sessions[host_pair_resolved] = newsession;
 			LeaveCriticalSection(&liveoverlan_sessions_lock);
 		}
 		else {

@@ -8,6 +8,7 @@
 #include "xsocket.h"
 #include "xlocator.h"
 #include "xsession.h"
+#include "NetEntity.h"
 #include <time.h>
 #include <d3d9.h>
 #include <string>
@@ -227,7 +228,7 @@ void CreateLocalUser()
 {
 	INT error_network_adapter = GetNetworkAdapter();
 
-	XNADDR *pAddr = &xlive_local_users[0].pxna;
+	XNADDR *pAddr = &xlive_local_xnAddr;
 
 	unsigned long resolvedHostAddr = LocalUserHostIpv4();
 
@@ -247,12 +248,6 @@ void CreateLocalUser()
 
 	memcpy((BYTE*)&(pAddr->abEnet) + 3, (BYTE*)&mac_fix + 1, 3);
 	memcpy((BYTE*)&(pAddr->abOnline) + 17, (BYTE*)&mac_fix + 1, 3);
-
-	xlive_local_users[0].pina.s_addr = pAddr->inaOnline.s_addr;
-
-	xlive_local_users[0].bValid = TRUE;
-
-	//CreateUser(pAddr, TRUE);
 }
 
 
@@ -477,8 +472,10 @@ HRESULT WINAPI XLiveInitialize(XLIVE_INITIALIZE_INFO *pPii)
 	snprintf(debugText, 50, "XLive Base Port %hd.", xlive_base_port);
 	addDebugText(debugText);
 
-	CreateLocalUser();
 
+	INT error_XSocket = InitXSocket();
+	CreateLocalUser();
+	INT error_NetEntity = InitNetEntity();
 	//TODO If the title's graphics system has not yet been initialized, D3D will be passed in XLiveOnCreateDevice(...).
 	INT error_XRender = InitXRender(pPii);
 	INT error_XSession = InitXSession();
@@ -500,7 +497,11 @@ HRESULT WINAPI XLiveInput(XLIVE_INPUT_INFO *pPii)
 VOID WINAPI XLiveUninitialize()
 {
 	TRACE_FX();
+
+	INT error_XSession = UninitXSession();
 	INT error_XRender = UninitXRender();
+	INT error_NetEntity = UninitNetEntity();
+	INT error_XSocket = UninitXSocket();
 	DeleteCriticalSection(&xlive_xlocator_enumerators_lock);
 	DeleteCriticalSection(&d_lock);
 }

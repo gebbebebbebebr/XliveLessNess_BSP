@@ -19,6 +19,9 @@ namespace XLLNCustomPacketType {
 	};
 }
 
+BOOL InitXSocket();
+BOOL UninitXSocket();
+
 VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen);
 
 INT WINAPI XWSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData);

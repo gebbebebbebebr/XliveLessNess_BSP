@@ -60,6 +60,9 @@
     <ClCompile Include="xlive\xshow.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
+    <ClCompile Include="xlive\NetEntity.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\DebugText.h">
@@ -99,6 +102,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="xlive\xshow.h">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\NetEntity.h">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
   </ItemGroup>

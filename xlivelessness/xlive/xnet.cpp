@@ -4,45 +4,15 @@
 #include "xlive.h"
 #include "../xlln/DebugText.h"
 #include "xsocket.h"
+#include "NetEntity.h"
 
 BOOL xlive_net_initialized = FALSE;
 
-CLocalUser xlive_local_users[16];
-
-std::map<DWORD, XNADDR*> xlive_users_secure;
-std::map<std::pair<DWORD, WORD>, XNADDR*> xlive_users_hostpair;
-
-
-VOID CreateUser(XNADDR* pxna)
-{
-	TRACE_FX();
-
-	DWORD hsecure = ntohl(pxna->inaOnline.s_addr);
-	XNADDR *userPxna = xlive_users_secure.count(hsecure) ? xlive_users_secure[hsecure] : NULL;
-	if (userPxna)
-		delete userPxna;
-
-	userPxna = new XNADDR;
-	memset(userPxna, 0x00, sizeof(XNADDR));
-	memcpy(userPxna, pxna, sizeof(XNADDR));
-
-	xlive_users_secure[hsecure] = userPxna;
-
-	std::pair<DWORD, WORD> hostpair = std::make_pair(ntohl(pxna->ina.s_addr), ntohs(pxna->wPortOnline));
-	xlive_users_hostpair[hostpair] = userPxna;
-}
+XNADDR xlive_local_xnAddr;
 
 void UnregisterSecureAddr(const IN_ADDR ina)
 {
-	return;
-	CLocalUser* deluser = NULL;// xlive_cUsers.count(ina.s_addr) ? xlive_cUsers[ina.s_addr] : NULL;
-	//xlive_cUsers.erase(ina.s_addr);
-
-
-	if (deluser != 0)
-	{
-
-	}
+	//TODO
 }
 
 
@@ -122,7 +92,7 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 	TRACE_FX();
 	ULONG secure = pxna->inaOnline.s_addr;
 
-	CreateUser(pxna);
+	NetEntityCreate(pxna);
 
 	if (secure != 0) {
 		pina->s_addr = secure;
@@ -141,20 +111,14 @@ INT WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR *pxna, XNKID *pxnkid)
 {
 	TRACE_FX();
 
-	DWORD hsecure = ntohl(ina.s_addr);
-	XNADDR *userPxna = xlive_users_secure.count(hsecure) ? xlive_users_secure[hsecure] : NULL;
+	DWORD hSecure = ntohl(ina.s_addr);
 
-	// Zero memory of the current buffer passed to us by the game.
-	memset(pxna, 0x00, sizeof(XNADDR));
-
-	if (userPxna != 0) {
-		memcpy(pxna, userPxna, sizeof(XNADDR));
-	}
-	else {
-		__debugbreak();
+	if (NetEntityGetSecure(*pxna, hSecure) == ERROR_SUCCESS) {
+		return S_OK;
 	}
 
-	return S_OK;
+	__debugbreak();
+	return E_FAIL;
 }
 
 // #63
@@ -220,9 +184,9 @@ DWORD WINAPI XNetGetTitleXnAddr(XNADDR *pAddr)
 	if (!xlive_net_initialized)
 		return XNET_GET_XNADDR_PENDING;
 	if (pAddr) {
-		xlive_local_users[0].pxna.ina.s_addr = htonl(LocalUserHostIpv4());
+		xlive_local_xnAddr.ina.s_addr = htonl(LocalUserHostIpv4());
 		// test without editing local version?
-		memcpy_s(pAddr, sizeof(*pAddr), &xlive_local_users[0].pxna, sizeof(xlive_local_users[0].pxna));
+		*pAddr = xlive_local_xnAddr;
 	}
 	return XNET_GET_XNADDR_STATIC | XNET_GET_XNADDR_ETHERNET | XNET_GET_XNADDR_ONLINE;
 }

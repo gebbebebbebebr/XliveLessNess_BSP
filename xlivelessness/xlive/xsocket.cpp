@@ -5,6 +5,7 @@
 #include "../xlln/DebugText.h"
 #include "xnet.h"
 #include "xlocator.h"
+#include "NetEntity.h"
 #include <ctime>
 
 #define IPPROTO_VDP 254
@@ -18,27 +19,53 @@ struct SocketInfo {
 	int protocol;
 	WORD hPort;
 };
+static CRITICAL_SECTION xlive_critsec_sockets;
 static std::map<SOCKET, SocketInfo*> xlive_sockets;
 
-VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
+#pragma pack(push, 1) // Save then set byte alignment setting.
+typedef struct {
+	struct {
+		XNADDR xnAddr;
+		WORD numOfPorts;
+	} HEAD;
+	WORD ports[1];
+} NET_USER_ASK;
+#pragma pack(pop) // Return to original alignment setting.
+
+static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen, bool isAsking)
 {
-	addDebugText("XLLN: Send UNKNOWN_USER_ASK.");
+	if (isAsking) {
+		addDebugText("XLLN: Send UNKNOWN_USER_ASK.");
+	}
+	else {
+		addDebugText("XLLN: Send UNKNOWN_USER_REPLY.");
+	}
 	const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
-	const int cpUUHeaderLen = cpHeaderLen + sizeof(XNADDR);
+
+	EnterCriticalSection(&xlive_critsec_sockets);
+
+	const int cpUUHeaderLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * xlive_sockets.size());
 	int cpTotalLen = cpUUHeaderLen + dataLen;
 
 	// Check overflow condition.
 	if (cpTotalLen < 0) {
 		// Send only UNKNOWN_USER_ASK.
 		cpTotalLen = cpUUHeaderLen;
-		return;
 	}
 
 	BYTE *cpBuf = (BYTE*)malloc(cpTotalLen);
 	cpBuf[0] = XLLN_CUSTOM_PACKET_SENTINEL;
-	cpBuf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)] = XLLNCustomPacketType::UNKNOWN_USER_ASK;
-	XNADDR &xnAddr = *(XNADDR*)&cpBuf[cpHeaderLen];
-	memcpy_s(&xnAddr, sizeof(xnAddr), &xlive_local_users[0].pxna, sizeof(xlive_local_users[0].pxna));
+	cpBuf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)] = isAsking ? XLLNCustomPacketType::UNKNOWN_USER_ASK : XLLNCustomPacketType::UNKNOWN_USER_REPLY;
+	NET_USER_ASK &nea = *(NET_USER_ASK*)&cpBuf[cpHeaderLen];
+	nea.HEAD.numOfPorts = (WORD)xlive_sockets.size();
+	DWORD i = 0;
+	for (auto const &socket : xlive_sockets) {
+		nea.ports[i++] = socket.second->hPort;
+	}
+
+	LeaveCriticalSection(&xlive_critsec_sockets);
+
+	nea.HEAD.xnAddr = xlive_local_xnAddr;
 
 	if (cpTotalLen > cpUUHeaderLen) {
 		memcpy_s(&cpBuf[cpUUHeaderLen], dataLen, data, dataLen);
@@ -52,6 +79,11 @@ VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr 
 	}
 
 	free(cpBuf);
+}
+
+VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
+{
+	SendUnknownUserAskRequest(socket, data, dataLen, to, tolen, true);
 }
 
 static VOID CustomMemCpy(void *dst, void *src, rsize_t len, bool directionAscending)
@@ -118,7 +150,9 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 		SocketInfo* si = (SocketInfo*)malloc(sizeof(SocketInfo));
 		si->protocol = protocol;
 		si->hPort = 0;
+		EnterCriticalSection(&xlive_critsec_sockets);
 		xlive_sockets[result] = si;
+		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 
 	return result;
@@ -130,9 +164,11 @@ INT WINAPI XSocketClose(SOCKET s)
 	TRACE_FX();
 	INT result = closesocket(s);
 
+	EnterCriticalSection(&xlive_critsec_sockets);
 	SocketInfo *si = xlive_sockets[s];
 	free(si);
 	xlive_sockets.erase(s);
+	LeaveCriticalSection(&xlive_critsec_sockets);
 
 	return result;
 }
@@ -143,7 +179,9 @@ INT WINAPI XSocketShutdown(SOCKET s, int how)
 	TRACE_FX();
 	INT result = shutdown(s, how);
 
+	EnterCriticalSection(&xlive_critsec_sockets);
 	xlive_sockets[s]->hPort = 0;
+	LeaveCriticalSection(&xlive_critsec_sockets);
 
 	return result;
 }
@@ -203,29 +241,32 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 	WORD hPort = ntohs(((struct sockaddr_in*)name)->sin_port);
 	WORD port_base = (hPort / 1000) * 1000;
 	WORD port_offset = hPort % 1000;
+	WORD hPortShift = xlive_base_port + port_offset;
 
 	if (port_offset == 1) {
-		((struct sockaddr_in*)name)->sin_port = htons(xlive_base_port + 1);
 		xlive_liveoverlan_socket = s;
 	}
+	if (false) {}
 	//else if (s == xlive_VDP_socket) {
 	//	__debugbreak();
 	//	//("[h2mod-voice] Game bound potential voice socket to : %i", ntohs(port));
 	//	((struct sockaddr_in*)name)->sin_port = htons(xlive_base_port + 10);
 	//}
 	else {
-		((struct sockaddr_in*)name)->sin_port = htons(xlive_base_port + port_offset);
+		((struct sockaddr_in*)name)->sin_port = htons(hPortShift);
 	}
 
 	SOCKET result = bind(s, name, namelen);
 
 	if (result == SOCKET_ERROR) {
 		char debugText[200];
-		snprintf(debugText, sizeof(debugText), "Socket Bind ERROR.\nAnother program has taken port:\nBase: %hd\nOffset: %hd\nOriginal: %hd", xlive_base_port, port_offset, hPort);
+		snprintf(debugText, sizeof(debugText), "Socket Bind ERROR.\nAnother program has taken port:\nBase: %hd\nOffset: %hd\nNew: %hd\nOriginal: %hd", xlive_base_port, port_offset, hPortShift, hPort);
 		XllnDebugBreak(debugText);
 	}
 	else {
-		xlive_sockets[s]->hPort = hPort;
+		EnterCriticalSection(&xlive_critsec_sockets);
+		xlive_sockets[s]->hPort = hPortShift;
+		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 	return result;
 }
@@ -236,19 +277,31 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 	TRACE_FX();
 
 	ULONG niplong = ((struct sockaddr_in*)name)->sin_addr.s_addr;
-	ULONG hsecure = ntohl(niplong);
+	ULONG hIPv4 = ntohl(niplong);
 	WORD hPort = ntohs(((struct sockaddr_in*)name)->sin_port);
 	WORD port_base = (hPort / 1000) * 1000;
 	WORD port_offset = hPort % 1000;
 
-	XNADDR *userPxna = xlive_users_secure.count(hsecure) ? xlive_users_secure[hsecure] : NULL;
-	if (userPxna) {
-		((struct sockaddr_in*)name)->sin_addr.s_addr = userPxna->ina.s_addr;
-		((struct sockaddr_in*)name)->sin_port = htons(ntohs(userPxna->wPortOnline) + port_offset);
+	EnterCriticalSection(&xlln_critsec_net_entity);
+
+	NET_ENTITY *ne;
+	if (NetEntityGetSecure(ne, hIPv4) == ERROR_SUCCESS) {
+		DWORD nIPv4 = ne->xnAddr.ina.s_addr;
+		((struct sockaddr_in*)name)->sin_addr.s_addr = nIPv4;
+
+		std::pair<DWORD, WORD> host_pair = std::make_pair(ntohl(nIPv4), hPort);
+		if (ne->host_pair_mappings.count(host_pair)) {
+			((struct sockaddr_in*)name)->sin_port = htons(ne->host_pair_mappings[host_pair]);
+		}
+		else {
+			__debugbreak();
+		}
 	}
 	else {
 		__debugbreak();
 	}
+
+	LeaveCriticalSection(&xlln_critsec_net_entity);
 
 	INT result = connect(s, name, namelen);
 	return result;
@@ -292,9 +345,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		addDebugText(__func__);
 		const u_long niplong = ((struct sockaddr_in*)from)->sin_addr.s_addr;
 		const WORD hPort = ntohs(((struct sockaddr_in*)from)->sin_port);
-		const WORD port_base = (hPort / 1000) * 1000;
-		const WORD port_offset = hPort % 1000;
-		const std::pair<DWORD, WORD> hostpair = std::make_pair(ntohl(niplong), port_base);
+		const std::pair<DWORD, WORD> host_pair_resolved = std::make_pair(ntohl(niplong), hPort);
 
 		if (buf[0] == XLLN_CUSTOM_PACKET_SENTINEL) {
 			const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
@@ -321,36 +372,60 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				case XLLNCustomPacketType::UNKNOWN_USER_ASK:
 				case XLLNCustomPacketType::UNKNOWN_USER_REPLY: {
 					// Less than since there is likely another packet pushed onto the end of this one.
-					if (result < cpHeaderLen + sizeof(XNADDR)) {
+					if (result < cpHeaderLen + sizeof(NET_USER_ASK::HEAD)) {
 						addDebugText("XLLN: ERROR INVALID UNKNOWN_USER_<?> Recieved.");
 						return 0;
 					}
 					addDebugText("XLLN: UNKNOWN_USER_<?> Recieved.");
-					XNADDR &xnAddr = *(XNADDR*)&buf[cpHeaderLen];
-					xnAddr.ina.s_addr = niplong;
-					CreateUser(&xnAddr);
+					NET_USER_ASK &nea = *(NET_USER_ASK*)&buf[cpHeaderLen];
+					nea.HEAD.xnAddr.ina.s_addr = niplong;
+					NetEntityCreate(&nea.HEAD.xnAddr);
+					DWORD userId = ntohl(nea.HEAD.xnAddr.inaOnline.s_addr) >> 8;
+					ULONG hIPv4 = ntohl(niplong);
+					EnterCriticalSection(&xlln_critsec_net_entity);
+					if (xlln_net_entity_userId.count(userId)) {
+						NET_ENTITY *ne = xlln_net_entity_userId[userId];
+						//TODO replace with hole punshing
+						for (DWORD i = 0; i < nea.HEAD.numOfPorts; i++) {
+							NetEntityAddMapping_(ne, hIPv4, nea.ports[i], nea.ports[i]);
+						}
+					}
+					LeaveCriticalSection(&xlln_critsec_net_entity);
 
 					XLLNCustomPacketType::Type &packet_type = *(XLLNCustomPacketType::Type*)&buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)];
+
+					const int UnknownUserPacketLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * nea.HEAD.numOfPorts);
 
 					if (packet_type == XLLNCustomPacketType::UNKNOWN_USER_ASK) {
 						addDebugText("XLLN: UNKNOWN_USER_ASK Sending REPLY.");
 						packet_type = XLLNCustomPacketType::UNKNOWN_USER_REPLY;
-						memcpy_s(&xnAddr, sizeof(xnAddr), &xlive_local_users[0].pxna, sizeof(xlive_local_users[0].pxna));
 
-						INT bytesSent = sendto(s, buf, result, 0, from, *fromlen);
+						SendUnknownUserAskRequest(s, (char*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, from, *fromlen, false);
+
+						//TODO for efficiency can use current data if enough space avail.
+						/*nea.HEAD.xnAddr = xlive_local_xnAddr;
+
+						EnterCriticalSection(&xlive_critsec_sockets);
+
+						if (nea.HEAD.numOfPorts < xlive_sockets.size()) {
+
+						}
+
+						LeaveCriticalSection(&xlive_critsec_sockets);
+
+						INT bytesSent = sendto(s, buf, result, 0, from, *fromlen);*/
 						return 0;
 					}
 					else {
 						addDebugText("XLLN: UNKNOWN_USER_REPLY passing original data back.");
-						const int UnknownUserPacketLen = cpHeaderLen + sizeof(XNADDR);
-						CustomMemCpy(buf, (void*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, true);
+						//CustomMemCpy(buf, (void*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, true);
 						result -= UnknownUserPacketLen;
-						return XSocketRecvFromHelper(result, s, buf, len, flags, from, fromlen);
+						return XSocketRecvFromHelper(result, s, (char*)((DWORD)buf + UnknownUserPacketLen), len, flags, from, fromlen);
 					}
 				}
 				case XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE:
 				case XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE: {
-					LiveOverLanRecieve(s, from, *fromlen, hostpair, (const LIVE_SERVER_DETAILS*)buf, result);
+					LiveOverLanRecieve(s, from, *fromlen, host_pair_resolved, (const LIVE_SERVER_DETAILS*)buf, result);
 					return 0;
 				}
 				default: {
@@ -368,14 +443,28 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 			return 0;
 		}
 
-		XNADDR *userPxna = xlive_users_hostpair.count(hostpair) ? xlive_users_hostpair[hostpair] : NULL;
-		if (userPxna) {
-			((struct sockaddr_in*)from)->sin_addr.s_addr = userPxna->inaOnline.s_addr;
+		EnterCriticalSection(&xlln_critsec_net_entity);
+
+		NET_ENTITY *ne;
+		if (NetEntityGetHostPairResolved(ne, host_pair_resolved) == ERROR_SUCCESS) {
+			((struct sockaddr_in*)from)->sin_addr.s_addr = ne->xnAddr.inaOnline.s_addr;
+
+			if (ne->host_pair_resolved.count(host_pair_resolved)) {
+				((struct sockaddr_in*)from)->sin_port = htons(ne->host_pair_resolved[host_pair_resolved]);
+			}
+			else {
+				LeaveCriticalSection(&xlln_critsec_net_entity);
+				SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
+				return 0;
+			}
 		}
 		else {
+			LeaveCriticalSection(&xlln_critsec_net_entity);
 			SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
 			return 0;
 		}
+
+		LeaveCriticalSection(&xlln_critsec_net_entity);
 	}
 	return result;
 }
@@ -404,13 +493,13 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 
 	WORD nPort = ((struct sockaddr_in*)to)->sin_port;
 	WORD hPort = ntohs(nPort);
-	ULONG nIpv4 = ((struct sockaddr_in*)to)->sin_addr.s_addr;
-	ULONG hIpv4 = ntohl(nIpv4);
+	ULONG nIPv4 = ((struct sockaddr_in*)to)->sin_addr.s_addr;
+	ULONG hIPv4 = ntohl(nIPv4);
 	WORD port_base = (hPort / 1000) * 1000;
 	WORD port_offset = hPort % 1000;
 	ADDRESS_FAMILY af = ((struct sockaddr_in*)to)->sin_family;
 
-	if (hIpv4 == INADDR_BROADCAST || hIpv4 == INADDR_ANY) {
+	if (hIPv4 == INADDR_BROADCAST || hIPv4 == INADDR_ANY) {
 		addDebugText("XSocketSendTo() - Broadcast.");
 
 		((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(xlive_network_adapter.hBroadcast);
@@ -421,24 +510,28 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		}
 	}
 	else {
-		XNADDR *userPxna = xlive_users_secure.count(hIpv4) ? xlive_users_secure[hIpv4] : NULL;
-		if (userPxna) {
-			((struct sockaddr_in*)to)->sin_addr.s_addr = userPxna->ina.s_addr;
-			((struct sockaddr_in*)to)->sin_port = htons(ntohs(userPxna->wPortOnline) + port_offset);
-		}
-		else {
-			std::pair<DWORD, WORD> hostpair = std::make_pair(ntohl(((struct sockaddr_in*)to)->sin_addr.s_addr), port_base);
-			XNADDR* userPxna = xlive_users_hostpair.count(hostpair) ? xlive_users_hostpair[hostpair] : NULL;
-			if (userPxna) {
-				//FIXME fix port if remapped.
-				((struct sockaddr_in*)to)->sin_port = htons(ntohs(userPxna->wPortOnline) + port_offset);
+
+		EnterCriticalSection(&xlln_critsec_net_entity);
+
+		NET_ENTITY *ne;
+		if (NetEntityGetSecure(ne, hIPv4) == ERROR_SUCCESS) {
+			DWORD nIPv4 = ne->xnAddr.ina.s_addr;
+			((struct sockaddr_in*)to)->sin_addr.s_addr = nIPv4;
+
+			std::pair<DWORD, WORD> hIPv4PortOffset = std::make_pair(ntohl(nIPv4), ne->hPortBase + port_offset);
+			if (ne->host_pair_mappings.count(hIPv4PortOffset)) {
+				((struct sockaddr_in*)to)->sin_port = htons(ne->host_pair_mappings[hIPv4PortOffset]);
 			}
 			else {
-				addDebugText("ERROR: Unable to find XNADDR, sending anyway.");
-				//__debugbreak();
-				//return result;
+				__debugbreak();
 			}
 		}
+		else {
+			addDebugText("ERROR: Unable to find XNADDR, sending anyway.");
+			//__debugbreak();
+		}
+
+		LeaveCriticalSection(&xlln_critsec_net_entity);
 
 		result = sendto(s, buf, len, flags, to, tolen);
 	}
@@ -523,4 +616,18 @@ USHORT WINAPI XSocketHTONS(USHORT hostshort)
 	TRACE_FX();
 	USHORT result = htons(hostshort);
 	return result;
+}
+
+BOOL InitXSocket()
+{
+	InitializeCriticalSection(&xlive_critsec_sockets);
+
+	return TRUE;
+}
+
+BOOL UninitXSocket()
+{
+	DeleteCriticalSection(&xlive_critsec_sockets);
+
+	return TRUE;
 }
