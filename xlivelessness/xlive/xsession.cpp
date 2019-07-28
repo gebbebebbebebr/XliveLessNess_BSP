@@ -104,7 +104,7 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 VOID XSessionWriteStats()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5318
@@ -144,14 +144,14 @@ VOID XSessionSearchEx()
 VOID XSessionSearchByID()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5321
 VOID XSessionSearch()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5322
@@ -372,7 +372,7 @@ DWORD WINAPI XSessionEnd(HANDLE hSession, PXOVERLAPPED pXOverlapped)
 VOID XSessionArbitrationRegister()
 {
 	TRACE_FX();
-	__debugbreak();
+	FUNC_STUB();
 }
 
 // #5336

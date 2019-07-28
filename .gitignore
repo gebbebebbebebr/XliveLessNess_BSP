@@ -1,6 +1,5 @@
 /.vs
-/BinOut
-/BinOut2
+/BinOut*
 /enc_temp_folder
 /xlivelessness/Debug
 /xlivelessness/Release

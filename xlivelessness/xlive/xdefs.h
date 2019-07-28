@@ -127,6 +127,13 @@ typedef struct {
 	BYTE bData;
 } XLIVE_PROTECTED_BUFFER;
 
+#define XLIVE_PROTECTED_DATA_FLAG_OFFLINE_ONLY 0x00000001
+
+typedef struct _XLIVE_PROTECTED_DATA_INFORMATION {
+	DWORD cbSize;
+	DWORD dwFlags;
+} XLIVE_PROTECTED_DATA_INFORMATION, *PXLIVE_PROTECTED_DATA_INFORMATION;
+
 
 #define XUSER_DATA_TYPE_CONTEXT     ((BYTE)0)
 #define XUSER_DATA_TYPE_INT32       ((BYTE)1)
@@ -680,6 +687,16 @@ typedef struct _XUSER_READ_PROFILE_SETTING_RESULT {
 	XUSER_PROFILE_SETTING *pSettings;
 } XUSER_READ_PROFILE_SETTING_RESULT, *PXUSER_READ_PROFILE_SETTING_RESULT;
 
+
+//TODO Check this guess
+#define XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_CONTENT_TYPES 0x2
+//TODO Check this guess
+#define XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_TITLES 0x4
+
+#define XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS 0x00000001
+
+#define XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID 0x00000008
+
 // XContent
 
 // Content types
@@ -1107,6 +1124,49 @@ typedef enum _XSHOWMARKETPLACEDOWNLOADITEMSUI_ENTRYPOINTS {
 	XSHOWMARKETPLACEDOWNLOADITEMS_ENTRYPOINT_MAX
 } XSHOWMARKETPLACEDOWNLOADITEMSUI_ENTRYPOINTS;
 
+#define XMB_NOICON 0x00000000
+#define XMB_ERRORICON 0x00000001
+#define XMB_WARNINGICON 0x00000002
+#define XMB_ALERTICON 0x00000003
+
+#define XMB_PASSCODEMODE 0x00010000
+#define XMB_VERIFYPASSCODEMODE 0x00020000
+
+#define XMB_OK 1
+#define XMB_CANCEL 2
+
+#define VKBD_DEFAULT                    0x00000000 // Character set selected in the Guide.
+#define VKBD_LATIN_FULL                 0x00000001
+#define VKBD_LATIN_EMAIL                0x00000002
+#define VKBD_LATIN_GAMERTAG             0x00000004
+#define VKBD_LATIN_PHONE                0x00000008
+#define VKBD_LATIN_IP_ADDRESS           0x00000010
+#define VKBD_LATIN_NUMERIC              0x00000020
+#define VKBD_LATIN_ALPHABET             0x00000040
+#define VKBD_LATIN_PASSWORD             0x00000080 // Subset of Latin character set appropriate for valid passwords.
+#define VKBD_LATIN_SUBSCRIPTION         0x00000100
+#define VKBD_JAPANESE_FULL              0x00001000
+#define VKBD_KOREAN_FULL                0x00002000
+#define VKBD_TCH_FULL                   0x00004000
+#define VKBD_RUSSIAN_FULL               0x00008000
+// VKBD_LATIN_EXTENDED provides support for Eastern and Central European
+// characters
+#define VKBD_LATIN_EXTENDED             0x00010000
+#define VKBD_SCH_FULL                   0x00020000
+#define VKBD_JAPANESE_HIRAGANA          0x00040000
+#define VKBD_JAPANESE_KATAKANA          0x00080000
+// VKBD_GREEK_FULL and VKBD_CSH_FULL are LiveSignup-Only keyboards
+#define VKBD_GREEK_FULL                 0x00100000
+#define VKBD_CSH_FULL                   0x00200000 // Czech, Slovak, Hungarian
+
+#define VKBD_SELECT_OK                  0x10000000
+#define VKBD_HIGHLIGHT_TEXT             0x20000000 // When set, outputs highlighted characters.
+
+
+#define VKBD_ENABLEIME ? // When set, enables the input method editor on the keyboard.
+#define VKBD_MULTILINE ? // When set, enables multi-line mode. When not set, the return key is considered the OK button.
+
+
 typedef struct
 {
 	WORD                                wActionId;
@@ -1365,6 +1425,18 @@ typedef struct _XLOCATOR_SEARCHRESULT {
 #define XLSIGNIN_FLAG_SAVECREDS 1
 #define XLSIGNIN_FLAG_ALLOWTITLEUPDATES 2
 #define XLSIGNIN_FLAG_ALLOWSYSTEMUPDATES 4
+
+#define XLIVE_LICENSE_ID_SIZE 8 //TODO unknown number (guessed)
+
+typedef struct _XLIVE_CONTENT_RETRIEVAL_INFO {
+	DWORD dwContentAPIVersion;
+	DWORD dwRetrievalMask;
+	DWORD dwUserIndex;
+	XUID xuidUser;
+	DWORD dwTitleID;
+	DWORD dwContentType;
+	BYTE abContentID[XLIVE_LICENSE_ID_SIZE];
+} XLIVE_CONTENT_RETRIEVAL_INFO, *PXLIVE_CONTENT_RETRIEVAL_INFO;
 
 
 

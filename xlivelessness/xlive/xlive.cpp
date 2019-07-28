@@ -459,63 +459,8 @@ DWORD WINAPI XGetOverlappedResult(PXOVERLAPPED pOverlapped, LPDWORD pdwResult, B
 HRESULT WINAPI XLiveInitialize(XLIVE_INITIALIZE_INFO *pPii)
 {
 	TRACE_FX();
-
-	while (xlive_debug_pause && !IsDebuggerPresent()) {
-		Sleep(500L);
-	}
-
-	srand((unsigned int)time(NULL));
-
-	XLLNPostInitCallbacks();
-
-	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
-		unsigned int adapter_name_buflen = strnlen_s(pPii->pszAdapterName, 49) + 1;
-		xlive_preferred_network_adapter_name = (char*)malloc(adapter_name_buflen);
-		memcpy_s(xlive_preferred_network_adapter_name, adapter_name_buflen, pPii->pszAdapterName, adapter_name_buflen);
-		xlive_preferred_network_adapter_name[adapter_name_buflen-1] = 0;
-	}
-
-	memset(&xlive_network_adapter, 0x00, sizeof(EligibleAdapter));
-
-	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
-		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
-		memset(xlive_users_info[i], 0, sizeof(XUSER_SIGNIN_INFO));
-		xlive_users_info_changed[i] = FALSE;
-	}
-
-	InitializeCriticalSection(&d_lock);
-	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
-
-	wchar_t mutex_name[40];
-	DWORD mutex_last_error;
-	HANDLE mutex = NULL;
-	do {
-		if (mutex) {
-			mutex_last_error = CloseHandle(mutex);
-		}
-		xlive_base_port += 1000;
-		if (xlive_base_port > 65000) {
-			xlive_netsocket_abort = TRUE;
-			xlive_base_port = 1000;
-			break;
-		}
-		swprintf(mutex_name, 40, L"Global\\XLLNBasePort#%hd", xlive_base_port);
-		mutex = CreateMutexW(0, TRUE, mutex_name);
-		mutex_last_error = GetLastError();
-	} while (mutex_last_error != ERROR_SUCCESS);
-
-	char debugText[50];
-	snprintf(debugText, 50, "XLive Base Port %hd.", xlive_base_port);
-	addDebugText(debugText);
-
-	INT error_XSocket = InitXSocket();
-	CreateLocalUser();
-	INT error_NetEntity = InitNetEntity();
-	//TODO If the title's graphics system has not yet been initialized, D3D will be passed in XLiveOnCreateDevice(...).
-	INT error_XRender = InitXRender(pPii);
-	INT error_XSession = InitXSession();
-
-	return S_OK;
+	HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLiveVersion);
+	return XLiveInitializeEx(pPii, 0);
 }
 
 // #5001
@@ -795,10 +740,27 @@ VOID XLiveUnprotectData()
 }
 
 // #5036
-VOID XLiveCreateProtectedDataContext()
+HRESULT WINAPI XLiveCreateProtectedDataContext(XLIVE_PROTECTED_DATA_INFORMATION *pProtectedDataInfo, HANDLE *phProtectedData)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pProtectedDataInfo)
+		return E_POINTER;
+	if (!phProtectedData)
+		return E_POINTER;
+	if (pProtectedDataInfo->cbSize != sizeof(XLIVE_PROTECTED_DATA_INFORMATION))
+		return HRESULT_FROM_WIN32(ERROR_INVALID_USER_BUFFER);//0x800706F8;
+	if (pProtectedDataInfo->dwFlags & ~(XLIVE_PROTECTED_DATA_FLAG_OFFLINE_ONLY))
+		return E_INVALIDARG;
+
+	XLIVE_PROTECTED_DATA_INFORMATION *pd = (XLIVE_PROTECTED_DATA_INFORMATION*)malloc(sizeof(XLIVE_PROTECTED_DATA_INFORMATION));
+	pd->cbSize = sizeof(XLIVE_PROTECTED_DATA_INFORMATION);
+	pd->dwFlags = pProtectedDataInfo->dwFlags;
+	
+	*phProtectedData = pd;
+	return S_OK;
+
+	*phProtectedData = INVALID_HANDLE_VALUE;
+	return E_OUTOFMEMORY;
 }
 
 // #5037
@@ -809,10 +771,15 @@ VOID XLiveQueryProtectedDataInformation()
 }
 
 // #5038
-VOID XLiveCloseProtectedDataContext()
+HRESULT WINAPI XLiveCloseProtectedDataContext(HANDLE hProtectedData)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!hProtectedData || hProtectedData == INVALID_HANDLE_VALUE)
+		return E_POINTER;
+
+	free(hProtectedData);
+
+	return S_OK;
 }
 
 // #5039
@@ -826,7 +793,7 @@ VOID XLiveVerifyDataFile()
 BOOL WINAPI XCloseHandle(HANDLE hObject)
 {
 	TRACE_FX();
-	if (!hObject || (DWORD)hObject == -1) {
+	if (!hObject || hObject == INVALID_HANDLE_VALUE) {
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
@@ -860,7 +827,7 @@ VOID XEnumerateBack()
 }
 
 // #5256
-DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, PDWORD pcItemsReturned, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcItemsReturned, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!hEnum)
@@ -915,6 +882,11 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, PDWORD pcI
 		else {
 			*pcItemsReturned = total_server_count;
 			return ERROR_SUCCESS;
+		}
+	}
+	else {
+		if (pcItemsReturned) {
+			*pcItemsReturned = 0;
 		}
 	}
 	LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
@@ -1083,7 +1055,7 @@ VOID XUserAreUsersFriends()
 }
 
 // #5265
-DWORD WINAPI XUserCheckPrivilege(DWORD dwUserIndex, XPRIVILEGE_TYPE PrivilegeType, PBOOL pfResult)
+DWORD WINAPI XUserCheckPrivilege(DWORD dwUserIndex, XPRIVILEGE_TYPE PrivilegeType, BOOL *pfResult)
 {
 	TRACE_FX();
 	if (!pfResult)
@@ -1116,10 +1088,21 @@ DWORD WINAPI XUserCheckPrivilege(DWORD dwUserIndex, XPRIVILEGE_TYPE PrivilegeTyp
 }
 
 // #5267
-VOID XUserGetSigninInfo()
+DWORD WINAPI XUserGetSigninInfo(DWORD dwUserIndex, DWORD dwFlags, XUSER_SIGNIN_INFO *pSigninInfo)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
+		return ERROR_NOT_LOGGED_ON;//ERROR_NO_SUCH_USER
+	if (!pSigninInfo)
+		return ERROR_INVALID_PARAMETER;
+	if (dwFlags & ~(XUSER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY | XUSER_GET_SIGNIN_INFO_OFFLINE_XUID_ONLY | 0b100) || ((dwFlags & XUSER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY) && (dwFlags & XUSER_GET_SIGNIN_INFO_OFFLINE_XUID_ONLY)) )
+		return ERROR_INVALID_PARAMETER;
+
+	memcpy_s(pSigninInfo, sizeof(XUSER_SIGNIN_INFO), xlive_users_info[dwUserIndex], sizeof(XUSER_SIGNIN_INFO));
+	
+	return ERROR_SUCCESS;
 }
 
 // #5270: Requires XNotifyGetNext to process the listener.
@@ -1233,7 +1216,7 @@ VOID XUserReadAchievementPicture()
 }
 
 // #5280
-DWORD WINAPI XUserCreateAchievementEnumerator(DWORD dwTitleId, DWORD dwUserIndex, XUID xuid, DWORD dwDetailFlags, DWORD dwStartingIndex, DWORD cItem, PDWORD pcbBuffer, PHANDLE phEnum)
+DWORD WINAPI XUserCreateAchievementEnumerator(DWORD dwTitleId, DWORD dwUserIndex, XUID xuid, DWORD dwDetailFlags, DWORD dwStartingIndex, DWORD cItem, DWORD *pcbBuffer, HANDLE *phEnum)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
@@ -1446,17 +1429,67 @@ VOID XUserResetStatsViewAllUsers()
 }
 
 // #5292
-VOID XUserSetContextEx()
+DWORD WINAPI XUserSetContextEx(DWORD dwUserIndex, DWORD dwContextId, DWORD dwContextValue, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
+		return ERROR_NOT_LOGGED_ON;
+	if (dwContextId != X_CONTEXT_PRESENCE || dwContextId != X_CONTEXT_GAME_TYPE || dwContextId != X_CONTEXT_GAME_MODE || dwContextId != X_CONTEXT_SESSION_JOINABLE)
+		return ERROR_INVALID_PARAMETER;
+	
+	//TODO XUserSetContextEx
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5293
-VOID XUserSetPropertyEx()
+DWORD WINAPI XUserSetPropertyEx(DWORD dwUserIndex, DWORD dwPropertyId, DWORD cbValue, CONST VOID *pvValue, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
+		return ERROR_NOT_LOGGED_ON;
+	if (cbValue == 0)
+		return ERROR_INVALID_PARAMETER;
+	if (!pvValue)
+		return ERROR_INVALID_PARAMETER;
+	if (!XLivepIsPropertyIdValid(dwPropertyId, TRUE))
+		return ERROR_INVALID_PARAMETER;
+
+	//TODO XUserSetPropertyEx
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5294
@@ -1481,10 +1514,66 @@ VOID XLiveGetLocalOnlinePort()
 }
 
 // #5297
-VOID XLiveInitializeEx()
+HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLiveVersion)
 {
 	TRACE_FX();
-	FUNC_STUB();
+
+	while (xlive_debug_pause && !IsDebuggerPresent()) {
+		Sleep(500L);
+	}
+
+	srand((unsigned int)time(NULL));
+
+	XLLNPostInitCallbacks();
+
+	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
+		unsigned int adapter_name_buflen = strnlen_s(pPii->pszAdapterName, 49) + 1;
+		xlive_preferred_network_adapter_name = (char*)malloc(adapter_name_buflen);
+		memcpy_s(xlive_preferred_network_adapter_name, adapter_name_buflen, pPii->pszAdapterName, adapter_name_buflen);
+		xlive_preferred_network_adapter_name[adapter_name_buflen - 1] = 0;
+	}
+
+	memset(&xlive_network_adapter, 0x00, sizeof(EligibleAdapter));
+
+	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
+		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
+		memset(xlive_users_info[i], 0, sizeof(XUSER_SIGNIN_INFO));
+		xlive_users_info_changed[i] = FALSE;
+	}
+
+	InitializeCriticalSection(&d_lock);
+	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
+
+	wchar_t mutex_name[40];
+	DWORD mutex_last_error;
+	HANDLE mutex = NULL;
+	do {
+		if (mutex) {
+			mutex_last_error = CloseHandle(mutex);
+		}
+		xlive_base_port += 1000;
+		if (xlive_base_port > 65000) {
+			xlive_netsocket_abort = TRUE;
+			xlive_base_port = 1000;
+			break;
+		}
+		swprintf(mutex_name, 40, L"Global\\XLLNBasePort#%hd", xlive_base_port);
+		mutex = CreateMutexW(0, TRUE, mutex_name);
+		mutex_last_error = GetLastError();
+	} while (mutex_last_error != ERROR_SUCCESS);
+
+	char debugText[50];
+	snprintf(debugText, 50, "XLive Base Port %hd.", xlive_base_port);
+	addDebugText(debugText);
+
+	INT error_XSocket = InitXSocket();
+	CreateLocalUser();
+	INT error_NetEntity = InitNetEntity();
+	//TODO If the title's graphics system has not yet been initialized, D3D will be passed in XLiveOnCreateDevice(...).
+	INT error_XRender = InitXRender(pPii);
+	INT error_XSession = InitXSession();
+
+	return S_OK;
 }
 
 // #5298
@@ -1858,10 +1947,57 @@ VOID XPresenceSubscribe()
 }
 
 // #5339
-VOID XUserReadProfileSettingsByXuid()
+DWORD WINAPI XUserReadProfileSettingsByXuid(
+	DWORD dwTitleId,
+	DWORD dwUserIndexRequester,
+	DWORD dwNumFor,
+	const XUID *pxuidFor,
+	DWORD dwNumSettingIds,
+	const DWORD *pdwSettingIds,
+	DWORD *pcbResults,
+	XUSER_READ_PROFILE_SETTING_RESULT *pResults,
+	XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndexRequester >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if (xlive_users_info[dwUserIndexRequester]->UserSigninState == eXUserSigninState_NotSignedIn)
+		return ERROR_NOT_LOGGED_ON;
+	if (dwNumFor == 0)
+		return ERROR_INVALID_PARAMETER;
+	if (dwNumFor > 0xF)
+		return ERROR_INVALID_PARAMETER;
+	if (!pxuidFor)
+		return ERROR_INVALID_PARAMETER;
+	if (dwNumSettingIds == 0)
+		return ERROR_INVALID_PARAMETER;
+	if (dwNumSettingIds > 0x20)
+		return ERROR_INVALID_PARAMETER;
+	if (!pdwSettingIds)
+		return ERROR_INVALID_PARAMETER;
+	if (!pcbResults)
+		return ERROR_INVALID_PARAMETER;
+	if (*pcbResults && !pResults)
+		return ERROR_INVALID_PARAMETER;
+
+	//TODO XUserReadProfileSettingsByXuid
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_FUNCTION_FAILED;
+	return ERROR_SUCCESS;
 }
 
 // #5340
@@ -2053,10 +2189,34 @@ VOID XLiveGetUPnPState()
 }
 
 // #5360
-VOID XLiveContentCreateEnumerator()
+DWORD WINAPI XLiveContentCreateEnumerator(DWORD cItems, XLIVE_CONTENT_RETRIEVAL_INFO *pContentRetrievalInfo, DWORD *pcbBuffer, HANDLE *phContent)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!cItems || cItems > 100)
+		return ERROR_INVALID_PARAMETER;
+	if (!pContentRetrievalInfo)
+		return ERROR_INVALID_PARAMETER;
+	if (!pcbBuffer)
+		return ERROR_INVALID_PARAMETER;
+	if (!phContent)
+		return ERROR_INVALID_PARAMETER;
+	if (pContentRetrievalInfo->dwContentAPIVersion != 1)
+		return ERROR_INVALID_PARAMETER;
+	if (pContentRetrievalInfo->dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if ((pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS) && (pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID))
+		return ERROR_INVALID_PARAMETER;
+	if (!(pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_CONTENT_TYPES) || pContentRetrievalInfo->dwContentType != XCONTENTTYPE_MARKETPLACE)
+		return ERROR_INVALID_PARAMETER;
+
+	if (!(pContentRetrievalInfo->dwRetrievalMask & (XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS | XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID)) || xlive_users_info[pContentRetrievalInfo->dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	*pcbBuffer = cItems * sizeof(XCONTENT_DATA);
+	*phContent = CreateMutex(NULL, NULL, NULL);
+
+	return ERROR_SUCCESS;
 }
 
 // #5361
@@ -2102,10 +2262,28 @@ VOID XMarketplaceCreateAssetEnumerator()
 }
 
 // #5372
-VOID XMarketplaceCreateOfferEnumerator()
+DWORD WINAPI XMarketplaceCreateOfferEnumerator(DWORD dwUserIndex, DWORD dwOfferType, DWORD dwContentCategories, DWORD cItem, DWORD *pcbBuffer, HANDLE *phEnum)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
+		return ERROR_NOT_LOGGED_ON;
+	if (!dwOfferType)
+		return ERROR_INVALID_PARAMETER;
+	if (!cItem)
+		return ERROR_INVALID_PARAMETER;
+	if (!phEnum)
+		return ERROR_INVALID_PARAMETER;
+	if (cItem > 0x64)
+		return ERROR_INVALID_PARAMETER;
+
+	if (pcbBuffer) {
+		*pcbBuffer = 2524 * cItem;
+	}
+	*phEnum = CreateMutex(NULL, NULL, NULL);
+
+	return ERROR_SUCCESS;
 }
 
 // #5374

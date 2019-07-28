@@ -161,13 +161,6 @@ DWORD WINAPI XShowGuideUI(DWORD dwUserIndex)
 	return ERROR_SUCCESS;
 }
 
-//TODO XShowKeyboardUI dwFlags
-#define VKBD_DEFAULT ? // Character set selected in the Guide.
-#define VKBD_ENABLEIME ? // When set, enables the input method editor on the keyboard.
-#define VKBD_HIGHLIGHT_TEXT ? // When set, outputs highlighted characters.
-#define VKBD_LATIN_PASSWORD ? // Subset of Latin character set appropriate for valid passwords.
-#define VKBD_MULTILINE ? // When set, enables multi-line mode. When not set, the return key is considered the OK button.
-
 // #5216
 DWORD WINAPI XShowKeyboardUI(DWORD dwUserIndex, DWORD dwFlags, LPCWSTR wseDefaultText, LPCWSTR wszTitleText, LPCWSTR wszDescriptionText, LPWSTR wszResultText, DWORD cchResultText, XOVERLAPPED *pXOverlapped)
 {
@@ -185,16 +178,25 @@ DWORD WINAPI XShowKeyboardUI(DWORD dwUserIndex, DWORD dwFlags, LPCWSTR wseDefaul
 	if (!pXOverlapped)
 		return ERROR_INVALID_PARAMETER;
 
+	//TODO XShowKeyboardUI dwFlags (like VKBD_DEFAULT)
 	ShowXLLN(XLLN_SHOW_HOME);
-	//asynchronous
 
-	pXOverlapped->InternalLow = ERROR_SUCCESS;
-	pXOverlapped->InternalHigh = ERROR_SUCCESS;
-	pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+	if (pXOverlapped) {
+		//asynchronous
 
-	Check_Overlapped(pXOverlapped);
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
 
-	return ERROR_IO_PENDING;
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5218
@@ -251,10 +253,63 @@ DWORD WINAPI XShowSigninUI(DWORD cPanes, DWORD dwFlags)
 }
 
 // #5266
-VOID XShowMessageBoxUI()
+DWORD WINAPI XShowMessageBoxUI(
+	DWORD dwUserIndex,
+	LPCWSTR wszTitle,
+	LPCWSTR wszText,
+	DWORD cButtons,
+	LPCWSTR *pwszButtons,
+	DWORD dwFocusButton,
+	DWORD dwFlags,
+	MESSAGEBOX_RESULT *pResult,
+	XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if (dwFlags & 0xFFF0FFFC)
+		return ERROR_INVALID_PARAMETER;
+	if (!pResult)
+		return ERROR_INVALID_PARAMETER;
+	if (!pXOverlapped)
+		return ERROR_INVALID_PARAMETER;
+	if (!wszTitle)
+		return ERROR_INVALID_PARAMETER;
+	if (!wszText)
+		return ERROR_INVALID_PARAMETER;
+	if (dwFlags & 0x30000)//(XMB_VERIFYPASSCODEMODE | XMB_PASSCODEMODE)
+		return ERROR_INVALID_PARAMETER;
+	if (cButtons) {
+		if (cButtons > 3 || dwFocusButton > cButtons - 1)
+			return ERROR_INVALID_PARAMETER;
+		if (!pwszButtons)
+			return ERROR_INVALID_PARAMETER;
+		for (DWORD i = 0; i >= cButtons; i++) {
+			if (!pwszButtons[i]) {
+				return ERROR_INVALID_PARAMETER;
+			}
+		}
+	}
+	
+	pResult->dwButtonPressed = MessageBoxW(NULL, wszText, wszTitle, MB_OKCANCEL);
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
+	return ERROR_CANCELLED;
 }
 
 // #5271
