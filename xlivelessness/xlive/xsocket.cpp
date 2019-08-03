@@ -10,7 +10,7 @@
 
 #define IPPROTO_VDP 254
 
-WORD xlive_base_port = 1000;
+WORD xlive_base_port = 2000;
 BOOL xlive_netsocket_abort = FALSE;
 static SOCKET xlive_VDP_socket = NULL;
 SOCKET xlive_liveoverlan_socket = NULL;
@@ -223,7 +223,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 	WORD port_offset = hPort % 1000;
 	WORD hPortShift = xlive_base_port + port_offset;
 
-	if (port_offset == 1) {
+	if (port_offset == 0) {
 		xlive_liveoverlan_socket = s;
 	}
 	if (false) {}

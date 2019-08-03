@@ -1270,6 +1270,16 @@ DWORD WINAPI XUserReadStats(DWORD dwTitleId, DWORD dwNumXuids, CONST XUID *pXuid
 	if (!*pcbResults && pResults)
 		return ERROR_INVALID_PARAMETER;
 
+	if (!pResults) {
+		*pcbResults = sizeof(XUSER_STATS_READ_RESULTS);
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+
+	pResults->dwNumViews = 0;
+	pResults->pViews = 0;
+
+	return ERROR_NOT_FOUND;
+
 	DWORD *v9 = pcbResults;
 	DWORD v10 = *pcbResults;
 	DWORD v11 = dwNumStatsSpecs * (52 * dwNumXuids + 16) + 8;
@@ -1547,6 +1557,7 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	wchar_t mutex_name[40];
 	DWORD mutex_last_error;
 	HANDLE mutex = NULL;
+	xlive_base_port -= 1000;
 	do {
 		if (mutex) {
 			mutex_last_error = CloseHandle(mutex);
@@ -1856,10 +1867,10 @@ DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees,
 }
 
 // #5324
-VOID XOnlineGetNatType()
+XONLINE_NAT_TYPE WINAPI XOnlineGetNatType()
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return XONLINE_NAT_OPEN;
 }
 
 // #5331
@@ -1869,8 +1880,8 @@ DWORD WINAPI XUserReadProfileSettings(
 	DWORD dwNumSettingIds,
 	const DWORD *pdwSettingIds,
 	DWORD *pcbResults,
-	PXUSER_READ_PROFILE_SETTING_RESULT pResults,
-	PXOVERLAPPED pXOverlapped)
+	XUSER_READ_PROFILE_SETTING_RESULT *pResults,
+	XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
@@ -1885,9 +1896,16 @@ DWORD WINAPI XUserReadProfileSettings(
 		return ERROR_INVALID_PARAMETER;
 	if (*pcbResults && !pResults)
 		return ERROR_INVALID_PARAMETER;
-	if (!pResults)
-		return ERROR_INVALID_PARAMETER;
 
+	if (!pResults) {
+		*pcbResults = sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+
+	pResults->dwSettingsLen = 0;
+	pResults->pSettings = 0;
+
+	return ERROR_NOT_FOUND;
 	return ERROR_FUNCTION_FAILED;
 
 	//TODO check this
@@ -1933,10 +1951,36 @@ VOID XTitleServerCreateEnumerator()
 }
 
 // #5337
-VOID XUserWriteProfileSettings()
+DWORD WINAPI XUserWriteProfileSettings(DWORD dwUserIndex, DWORD dwNumSettings, const XUSER_PROFILE_SETTING *pSettings, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+		return ERROR_NO_SUCH_USER;
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
+		return ERROR_NOT_LOGGED_ON;
+	if (dwNumSettings == 0)
+		return ERROR_INVALID_PARAMETER;
+	if (!pSettings)
+		return ERROR_INVALID_PARAMETER;
+
+
+	//TODO XUserWriteProfileSettings
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5338
@@ -1996,6 +2040,7 @@ DWORD WINAPI XUserReadProfileSettingsByXuid(
 		//synchronous
 		//return result;
 	}
+	return ERROR_NOT_FOUND;
 	return ERROR_FUNCTION_FAILED;
 	return ERROR_SUCCESS;
 }

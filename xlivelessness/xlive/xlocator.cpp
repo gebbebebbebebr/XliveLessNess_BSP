@@ -93,7 +93,7 @@ static VOID LiveOverLanBroadcast()
 				}
 
 				SOCKADDR_IN SendStruct;
-				SendStruct.sin_port = htons(1001);
+				SendStruct.sin_port = htons(1000);
 				SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 				SendStruct.sin_family = AF_INET;
 
@@ -690,7 +690,7 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 		}
 
 		SOCKADDR_IN SendStruct;
-		SendStruct.sin_port = htons(1001);
+		SendStruct.sin_port = htons(1000);
 		SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 		SendStruct.sin_family = AF_INET;
 

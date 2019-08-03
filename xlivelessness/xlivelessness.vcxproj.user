@@ -4,12 +4,12 @@
     <LocalDebuggerCommand>$(OutDir)$(TitleBinary)</LocalDebuggerCommand>
     <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-xllndebug -xllndebuglog</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-xllndebug -xllndebuglog $(TitleBinaryArgs)</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LocalDebuggerCommand>$(OutDir)$(TitleBinary)</LocalDebuggerCommand>
     <LocalDebuggerWorkingDirectory>$(OutDir)</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-xllndebug -xllndebuglog</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-xllndebug -xllndebuglog $(TitleBinaryArgs)</LocalDebuggerCommandArguments>
   </PropertyGroup>
 </Project>

@@ -361,11 +361,12 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 with thanks to PermaNulled.\n\
 \n\
 Executable Launch Parameters:\n\
--xlivefps=<uint> ? 0 to disable fps limiter.\n\
+-xlivefps=<uint> ? 0 to disable fps limiter (default 60).\n\
 -xllndebug ? Sleep until debugger attach.\n\
 -xllndebuglog ? Enable debug log.\n\
 -xlivedebug ? Sleep XLiveInitialize until debugger attach.\n\
--xlivenetdisable ? Disable all network functionality."
+-xlivenetdisable ? Disable all network functionality.\n\
+-xliveportbase=<ushort> ? Change the Base Port (default 2000)."
 				, "About", MB_OK);
 		}
 		else if (wParam == MYMENU_LOGIN1) {
@@ -491,6 +492,12 @@ INT InitXLLN(HMODULE hModule)
 			}
 			else if (wcscmp(lpwszArglist[i], L"-xlivenetdisable") == 0) {
 				xlive_netsocket_abort = TRUE;
+			}
+			else if (wcsstr(lpwszArglist[i], L"-xliveportbase=") != NULL) {
+				WORD tempuint = 0;
+				if (swscanf_s(lpwszArglist[i], L"-xliveportbase=%hu", &tempuint) == 1) {
+					xlive_base_port = tempuint;
+				}
 			}
 		}
 	}

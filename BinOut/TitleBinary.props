@@ -4,6 +4,7 @@
   <PropertyGroup Label="UserMacros">
     <TitleBinary>Bioshock2Launcher.exe</TitleBinary>
     <TitleBinaryPath>MP\Builds\Binaries\</TitleBinaryPath>
+    <TitleBinaryArgs></TitleBinaryArgs>
   </PropertyGroup>
   <PropertyGroup />
   <ItemDefinitionGroup />
@@ -13,6 +14,9 @@
     </BuildMacro>
     <BuildMacro Include="TitleBinaryPath">
       <Value>$(TitleBinaryPath)</Value>
+    </BuildMacro>
+    <BuildMacro Include="TitleBinaryArgs">
+      <Value>$(TitleBinaryArgs)</Value>
     </BuildMacro>
   </ItemGroup>
 </Project>
