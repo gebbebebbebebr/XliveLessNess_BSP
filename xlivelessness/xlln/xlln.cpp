@@ -366,7 +366,8 @@ Executable Launch Parameters:\n\
 -xllndebuglog ? Enable debug log.\n\
 -xlivedebug ? Sleep XLiveInitialize until debugger attach.\n\
 -xlivenetdisable ? Disable all network functionality.\n\
--xliveportbase=<ushort> ? Change the Base Port (default 2000)."
+-xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
+-xllndebuglogblacklist=<function_name,func_name,...> ? Exclude the listed function names from the debug log."
 				, "About", MB_OK);
 		}
 		else if (wParam == MYMENU_LOGIN1) {
@@ -475,33 +476,14 @@ INT InitXLLN(HMODULE hModule)
 	LPWSTR* lpwszArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
 	if (lpwszArglist != NULL) {
 		for (int i = 1; i < nArgs; i++) {
-			if (wcsstr(lpwszArglist[i], L"-xlivefps=") != NULL) {
-				DWORD tempuint = 0;
-				if (swscanf_s(lpwszArglist[i], L"-xlivefps=%u", &tempuint) == 1) {
-					SetFPSLimit(tempuint);
-				}
-			}
-			else if (wcscmp(lpwszArglist[i], L"-xllndebug") == 0) {
+			if (wcscmp(lpwszArglist[i], L"-xllndebug") == 0) {
 				xlln_debug_pause = TRUE;
 			}
 			else if (wcscmp(lpwszArglist[i], L"-xllndebuglog") == 0) {
 				xlln_debug = TRUE;
 			}
-			else if (wcscmp(lpwszArglist[i], L"-xlivedebug") == 0) {
-				xlive_debug_pause = TRUE;
-			}
-			else if (wcscmp(lpwszArglist[i], L"-xlivenetdisable") == 0) {
-				xlive_netsocket_abort = TRUE;
-			}
-			else if (wcsstr(lpwszArglist[i], L"-xliveportbase=") != NULL) {
-				WORD tempuint = 0;
-				if (swscanf_s(lpwszArglist[i], L"-xliveportbase=%hu", &tempuint) == 1) {
-					xlive_base_port = tempuint;
-				}
-			}
 		}
 	}
-	LocalFree(lpwszArglist);
 
 	while (xlln_debug_pause && !IsDebuggerPresent()) {
 		Sleep(500L);
@@ -524,9 +506,52 @@ INT InitXLLN(HMODULE hModule)
 		mutex_last_error = GetLastError();
 	} while (mutex_last_error != ERROR_SUCCESS);
 
-	if (xlln_debug) {
-		initDebugText(xlln_instance);
+	INT error_DebugLog = InitDebugLog(xlln_instance);
+
+	if (lpwszArglist != NULL) {
+		for (int i = 1; i < nArgs; i++) {
+			if (wcsstr(lpwszArglist[i], L"-xlivefps=") != NULL) {
+				DWORD tempuint = 0;
+				if (swscanf_s(lpwszArglist[i], L"-xlivefps=%u", &tempuint) == 1) {
+					SetFPSLimit(tempuint);
+				}
+			}
+			else if (wcscmp(lpwszArglist[i], L"-xlivedebug") == 0) {
+				xlive_debug_pause = TRUE;
+			}
+			else if (wcscmp(lpwszArglist[i], L"-xlivenetdisable") == 0) {
+				xlive_netsocket_abort = TRUE;
+			}
+			else if (wcsstr(lpwszArglist[i], L"-xliveportbase=") != NULL) {
+				WORD tempuint = 0;
+				if (swscanf_s(lpwszArglist[i], L"-xliveportbase=%hu", &tempuint) == 1) {
+					xlive_base_port = tempuint;
+				}
+			}
+			else if (wcsstr(lpwszArglist[i], L"-xllndebuglogblacklist=") != NULL) {
+				wchar_t *blacklist = &lpwszArglist[i][23];
+				while (true) {
+					wchar_t *next_item = wcschr(blacklist, L',');
+					if (next_item) {
+						next_item++[0] = 0;
+					}
+					if (blacklist[0] != 0 && blacklist[0] != L',') {
+						int black_text_len = wcsnlen_s(blacklist, 0x1000 - 1) + 1;
+						char *black_text = (char*)malloc(sizeof(char) * black_text_len);
+						snprintf(black_text, black_text_len, "%ws", blacklist);
+						if (!addDebugTextBlacklist(black_text)) {
+							free(black_text);
+						}
+					}
+					if (!next_item || !next_item[0]) {
+						break;
+					}
+					blacklist = next_item;
+				}
+			}
+		}
 	}
+	LocalFree(lpwszArglist);
 
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)hModule, NULL, NULL);
@@ -535,6 +560,8 @@ INT InitXLLN(HMODULE hModule)
 
 INT UninitXLLN()
 {
+	INT error_DebugLog = UninitDebugLog();
+
 	DeleteCriticalSection(&xlln_critsec_post_init_funcs);
 	DeleteCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);

@@ -4,7 +4,7 @@
   <PropertyGroup Label="UserMacros">
     <TitleBinary>Bioshock2Launcher.exe</TitleBinary>
     <TitleBinaryPath>MP\Builds\Binaries\</TitleBinaryPath>
-    <TitleBinaryArgs></TitleBinaryArgs>
+    <TitleBinaryArgs>-xllndebuglogblacklist=XLiveRender,XLiveInput,XLivePreTranslateMessage,XSocketRecvFrom,XSocketWSAGetLastError,XNotifyGetNext,XUserCheckPrivilege,XNetGetEthernetLinkStatus,XLivePBufferGetByte</TitleBinaryArgs>
   </PropertyGroup>
   <PropertyGroup />
   <ItemDefinitionGroup />

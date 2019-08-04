@@ -4,17 +4,38 @@
 #include "../xlln/xlln.h"
 #include "../xlive/xsocket.h"
 
+static bool initialised_debug_log = false;
+static CRITICAL_SECTION xlln_critsec_debug_log;
 
+// for the on screen debug log.
 static char** DebugStr;
 static int DebugTextArrayLenMax = 160;
 static int DebugTextArrayPos = 0;
 static bool DebugTextDisplay = false;
 static FILE* debugFile = NULL;
-static bool initialisedDebugText = false;
+static char debug_blarg[0x1000];
 
-static const char* blacklist[] = { "XLiveRender", "XNetGetEthernetLinkStatus", "XLiveInput", "XLivePreTranslateMessage", "XLivePBufferGetByte", "XSocketWSAGetLastError", "XNotifyGetNext", "XUserCheckPrivilege", "XNetGetConnectStatus", "XSocketHTONL", "XSocketAccept", "XSocketRecvFrom" };
-static const int blacklistlen = sizeof(blacklist)/sizeof(char*);
+static char **blacklist;
+static int blacklist_len = 0;
+static int blacklist_len_max = 0;
 
+bool addDebugTextBlacklist(char *black_text)
+{
+	if (!xlln_debug || !initialised_debug_log) {
+		return false;
+	}
+	EnterCriticalSection(&xlln_critsec_debug_log);
+
+	if (blacklist_len >= blacklist_len_max) {
+		blacklist_len_max += 50;
+		blacklist = (char**)realloc(blacklist, sizeof(char*) * blacklist_len_max);
+	}
+	
+	blacklist[blacklist_len++] = black_text;
+
+	LeaveCriticalSection(&xlln_critsec_debug_log);
+	return true;
+}
 
 int getDebugTextArrayMaxLen() {
 	return DebugTextArrayLenMax;
@@ -35,8 +56,6 @@ void addDebugText(const char* text) {
 	addDebugText(text2);
 	free(text2);
 }
-
-static CRITICAL_SECTION log_section;
 
 static void addDebugTextHelper(char* text) {
 	int lenInput = strlen(text);
@@ -71,22 +90,25 @@ static void addDebugTextHelper(char* text) {
 	}
 }
 
-static char debug_blarg[1000];
-
 void addDebugText(char* text) {
-	if (!initialisedDebugText)
+	if (!initialised_debug_log)
 		return;
 
-	EnterCriticalSection(&log_section);
+	EnterCriticalSection(&xlln_critsec_debug_log);
+
 	addDebugTextHelper(text);
-	LeaveCriticalSection(&log_section);
 
 	if (xlln_debug) {
 		char* iblarg = debug_blarg;
 		for (int i = 0; i < 30; i++) {
-			iblarg += snprintf(iblarg, 1000, "%s\r\n", getDebugText(i));
+			iblarg += snprintf(iblarg, 0x1000, "%s\r\n", getDebugText(i));
 		}
+		// Putting SetDlgItemText(...) inside the critical section freezes the program for some incredibly stupid reason when you try to login via the XLLN window interface.
+		LeaveCriticalSection(&xlln_critsec_debug_log);
 		SetDlgItemText(xlln_window_hwnd, MYWINDOW_TBX_TEST, debug_blarg);
+	}
+	else {
+		LeaveCriticalSection(&xlln_critsec_debug_log);
 	}
 	/*if (getDebugTextDisplay()) {
 		for (int i = 0; i < getDebugTextArrayMaxLen(); i++) {
@@ -94,35 +116,16 @@ void addDebugText(char* text) {
 
 		}
 	}*/
-}
 
-void initDebugText(DWORD dwInstanceId) {
-	InitializeCriticalSection(&log_section);
-	initialisedDebugText = true;
-	DebugStr = (char**)malloc(sizeof(char*) * DebugTextArrayLenMax);
-	for (int i = 0; i < DebugTextArrayLenMax; i++) {
-		DebugStr[i] = (char*)calloc(1, sizeof(char));
-	}
-	wchar_t debug_file_path[1024];
-	swprintf(debug_file_path, 1024, L"%wsxlln_debug_%d.log", L"./", dwInstanceId);
-	debugFile = _wfopen(debug_file_path, L"w");
-	char awerg[1034];
-	sprintf(awerg, "PATH: %ws", debug_file_path);
-	addDebugText(awerg);
-	addDebugText("Initialised Debug Logger.");
 }
 
 char* getDebugText(int ordered_index) {
-	if (initialisedDebugText) {
-		EnterCriticalSection(&log_section);
+	if (initialised_debug_log) {
 		if (ordered_index < DebugTextArrayLenMax) {
 			int array_index = ((DebugTextArrayPos - ordered_index) + DebugTextArrayLenMax) % DebugTextArrayLenMax;
 			char* result = DebugStr[array_index];
-			LeaveCriticalSection(&log_section);
-			//FIXME race condition on string returned before it is free'd if logging too fast.
 			return result;
 		}
-		LeaveCriticalSection(&log_section);
 	}
 	return const_cast<char*>("");
 }
@@ -141,10 +144,14 @@ bool getDebugTextDisplay() {
 
 void trace_func(const char *fxname)
 {
-	for (int i = 0; i < blacklistlen; i++) {
-		if (strcmp(fxname, blacklist[i]) == 0)
+	EnterCriticalSection(&xlln_critsec_debug_log);
+	for (int i = 0; i < blacklist_len; i++) {
+		if (strcmp(fxname, blacklist[i]) == 0) {
+			LeaveCriticalSection(&xlln_critsec_debug_log);
 			return;
+		}
 	}
+	LeaveCriticalSection(&xlln_critsec_debug_log);
 	int leng = (30 + strlen(fxname));
 	char* guibsig = (char*)malloc(sizeof(char) * leng);
 	snprintf(guibsig, leng, "%s()", fxname);
@@ -169,4 +176,35 @@ void FUNC_STUB2(const char* func)
 	char errMsg[200];
 	snprintf(errMsg, sizeof(errMsg), "Incomplete XLIVE Stubbed Function: %s", func);
 	XllnDebugBreak(errMsg);
+}
+
+INT InitDebugLog(DWORD dwInstanceId)
+{
+	InitializeCriticalSection(&xlln_critsec_debug_log);
+
+	blacklist_len_max = 50;
+	blacklist = (char**)malloc(sizeof(char*) * blacklist_len_max);
+
+	DebugStr = (char**)malloc(sizeof(char*) * DebugTextArrayLenMax);
+	for (int i = 0; i < DebugTextArrayLenMax; i++) {
+		DebugStr[i] = (char*)calloc(1, sizeof(char));
+	}
+	wchar_t debug_file_path[1024];
+	swprintf(debug_file_path, 1024, L"%wsxlln_debug_%d.log", L"./", dwInstanceId);
+	debugFile = _wfopen(debug_file_path, L"w");
+	char debug_file_path_log[1034];
+	sprintf(debug_file_path_log, "PATH: %ws", debug_file_path);
+	initialised_debug_log = true;
+	addDebugText(debug_file_path_log);
+	addDebugText("Initialised Debug Logger.");
+
+	return S_OK;
+}
+
+INT UninitDebugLog()
+{
+	initialised_debug_log = false;
+	DeleteCriticalSection(&xlln_critsec_debug_log);
+
+	return S_OK;
 }
