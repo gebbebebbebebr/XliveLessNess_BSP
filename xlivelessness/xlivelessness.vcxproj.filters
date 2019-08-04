@@ -66,6 +66,12 @@
     <ClCompile Include="xlive\xwsa.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
+    <ClCompile Include="xlive\xuser.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
+    <ClCompile Include="xlive\xstorage.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\DebugText.h">
@@ -111,6 +117,12 @@
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
     <ClInclude Include="xlive\xwsa.h">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xuser.h">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xstorage.h">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
   </ItemGroup>

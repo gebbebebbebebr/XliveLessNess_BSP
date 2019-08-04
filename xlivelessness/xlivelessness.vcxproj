@@ -142,6 +142,8 @@
     <ClCompile Include="xlive\xsession.cpp" />
     <ClCompile Include="xlive\xshow.cpp" />
     <ClCompile Include="xlive\xsocket.cpp" />
+    <ClCompile Include="xlive\xstorage.cpp" />
+    <ClCompile Include="xlive\xuser.cpp" />
     <ClCompile Include="xlive\xwsa.cpp" />
     <ClCompile Include="xlln\DebugText.cpp" />
     <ClCompile Include="xlln\RandName.cpp" />
@@ -162,6 +164,8 @@
     <ClInclude Include="xlive\xsession.h" />
     <ClInclude Include="xlive\xshow.h" />
     <ClInclude Include="xlive\xsocket.h" />
+    <ClInclude Include="xlive\xstorage.h" />
+    <ClInclude Include="xlive\xuser.h" />
     <ClInclude Include="xlive\xwsa.h" />
     <ClInclude Include="xlln\DebugText.h" />
     <ClInclude Include="xlln\RandName.h" />
