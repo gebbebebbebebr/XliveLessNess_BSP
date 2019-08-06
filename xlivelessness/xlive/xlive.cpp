@@ -31,6 +31,8 @@ static int g_dwListener = 0;
 
 bool xlive_invite_to_game = false;
 
+DWORD xlive_title_id = 0;
+
 static CRITICAL_SECTION d_lock;
 
 static char* xlive_preferred_network_adapter_name = NULL;
@@ -1032,6 +1034,10 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	srand((unsigned int)time(NULL));
 
 	XLLNPostInitCallbacks();
+
+	if (pPii->wLivePortOverride > 0) {
+		//TODO pPii->wLivePortOverride;
+	}
 
 	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
 		unsigned int adapter_name_buflen = strnlen_s(pPii->pszAdapterName, 49) + 1;

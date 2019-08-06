@@ -3,6 +3,7 @@
 #include "xlive.h"
 #include "xsession.h"
 #include "../xlln/DebugText.h"
+#include <stdio.h>
 
 BOOL XLivepIsPropertyIdValid(DWORD dwPropertyId, BOOL a2)
 {
@@ -124,6 +125,10 @@ DWORD WINAPI XUserGetSigninInfo(DWORD dwUserIndex, DWORD dwFlags, XUSER_SIGNIN_I
 
 	memcpy_s(pSigninInfo, sizeof(XUSER_SIGNIN_INFO), xlive_users_info[dwUserIndex], sizeof(XUSER_SIGNIN_INFO));
 
+	if (dwFlags & XUSER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY && xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_SignedInToLive) {
+		pSigninInfo->xuid = INVALID_XUID;
+	}
+
 	return ERROR_SUCCESS;
 }
 
@@ -183,7 +188,7 @@ VOID WINAPI XUserSetContext(DWORD dwUserIndex, DWORD dwContextId, DWORD dwContex
 }
 
 // #5278
-DWORD WINAPI XUserWriteAchievements(DWORD dwNumAchievements, CONST XUSER_ACHIEVEMENT *pAchievements, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XUserWriteAchievements(DWORD dwNumAchievements, CONST XUSER_ACHIEVEMENT *pAchievements, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!dwNumAchievements)
@@ -454,6 +459,13 @@ DWORD WINAPI XUserSetContextEx(DWORD dwUserIndex, DWORD dwContextId, DWORD dwCon
 	if (dwContextId != X_CONTEXT_PRESENCE || dwContextId != X_CONTEXT_GAME_TYPE || dwContextId != X_CONTEXT_GAME_MODE || dwContextId != X_CONTEXT_SESSION_JOINABLE)
 		return ERROR_INVALID_PARAMETER;
 
+	if (dwContextId == X_CONTEXT_GAME_TYPE) {
+		xlive_session_details.dwGameType = dwContextValue;
+	}
+	else if (dwContextId == X_CONTEXT_GAME_MODE) {
+		xlive_session_details.dwGameMode = dwContextValue;
+	}
+
 	//TODO XUserSetContextEx
 	if (pXOverlapped) {
 		//asynchronous
@@ -507,6 +519,219 @@ DWORD WINAPI XUserSetPropertyEx(DWORD dwUserIndex, DWORD dwPropertyId, DWORD cbV
 	return ERROR_SUCCESS;
 }
 
+bool IsValidSettingId(DWORD dwTitleId, DWORD dwSettingId)
+{
+	if (((SETTING_ID*)&dwSettingId)->id < 0x50 || (dwSettingId == XPROFILE_TITLE_SPECIFIC1 || dwSettingId == XPROFILE_TITLE_SPECIFIC2 || dwSettingId == XPROFILE_TITLE_SPECIFIC3) && dwTitleId != DASHBOARD_TITLE_ID) {
+		return true;
+	}
+	return false;
+}
+
+DWORD ValidateSettings(DWORD dwTitleId, DWORD dwNumSettings, const XUSER_PROFILE_SETTING *pSettings)
+{
+	DWORD v3 = 0;
+	if (dwNumSettings == 0)
+		return ERROR_SUCCESS;
+	while (IsValidSettingId(dwTitleId, pSettings[v3++].dwSettingId)) {
+		if (v3 >= dwNumSettings) {
+			return ERROR_SUCCESS;
+		}
+	}
+	return ERROR_INVALID_PARAMETER;
+}
+
+DWORD ValidateSettingIds(DWORD dwTitleId, DWORD dwNumSettingIds, const DWORD *pdwSettingIds)
+{
+	DWORD v3 = 0;
+	if (dwNumSettingIds == 0)
+		return ERROR_SUCCESS;
+	while (IsValidSettingId(dwTitleId, pdwSettingIds[v3++])) {
+		if (v3 >= dwNumSettingIds) {
+			return ERROR_SUCCESS;
+		}
+	}
+	return ERROR_INVALID_PARAMETER;
+}
+
+bool ReadXUserData(XUSER_DATA *xuser_data, BYTE *&extra_data_buffer_pos, DWORD extra_data_buffer_len, BYTE *buffer, DWORD buffer_len)
+{
+	BYTE *buffer_pos = buffer;
+
+	xuser_data->type = *(BYTE*)buffer_pos;
+	buffer_pos += sizeof(xuser_data->type);
+
+	if (xuser_data->type == XUSER_DATA_TYPE_INT32) {
+		xuser_data->nData = *(LONG*)buffer_pos;
+		buffer_pos += sizeof(LONG);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_INT64) {
+		xuser_data->i64Data = *(LONGLONG*)buffer_pos;
+		buffer_pos += sizeof(LONGLONG);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_DOUBLE) {
+		xuser_data->dblData = *(DOUBLE*)buffer_pos;
+		buffer_pos += sizeof(DOUBLE);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_FLOAT) {
+		xuser_data->fData = *(FLOAT*)buffer_pos;
+		buffer_pos += sizeof(FLOAT);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_UNICODE) {
+		xuser_data->string.cbData = *(DWORD*)buffer_pos;
+		buffer_pos += sizeof(xuser_data->string.cbData);
+		if (extra_data_buffer_len < xuser_data->string.cbData) {
+			return false;
+		}
+		if (xuser_data->string.cbData % 2) {
+			return false;
+		}
+		wcsncpy_s((wchar_t*)extra_data_buffer_pos, extra_data_buffer_len/2, (wchar_t*)buffer_pos, xuser_data->string.cbData/2);
+		xuser_data->string.pwszData = (wchar_t*)extra_data_buffer_pos;
+		extra_data_buffer_pos += xuser_data->string.cbData;
+		buffer_pos += xuser_data->string.cbData;
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_BINARY) {
+		xuser_data->binary.cbData = *(DWORD*)buffer_pos;
+		buffer_pos += sizeof(xuser_data->binary.cbData);
+		memcpy_s(extra_data_buffer_pos, extra_data_buffer_len, buffer_pos, xuser_data->binary.cbData);
+		xuser_data->binary.pbData = extra_data_buffer_pos;
+		extra_data_buffer_pos += xuser_data->binary.cbData;
+		buffer_pos += xuser_data->binary.cbData;
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_DATETIME) {
+		xuser_data->ftData = *(FILETIME*)buffer_pos;
+		buffer_pos += sizeof(FILETIME);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_NULL) {
+		return false;
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_CONTEXT) {
+		return false;
+	}
+	else {
+		return false;
+	}
+
+	return true;
+}
+
+bool WriteXUserData(BYTE *&buffer, DWORD &buffer_len, const XUSER_DATA *xuser_data)
+{
+	DWORD xuser_data_len = sizeof(xuser_data->type);
+
+	if (xuser_data->type == XUSER_DATA_TYPE_INT32) {
+		xuser_data_len += sizeof(LONG);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_INT64) {
+		xuser_data_len += sizeof(LONGLONG);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_DOUBLE) {
+		xuser_data_len += sizeof(DOUBLE);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_FLOAT) {
+		xuser_data_len += sizeof(FLOAT);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_UNICODE) {
+		xuser_data_len += sizeof(xuser_data->string.cbData);
+		xuser_data_len += xuser_data->string.cbData;
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_BINARY) {
+		xuser_data_len += sizeof(xuser_data->binary.cbData);
+		xuser_data_len += xuser_data->binary.cbData;
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_DATETIME) {
+		xuser_data_len += sizeof(FILETIME);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_NULL) {
+		__debugbreak();
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_CONTEXT) {
+		__debugbreak();
+	}
+	else {
+		__debugbreak();
+	}
+
+	BYTE *xuser_data_buf = (BYTE*)malloc(sizeof(BYTE) * xuser_data_len);
+	BYTE *xuser_data_buf_pos = xuser_data_buf;
+
+	*(BYTE*)xuser_data_buf_pos = xuser_data->type;
+	xuser_data_buf_pos += sizeof(xuser_data->type);
+
+	if (xuser_data->type == XUSER_DATA_TYPE_INT32) {
+		*(LONG*)xuser_data_buf_pos = xuser_data->nData;
+		xuser_data_buf_pos += sizeof(LONG);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_INT64) {
+		*(LONGLONG*)xuser_data_buf_pos = xuser_data->i64Data;
+		xuser_data_buf_pos += sizeof(LONGLONG);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_DOUBLE) {
+		*(DOUBLE*)xuser_data_buf_pos = xuser_data->dblData;
+		xuser_data_buf_pos += sizeof(DOUBLE);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_FLOAT) {
+		*(FLOAT*)xuser_data_buf_pos = xuser_data->fData;
+		xuser_data_buf_pos += sizeof(FLOAT);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_UNICODE) {
+		*(DWORD*)xuser_data_buf_pos = xuser_data->string.cbData;
+		xuser_data_buf_pos += sizeof(xuser_data->string.cbData);
+		wcsncpy_s((wchar_t*)xuser_data_buf_pos, xuser_data->string.cbData, xuser_data->string.pwszData, xuser_data->string.cbData);
+		xuser_data_buf_pos += xuser_data->string.cbData;
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_BINARY) {
+		*(DWORD*)xuser_data_buf_pos = xuser_data->binary.cbData;
+		xuser_data_buf_pos += sizeof(xuser_data->binary.cbData);
+		memcpy_s((BYTE*)xuser_data_buf_pos, xuser_data->binary.cbData, xuser_data->binary.pbData, xuser_data->binary.cbData);
+		xuser_data_buf_pos += xuser_data->binary.cbData;
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_DATETIME) {
+		*(FILETIME*)xuser_data_buf_pos = xuser_data->ftData;
+		xuser_data_buf_pos += sizeof(FILETIME);
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_NULL) {
+		__debugbreak();
+	}
+	else if (xuser_data->type == XUSER_DATA_TYPE_CONTEXT) {
+		__debugbreak();
+	}
+	else {
+		__debugbreak();
+	}
+	if (xuser_data_buf_pos - xuser_data_buf != xuser_data_len) {
+		// Misaligned buffer!
+		__debugbreak();
+	}
+
+	buffer = xuser_data_buf;
+	buffer_len = xuser_data_len;
+	return true;
+}
+
+//TODO move to a utils file.
+void EnsureDirectoryExists(wchar_t* path) {
+	int buflen = wcslen(path) + 1;
+	wchar_t* path2 = (wchar_t*)malloc(sizeof(wchar_t) * buflen);
+	memcpy(path2, path, sizeof(wchar_t) * buflen);
+
+	for (int i = 1; i < buflen; i++) {
+		if (path2[i] == L'/' || path2[i] == L'\\') {
+			wchar_t temp_cut = 0;
+			if (path2[i + 1] != 0) {
+				temp_cut = path2[i + 1];
+				path2[i + 1] = 0;
+			}
+			BOOL err_create = CreateDirectoryW(path2, NULL);
+			if (temp_cut) {
+				path2[i + 1] = temp_cut;
+			}
+		}
+	}
+
+	free(path2);
+}
+
 // #5331
 DWORD WINAPI XUserReadProfileSettings(
 	DWORD dwTitleId,
@@ -522,7 +747,7 @@ DWORD WINAPI XUserReadProfileSettings(
 		return ERROR_NO_SUCH_USER;
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
 		return ERROR_NOT_LOGGED_ON;
-	if (!dwNumSettingIds || dwNumSettingIds > 0x20)
+	if (dwNumSettingIds == 0 || dwNumSettingIds > 32)
 		return ERROR_INVALID_PARAMETER;
 	if (!pdwSettingIds)
 		return ERROR_INVALID_PARAMETER;
@@ -531,25 +756,118 @@ DWORD WINAPI XUserReadProfileSettings(
 	if (*pcbResults && !pResults)
 		return ERROR_INVALID_PARAMETER;
 
-	if (!pResults) {
-		*pcbResults = sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
+	DWORD result = ValidateSettingIds(dwTitleId, dwNumSettingIds, pdwSettingIds);
+	if (result) {
+		return result;
+	}
+
+	DWORD save_file_buf_len = 0;
+
+	DWORD setting_buffer_required = 0;
+	for (DWORD i = 0; i < dwNumSettingIds; i++) {
+		DWORD &settingId = *(DWORD*)(&pdwSettingIds[i]);
+		BYTE setting_data_type = ((SETTING_ID*)&settingId)->data_type;
+		setting_buffer_required += sizeof(XUSER_PROFILE_SETTING);
+		if (setting_data_type == XUSER_DATA_TYPE_UNICODE || setting_data_type == XUSER_DATA_TYPE_BINARY) {
+			setting_buffer_required += ((SETTING_ID*)&settingId)->max_length;
+		}
+	}
+	setting_buffer_required += sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
+
+	if (!pResults || setting_buffer_required > *pcbResults) {
+		*pcbResults = setting_buffer_required;
 		return ERROR_INSUFFICIENT_BUFFER;
 	}
 
 	pResults->dwSettingsLen = 0;
-	pResults->pSettings = 0;
+	BYTE *buf_pos = (BYTE*)pResults + sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
+	pResults->pSettings = (XUSER_PROFILE_SETTING*)buf_pos;
+	buf_pos += sizeof(XUSER_PROFILE_SETTING) * dwNumSettingIds;
 
-	return ERROR_NOT_FOUND;
-	return ERROR_FUNCTION_FAILED;
+	for (DWORD i = 0; i < dwNumSettingIds; i++) {
+		DWORD &settingId = *(DWORD*)(&pdwSettingIds[i]);
+		XUSER_PROFILE_SETTING *pSetting = &pResults->pSettings[pResults->dwSettingsLen];
 
-	//TODO check this
-	if (*pcbResults < 1036) {
-		*pcbResults = 1036;	// TODO: make correct calculation by IDs.
-		return ERROR_INSUFFICIENT_BUFFER;
+		pSetting->dwSettingId = settingId;
+		pSetting->source = XSOURCE_DEFAULT;
+		pSetting->user.dwUserIndex = dwUserIndex;
+		pSetting->user.xuid = xlive_users_info[dwUserIndex]->xuid;
+		memset(&pSetting->data, 0, sizeof(pSetting->data));
+		pResults->dwSettingsLen++;
+
+		DWORD save_file_buf_len_max = sizeof(XUSER_DATA);
+		BYTE setting_data_type = ((SETTING_ID*)&settingId)->data_type;
+		if (setting_data_type == XUSER_DATA_TYPE_UNICODE || setting_data_type == XUSER_DATA_TYPE_BINARY) {
+			save_file_buf_len_max += ((SETTING_ID*)&settingId)->max_length;
+		}
+
+		int save_file_num = 0;
+		if (settingId == XPROFILE_TITLE_SPECIFIC1) {
+			save_file_num = 1;
+		}
+		else if (settingId == XPROFILE_TITLE_SPECIFIC2) {
+			save_file_num = 2;
+		}
+		else if (settingId == XPROFILE_TITLE_SPECIFIC3) {
+			save_file_num = 3;
+		}
+
+		wchar_t save_file_path[100];
+
+		if (save_file_num == 0) {
+			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\User_%hs_%08X.dat", xlive_users_info[dwUserIndex]->szUserName, settingId);
+		}
+		else {
+			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\%08X\\User_%hs_%d.dat", xlive_title_id, xlive_users_info[dwUserIndex]->szUserName, save_file_num);
+		}
+
+		EnsureDirectoryExists(save_file_path);
+		FILE *save_file;
+		errno_t err_file = _wfopen_s(&save_file, save_file_path, L"rb");
+		if (err_file) {
+			addDebugText("Unable to read title save file:");
+			addDebugText(save_file_path);
+			continue;
+		}
+
+		fseek(save_file, 0L, SEEK_END);
+
+		long fp_buflen = ftell(save_file);
+		if (fp_buflen < 0L || (DWORD)fp_buflen > save_file_buf_len_max) {
+			addDebugText("ERROR: Save file is larger than expected max value:");
+			addDebugText(save_file_path);
+			fclose(save_file);
+			continue;
+		}
+
+		fseek(save_file, 0L, SEEK_SET);
+
+		BYTE* fp_buffer = (BYTE*)malloc(sizeof(BYTE) * fp_buflen);
+		if (!fp_buffer) {
+			addDebugText("ERROR: Unable to allocate enough memory to load save file:");
+			addDebugText(save_file_path);
+			fclose(save_file);
+			continue;
+		}
+
+		fread(fp_buffer, sizeof(BYTE), fp_buflen, save_file);
+		fclose(save_file);
+
+		if (ReadXUserData(&pSetting->data, buf_pos, *pcbResults - (buf_pos - (BYTE*)pResults), fp_buffer, fp_buflen)) {
+			pSetting->source = XSOURCE_TITLE;
+		}
+		else {
+			addDebugText("INVALID xuser_data save file (or it may have cascaded from an earlier one wrt. buf_pos total mem alloc space):");
+			addDebugText(save_file_path);
+		}
+
+		free(fp_buffer);
 	}
-	memset(pResults, 0, *pcbResults);
-	pResults->dwSettingsLen = *pcbResults - sizeof(XUSER_PROFILE_SETTING);
-	pResults->pSettings = (XUSER_PROFILE_SETTING *)pResults + sizeof(XUSER_PROFILE_SETTING);
+
+	if (pResults->dwSettingsLen == 0) {
+		pResults->pSettings = 0;
+		return ERROR_NOT_FOUND;
+	}
 
 	//TODO XUserReadProfileSettings
 	if (pXOverlapped) {
@@ -583,6 +901,65 @@ DWORD WINAPI XUserWriteProfileSettings(DWORD dwUserIndex, DWORD dwNumSettings, c
 	if (!pSettings)
 		return ERROR_INVALID_PARAMETER;
 
+	DWORD valid_settings[] = { XPROFILE_TITLE_SPECIFIC1, XPROFILE_TITLE_SPECIFIC2, XPROFILE_TITLE_SPECIFIC3 };
+	if (dwNumSettings == 0xFFFFFFFF)
+		return ERROR_INVALID_PARAMETER;
+	for (DWORD i = 0; i < dwNumSettings; i++) {
+		DWORD j = 0;
+		while (valid_settings[j++] != pSettings[i].dwSettingId) {
+			if (j >= sizeof(valid_settings) / sizeof(DWORD)) {
+				return ERROR_INVALID_PARAMETER;
+			}
+		}
+	}
+	DWORD result = ValidateSettings(0, dwNumSettings, pSettings);
+	if (result) {
+		return result;
+	}
+
+	for (DWORD i = 0; i < dwNumSettings; i++) {
+
+		int save_file_num = 0;
+		if (pSettings[i].dwSettingId == XPROFILE_TITLE_SPECIFIC1) {
+			save_file_num = 1;
+		}
+		else if (pSettings[i].dwSettingId == XPROFILE_TITLE_SPECIFIC2) {
+			save_file_num = 2;
+		}
+		else if (pSettings[i].dwSettingId == XPROFILE_TITLE_SPECIFIC3) {
+			save_file_num = 3;
+		}
+
+		wchar_t save_file_path[100];
+
+		if (save_file_num == 0) {
+			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\User_%hs_%08X.dat", xlive_users_info[dwUserIndex]->szUserName, pSettings[i].dwSettingId);
+		}
+		else {
+			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\%08X\\User_%hs_%d.dat", xlive_title_id, xlive_users_info[dwUserIndex]->szUserName, save_file_num);
+		}
+
+		EnsureDirectoryExists(save_file_path);
+		FILE *save_file;
+		errno_t err_file = _wfopen_s(&save_file, save_file_path, L"wb");
+		if (err_file) {
+			addDebugText("Unable to write title save file:");
+			addDebugText(save_file_path);
+			continue;
+		}
+
+		BYTE *xuser_data;
+		DWORD xuser_data_len;
+		if (WriteXUserData(xuser_data, xuser_data_len, &pSettings[i].data)) {
+			fwrite(xuser_data, sizeof(BYTE), xuser_data_len, save_file);
+			free(xuser_data);
+		}
+		else {
+			addDebugText("INVALID xuser_data.");
+		}
+
+		fclose(save_file);
+	}
 
 	//TODO XUserWriteProfileSettings
 	if (pXOverlapped) {
@@ -620,15 +997,7 @@ DWORD WINAPI XUserReadProfileSettingsByXuid(
 		return ERROR_NO_SUCH_USER;
 	if (xlive_users_info[dwUserIndexRequester]->UserSigninState == eXUserSigninState_NotSignedIn)
 		return ERROR_NOT_LOGGED_ON;
-	if (dwNumFor == 0)
-		return ERROR_INVALID_PARAMETER;
-	if (dwNumFor > 0xF)
-		return ERROR_INVALID_PARAMETER;
-	if (!pxuidFor)
-		return ERROR_INVALID_PARAMETER;
-	if (dwNumSettingIds == 0)
-		return ERROR_INVALID_PARAMETER;
-	if (dwNumSettingIds > 0x20)
+	if (dwNumSettingIds == 0 || dwNumSettingIds > 32)
 		return ERROR_INVALID_PARAMETER;
 	if (!pdwSettingIds)
 		return ERROR_INVALID_PARAMETER;
@@ -636,6 +1005,13 @@ DWORD WINAPI XUserReadProfileSettingsByXuid(
 		return ERROR_INVALID_PARAMETER;
 	if (*pcbResults && !pResults)
 		return ERROR_INVALID_PARAMETER;
+
+	if (dwNumFor == 0 || dwNumFor > 16)
+		return ERROR_INVALID_PARAMETER;
+	if (!pxuidFor)
+		return ERROR_INVALID_PARAMETER;
+
+	//XUserReadProfileSettings(dwTitleId, dwUserIndexRequester, dwNumSettingIds, pdwSettingIds, pcbResults, pResults, pXOverlapped);
 
 	//TODO XUserReadProfileSettingsByXuid
 	if (pXOverlapped) {

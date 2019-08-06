@@ -18,6 +18,7 @@ struct EligibleAdapter {
 	BOOL hasDnsServer;
 };
 
+extern DWORD xlive_title_id;
 extern EligibleAdapter xlive_network_adapter;
 extern CRITICAL_SECTION xlive_critsec_custom_local_user_hipv4;
 extern unsigned long xlive_custom_local_user_hipv4;

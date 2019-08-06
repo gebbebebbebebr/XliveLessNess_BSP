@@ -555,6 +555,10 @@ INT InitXLLN(HMODULE hModule)
 
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)hModule, NULL, NULL);
+
+	xlive_title_id = 0;
+	addDebugText("ERROR: TODO title.cfg not found. Default Title ID set.");
+
 	return 0;
 }
 
