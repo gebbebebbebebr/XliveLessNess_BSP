@@ -3,6 +3,7 @@
 extern BOOL xlive_debug_pause;
 
 #define XLIVE_LOCAL_USER_COUNT 4
+#define XLIVE_LOCAL_USER_INVALID 0xFFFFFFFF
 
 extern BOOL xlive_users_info_changed[XLIVE_LOCAL_USER_COUNT];
 extern XUSER_SIGNIN_INFO* xlive_users_info[XLIVE_LOCAL_USER_COUNT];

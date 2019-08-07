@@ -5,6 +5,29 @@
 #include "../xlln/DebugText.h"
 #include <stdio.h>
 
+//TODO move to a utils file.
+void EnsureDirectoryExists(wchar_t* path) {
+	int buflen = wcslen(path) + 1;
+	wchar_t* path2 = (wchar_t*)malloc(sizeof(wchar_t) * buflen);
+	memcpy(path2, path, sizeof(wchar_t) * buflen);
+
+	for (int i = 1; i < buflen; i++) {
+		if (path2[i] == L'/' || path2[i] == L'\\') {
+			wchar_t temp_cut = 0;
+			if (path2[i + 1] != 0) {
+				temp_cut = path2[i + 1];
+				path2[i + 1] = 0;
+			}
+			BOOL err_create = CreateDirectoryW(path2, NULL);
+			if (temp_cut) {
+				path2[i + 1] = temp_cut;
+			}
+		}
+	}
+
+	free(path2);
+}
+
 BOOL XLivepIsPropertyIdValid(DWORD dwPropertyId, BOOL a2)
 {
 	return !(dwPropertyId & X_PROPERTY_SCOPE_MASK)
@@ -553,6 +576,49 @@ DWORD ValidateSettingIds(DWORD dwTitleId, DWORD dwNumSettingIds, const DWORD *pd
 	return ERROR_INVALID_PARAMETER;
 }
 
+DWORD GetXUserProfileSettingsBufferLength(
+	DWORD dwTitleId,
+	DWORD dwNumFor,
+	DWORD dwNumSettingIds,
+	const DWORD *pdwSettingIds,
+	DWORD *pcbResults,
+	XUSER_READ_PROFILE_SETTING_RESULT *pResults)
+{
+	TRACE_FX();
+	if (dwNumSettingIds == 0 || dwNumSettingIds > 32)
+		return ERROR_INVALID_PARAMETER;
+	if (!pdwSettingIds)
+		return ERROR_INVALID_PARAMETER;
+	if (!pcbResults)
+		return ERROR_INVALID_PARAMETER;
+	if (*pcbResults && !pResults)
+		return ERROR_INVALID_PARAMETER;
+
+	DWORD result = ValidateSettingIds(dwTitleId, dwNumSettingIds, pdwSettingIds);
+	if (result) {
+		return result;
+	}
+
+	DWORD setting_buffer_required = 0;
+	for (DWORD i = 0; i < dwNumSettingIds; i++) {
+		DWORD &settingId = *(DWORD*)(&pdwSettingIds[i]);
+		BYTE setting_data_type = ((SETTING_ID*)&settingId)->data_type;
+		setting_buffer_required += sizeof(XUSER_PROFILE_SETTING);
+		if (setting_data_type == XUSER_DATA_TYPE_UNICODE || setting_data_type == XUSER_DATA_TYPE_BINARY) {
+			setting_buffer_required += ((SETTING_ID*)&settingId)->max_length;
+		}
+	}
+	setting_buffer_required *= dwNumFor;
+	setting_buffer_required += sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
+
+	if (!pResults || setting_buffer_required > *pcbResults) {
+		*pcbResults = setting_buffer_required;
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+
+	return ERROR_SUCCESS;
+}
+
 bool ReadXUserData(XUSER_DATA *xuser_data, BYTE *&extra_data_buffer_pos, DWORD extra_data_buffer_len, BYTE *buffer, DWORD buffer_len)
 {
 	BYTE *buffer_pos = buffer;
@@ -613,6 +679,115 @@ bool ReadXUserData(XUSER_DATA *xuser_data, BYTE *&extra_data_buffer_pos, DWORD e
 	}
 
 	return true;
+}
+
+DWORD ReadXUserProfileSettings(
+	DWORD dwTitleId,
+	DWORD dwUserIndex,
+	DWORD dwNumSettingIds,
+	const DWORD *pdwSettingIds,
+	DWORD cbResults,
+	XUSER_READ_PROFILE_SETTING_RESULT *pResults,
+	BYTE *&pResultBufPos)
+{
+	TRACE_FX();
+	if (dwNumSettingIds == 0 || dwNumSettingIds > 32)
+		return ERROR_INVALID_PARAMETER;
+	if (!pdwSettingIds)
+		return ERROR_INVALID_PARAMETER;
+	if (cbResults == 0)
+		return ERROR_INVALID_PARAMETER;
+	if (!pResults)
+		return ERROR_INVALID_PARAMETER;
+	if (!pResultBufPos)
+		return ERROR_INVALID_PARAMETER;
+
+	for (DWORD i = 0; i < dwNumSettingIds; i++) {
+		DWORD &settingId = *(DWORD*)(&pdwSettingIds[i]);
+		XUSER_PROFILE_SETTING *pSetting = &pResults->pSettings[pResults->dwSettingsLen];
+		pResults->dwSettingsLen++;
+
+		pSetting->dwSettingId = settingId;
+		pSetting->source = XSOURCE_DEFAULT;
+		memset(&pSetting->data, 0, sizeof(pSetting->data));
+		if (dwUserIndex == XLIVE_LOCAL_USER_INVALID) {
+			pSetting->user.dwUserIndex = 0;
+			pSetting->user.xuid = INVALID_XUID;
+			continue;
+		}
+		pSetting->user.dwUserIndex = dwUserIndex;
+		pSetting->user.xuid = xlive_users_info[dwUserIndex]->xuid;
+
+		DWORD save_file_buf_len_max = sizeof(XUSER_DATA);
+		BYTE setting_data_type = ((SETTING_ID*)&settingId)->data_type;
+		if (setting_data_type == XUSER_DATA_TYPE_UNICODE || setting_data_type == XUSER_DATA_TYPE_BINARY) {
+			save_file_buf_len_max += ((SETTING_ID*)&settingId)->max_length;
+		}
+
+		int save_file_num = 0;
+		if (settingId == XPROFILE_TITLE_SPECIFIC1) {
+			save_file_num = 1;
+		}
+		else if (settingId == XPROFILE_TITLE_SPECIFIC2) {
+			save_file_num = 2;
+		}
+		else if (settingId == XPROFILE_TITLE_SPECIFIC3) {
+			save_file_num = 3;
+		}
+
+		wchar_t save_file_path[100];
+
+		if (save_file_num == 0) {
+			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\User_%hs_%08X.dat", xlive_users_info[dwUserIndex]->szUserName, settingId);
+		}
+		else {
+			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\%08X\\User_%hs_%d.dat", xlive_title_id, xlive_users_info[dwUserIndex]->szUserName, save_file_num);
+		}
+
+		EnsureDirectoryExists(save_file_path);
+		FILE *save_file;
+		errno_t err_file = _wfopen_s(&save_file, save_file_path, L"rb");
+		if (err_file) {
+			addDebugText("Unable to read title save file:");
+			addDebugText(save_file_path);
+			continue;
+		}
+
+		fseek(save_file, 0L, SEEK_END);
+
+		long fp_buflen = ftell(save_file);
+		if (fp_buflen < 0L || (DWORD)fp_buflen > save_file_buf_len_max) {
+			addDebugText("ERROR: Save file is larger than expected max value:");
+			addDebugText(save_file_path);
+			fclose(save_file);
+			continue;
+		}
+
+		fseek(save_file, 0L, SEEK_SET);
+
+		BYTE* fp_buffer = (BYTE*)malloc(sizeof(BYTE) * fp_buflen);
+		if (!fp_buffer) {
+			addDebugText("ERROR: Unable to allocate enough memory to load save file:");
+			addDebugText(save_file_path);
+			fclose(save_file);
+			continue;
+		}
+
+		fread(fp_buffer, sizeof(BYTE), fp_buflen, save_file);
+		fclose(save_file);
+
+		if (ReadXUserData(&pSetting->data, pResultBufPos, cbResults - (pResultBufPos - (BYTE*)pResults), fp_buffer, fp_buflen)) {
+			pSetting->source = XSOURCE_TITLE;
+		}
+		else {
+			addDebugText("INVALID xuser_data save file (or it may have cascaded from an earlier one wrt. buf_pos total mem alloc space):");
+			addDebugText(save_file_path);
+		}
+
+		free(fp_buffer);
+	}
+
+	return ERROR_SUCCESS;
 }
 
 bool WriteXUserData(BYTE *&buffer, DWORD &buffer_len, const XUSER_DATA *xuser_data)
@@ -709,29 +884,6 @@ bool WriteXUserData(BYTE *&buffer, DWORD &buffer_len, const XUSER_DATA *xuser_da
 	return true;
 }
 
-//TODO move to a utils file.
-void EnsureDirectoryExists(wchar_t* path) {
-	int buflen = wcslen(path) + 1;
-	wchar_t* path2 = (wchar_t*)malloc(sizeof(wchar_t) * buflen);
-	memcpy(path2, path, sizeof(wchar_t) * buflen);
-
-	for (int i = 1; i < buflen; i++) {
-		if (path2[i] == L'/' || path2[i] == L'\\') {
-			wchar_t temp_cut = 0;
-			if (path2[i + 1] != 0) {
-				temp_cut = path2[i + 1];
-				path2[i + 1] = 0;
-			}
-			BOOL err_create = CreateDirectoryW(path2, NULL);
-			if (temp_cut) {
-				path2[i + 1] = temp_cut;
-			}
-		}
-	}
-
-	free(path2);
-}
-
 // #5331
 DWORD WINAPI XUserReadProfileSettings(
 	DWORD dwTitleId,
@@ -756,112 +908,22 @@ DWORD WINAPI XUserReadProfileSettings(
 	if (*pcbResults && !pResults)
 		return ERROR_INVALID_PARAMETER;
 
-	DWORD result = ValidateSettingIds(dwTitleId, dwNumSettingIds, pdwSettingIds);
+	DWORD dwNumFor = 1;
+
+	DWORD result = GetXUserProfileSettingsBufferLength(dwTitleId, dwNumFor, dwNumSettingIds, pdwSettingIds, pcbResults, pResults);
 	if (result) {
 		return result;
 	}
 
-	DWORD save_file_buf_len = 0;
-
-	DWORD setting_buffer_required = 0;
-	for (DWORD i = 0; i < dwNumSettingIds; i++) {
-		DWORD &settingId = *(DWORD*)(&pdwSettingIds[i]);
-		BYTE setting_data_type = ((SETTING_ID*)&settingId)->data_type;
-		setting_buffer_required += sizeof(XUSER_PROFILE_SETTING);
-		if (setting_data_type == XUSER_DATA_TYPE_UNICODE || setting_data_type == XUSER_DATA_TYPE_BINARY) {
-			setting_buffer_required += ((SETTING_ID*)&settingId)->max_length;
-		}
-	}
-	setting_buffer_required += sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
-
-	if (!pResults || setting_buffer_required > *pcbResults) {
-		*pcbResults = setting_buffer_required;
-		return ERROR_INSUFFICIENT_BUFFER;
-	}
+	BYTE *pResultBufPos = (BYTE*)pResults + sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
 
 	pResults->dwSettingsLen = 0;
-	BYTE *buf_pos = (BYTE*)pResults + sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
-	pResults->pSettings = (XUSER_PROFILE_SETTING*)buf_pos;
-	buf_pos += sizeof(XUSER_PROFILE_SETTING) * dwNumSettingIds;
+	pResults->pSettings = (XUSER_PROFILE_SETTING*)pResultBufPos;
+	pResultBufPos += sizeof(XUSER_PROFILE_SETTING) * dwNumSettingIds * dwNumFor;
 
-	for (DWORD i = 0; i < dwNumSettingIds; i++) {
-		DWORD &settingId = *(DWORD*)(&pdwSettingIds[i]);
-		XUSER_PROFILE_SETTING *pSetting = &pResults->pSettings[pResults->dwSettingsLen];
-
-		pSetting->dwSettingId = settingId;
-		pSetting->source = XSOURCE_DEFAULT;
-		pSetting->user.dwUserIndex = dwUserIndex;
-		pSetting->user.xuid = xlive_users_info[dwUserIndex]->xuid;
-		memset(&pSetting->data, 0, sizeof(pSetting->data));
-		pResults->dwSettingsLen++;
-
-		DWORD save_file_buf_len_max = sizeof(XUSER_DATA);
-		BYTE setting_data_type = ((SETTING_ID*)&settingId)->data_type;
-		if (setting_data_type == XUSER_DATA_TYPE_UNICODE || setting_data_type == XUSER_DATA_TYPE_BINARY) {
-			save_file_buf_len_max += ((SETTING_ID*)&settingId)->max_length;
-		}
-
-		int save_file_num = 0;
-		if (settingId == XPROFILE_TITLE_SPECIFIC1) {
-			save_file_num = 1;
-		}
-		else if (settingId == XPROFILE_TITLE_SPECIFIC2) {
-			save_file_num = 2;
-		}
-		else if (settingId == XPROFILE_TITLE_SPECIFIC3) {
-			save_file_num = 3;
-		}
-
-		wchar_t save_file_path[100];
-
-		if (save_file_num == 0) {
-			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\User_%hs_%08X.dat", xlive_users_info[dwUserIndex]->szUserName, settingId);
-		}
-		else {
-			swprintf_s(save_file_path, L".\\XLiveProfileSaves\\%08X\\User_%hs_%d.dat", xlive_title_id, xlive_users_info[dwUserIndex]->szUserName, save_file_num);
-		}
-
-		EnsureDirectoryExists(save_file_path);
-		FILE *save_file;
-		errno_t err_file = _wfopen_s(&save_file, save_file_path, L"rb");
-		if (err_file) {
-			addDebugText("Unable to read title save file:");
-			addDebugText(save_file_path);
-			continue;
-		}
-
-		fseek(save_file, 0L, SEEK_END);
-
-		long fp_buflen = ftell(save_file);
-		if (fp_buflen < 0L || (DWORD)fp_buflen > save_file_buf_len_max) {
-			addDebugText("ERROR: Save file is larger than expected max value:");
-			addDebugText(save_file_path);
-			fclose(save_file);
-			continue;
-		}
-
-		fseek(save_file, 0L, SEEK_SET);
-
-		BYTE* fp_buffer = (BYTE*)malloc(sizeof(BYTE) * fp_buflen);
-		if (!fp_buffer) {
-			addDebugText("ERROR: Unable to allocate enough memory to load save file:");
-			addDebugText(save_file_path);
-			fclose(save_file);
-			continue;
-		}
-
-		fread(fp_buffer, sizeof(BYTE), fp_buflen, save_file);
-		fclose(save_file);
-
-		if (ReadXUserData(&pSetting->data, buf_pos, *pcbResults - (buf_pos - (BYTE*)pResults), fp_buffer, fp_buflen)) {
-			pSetting->source = XSOURCE_TITLE;
-		}
-		else {
-			addDebugText("INVALID xuser_data save file (or it may have cascaded from an earlier one wrt. buf_pos total mem alloc space):");
-			addDebugText(save_file_path);
-		}
-
-		free(fp_buffer);
+	result = ReadXUserProfileSettings(dwTitleId, dwUserIndex, dwNumSettingIds, pdwSettingIds, *pcbResults, pResults, pResultBufPos);
+	if (result) {
+		return result;
 	}
 
 	if (pResults->dwSettingsLen == 0) {
@@ -1011,7 +1073,34 @@ DWORD WINAPI XUserReadProfileSettingsByXuid(
 	if (!pxuidFor)
 		return ERROR_INVALID_PARAMETER;
 
-	//XUserReadProfileSettings(dwTitleId, dwUserIndexRequester, dwNumSettingIds, pdwSettingIds, pcbResults, pResults, pXOverlapped);
+	DWORD result = GetXUserProfileSettingsBufferLength(dwTitleId, dwNumFor, dwNumSettingIds, pdwSettingIds, pcbResults, pResults);
+	if (result) {
+		return result;
+	}
+
+	BYTE *pResultBufPos = (BYTE*)pResults + sizeof(XUSER_READ_PROFILE_SETTING_RESULT);
+
+	pResults->dwSettingsLen = 0;
+	pResults->pSettings = (XUSER_PROFILE_SETTING*)pResultBufPos;
+	pResultBufPos += sizeof(XUSER_PROFILE_SETTING) * dwNumSettingIds * dwNumFor;
+
+	for (DWORD i = 0; i < dwNumFor; i++) {
+		DWORD userIndex = XLIVE_LOCAL_USER_INVALID;
+		for (DWORD j = 0; j < XLIVE_LOCAL_USER_COUNT; j++) {
+			if (xlive_users_info[j]->xuid == pxuidFor[i]) {
+				userIndex = j;
+			}
+		}
+		result = ReadXUserProfileSettings(dwTitleId, userIndex, dwNumSettingIds, pdwSettingIds, *pcbResults, pResults, pResultBufPos);
+		if (result) {
+			return result;
+		}
+	}
+
+	if (pResults->dwSettingsLen == 0) {
+		pResults->pSettings = 0;
+		return ERROR_NOT_FOUND;
+	}
 
 	//TODO XUserReadProfileSettingsByXuid
 	if (pXOverlapped) {
@@ -1029,8 +1118,6 @@ DWORD WINAPI XUserReadProfileSettingsByXuid(
 		//synchronous
 		//return result;
 	}
-	return ERROR_NOT_FOUND;
-	return ERROR_FUNCTION_FAILED;
 	return ERROR_SUCCESS;
 }
 
