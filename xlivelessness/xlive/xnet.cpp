@@ -158,10 +158,21 @@ INT WINAPI XNetUnregisterInAddr(const IN_ADDR ina)
 }
 
 // #64
-VOID XNetXnAddrToMachineId()
+INT WINAPI XNetXnAddrToMachineId(const XNADDR *pxnaddr, ULONGLONG *pqwMachineId)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pxnaddr)
+		return E_POINTER;
+	if (!pqwMachineId)
+		return E_POINTER;
+	//TODO  !CIpAddr::IsValidUnicast(pxnaddr->ina.s_addr) || !CIpAddr::IsValidUnicast(pxnaddr->inaOnline.s_addr) || 
+	if (pxnaddr->ina.s_addr == 0 || pxnaddr->inaOnline.s_addr == 0 || pxnaddr->wPortOnline == 0) {
+		*pqwMachineId = 0;
+		return E_INVALIDARG;
+	}
+
+	*pqwMachineId = *(ULONGLONG*)&pxnaddr->abOnline[8];
+	return S_OK;
 }
 
 // #65
@@ -242,11 +253,20 @@ DWORD WINAPI XNetGetEthernetLinkStatus()
 	return XNET_ETHERNET_LINK_ACTIVE | XNET_ETHERNET_LINK_100MBPS | XNET_ETHERNET_LINK_FULL_DUPLEX;
 }
 
+//TODO XNetGetBroadcastVersionStatus
+static DWORD xlive_broadcast_incompatible_version = 0;
+//xlive_broadcast_incompatible_version = XNET_BROADCAST_VERSION_OLDER;
+//xlive_broadcast_incompatible_version = XNET_BROADCAST_VERSION_NEWER;
+
 // #76
-VOID XNetGetBroadcastVersionStatus()
+DWORD WINAPI XNetGetBroadcastVersionStatus(BOOL fReset)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	DWORD result = xlive_broadcast_incompatible_version;
+	if (fReset) {
+		xlive_broadcast_incompatible_version = 0;
+	}
+	return result;
 }
 
 // #78
@@ -285,18 +305,28 @@ VOID XNetGetXnAddrPlatform()
 }
 
 // #83
-VOID XNetGetSystemLinkPort()
+// pwSystemLinkPort - network byte (big-endian) order
+INT WINAPI XNetGetSystemLinkPort(WORD *pwSystemLinkPort)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pwSystemLinkPort)
+		return E_POINTER;
+
+	*pwSystemLinkPort = htons(xlive_base_port);
+	//TODO XNetGetSystemLinkPort XEX_PRIVILEGE_CROSSPLATFORM_SYSTEM_LINK
+	return S_OK;
+	return WSAEACCES;
 }
 
 // #84
+// wSystemLinkPort - network byte (big-endian) order
 INT WINAPI XNetSetSystemLinkPort(WORD wSystemLinkPort)
 {
 	TRACE_FX();
 	//network byte (big-endian) to little-endian host
 	WORD hPort = ntohs(wSystemLinkPort);
+
+	//xlive_base_port = hPort;
 
 	return ERROR_SUCCESS;
 }

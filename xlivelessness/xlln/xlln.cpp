@@ -23,6 +23,29 @@ static DWORD xlln_login_player_h[] = { MYMENU_LOGIN1, MYMENU_LOGIN2, MYMENU_LOGI
 
 BOOL xlln_debug = FALSE;
 
+static CRITICAL_SECTION xlive_critsec_recvfrom_handler_funcs;
+static std::map<DWORD, char*> xlive_recvfrom_handler_funcs;
+
+INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
+{
+	EnterCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+	typedef INT(WINAPI *tXliveRecvfromHandler)(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
+	for (std::map<DWORD, char*>::iterator it = xlive_recvfrom_handler_funcs.begin(); it != xlive_recvfrom_handler_funcs.end(); it++) {
+		if (result <= 0) {
+			break;
+		}
+		tXliveRecvfromHandler handlerFunc = (tXliveRecvfromHandler)it->first;
+		result = handlerFunc(result, s, buf, len, flags, from, fromlen);
+	}
+	LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+	if (result != 0) {
+		// TODO
+		addDebugText("result not 0!");
+	}
+	return 0;
+}
+
+
 CRITICAL_SECTION xlln_critsec_post_init_funcs;
 std::map<DWORD, bool> xlln_post_init_funcs;
 
@@ -180,24 +203,41 @@ DWORD WINAPI XLLNLogout(DWORD dwUserIndex)
 	return ERROR_SUCCESS;
 }
 
-namespace XLLNModifyPropertyType {
-	enum Type : DWORD {
-		UNKNOWN = 0,
-		FPS_LIMIT,
-		CUSTOM_LOCAL_USER_hIPv4,
-		LiveOverLan_BROADCAST_HANDLER,
-		POST_INIT_FUNC,
+namespace XLLNModifyPropertyTypes {
+	const char* const TypeNames[]{
+	"UNKNOWN",
+	"FPS_LIMIT",
+	"CUSTOM_LOCAL_USER_hIPv4",
+	"LiveOverLan_BROADCAST_HANDLER",
+	"POST_INIT_FUNC",
+	"RECVFROM_CUSTOM_HANDLER_REGISTER",
+	"RECVFROM_CUSTOM_HANDLER_UNREGISTER",
 	};
+	typedef enum : BYTE {
+		tUNKNOWN = 0,
+		tFPS_LIMIT,
+		tCUSTOM_LOCAL_USER_hIPv4,
+		tLiveOverLan_BROADCAST_HANDLER,
+		tPOST_INIT_FUNC,
+		tRECVFROM_CUSTOM_HANDLER_REGISTER,
+		tRECVFROM_CUSTOM_HANDLER_UNREGISTER,
+	} TYPE;
+#pragma pack(push, 1) // Save then set byte alignment setting.
+	typedef struct {
+		char *Identifier;
+		DWORD *FuncPtr;
+	} RECVFROM_CUSTOM_HANDLER_REGISTER;
+#pragma pack(pop) // Return to original alignment setting.
 }
 
 // #41142
-DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *newValue, DWORD *oldValue)
+DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD *newValue, DWORD *oldValue)
 {
 	TRACE_FX();
-	if (propertyId == XLLNModifyPropertyType::UNKNOWN)
+	if (propertyId == XLLNModifyPropertyTypes::tUNKNOWN)
 		return ERROR_INVALID_PARAMETER;
 
-	if (propertyId == XLLNModifyPropertyType::FPS_LIMIT) {
+	if (propertyId == XLLNModifyPropertyTypes::tFPS_LIMIT) {
 		if (oldValue && !newValue) {
 			*oldValue = xlive_fps_limit;
 		}
@@ -212,7 +252,7 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *
 		}
 		return ERROR_SUCCESS;
 	}
-	else if (propertyId == XLLNModifyPropertyType::CUSTOM_LOCAL_USER_hIPv4) {
+	else if (propertyId == XLLNModifyPropertyTypes::tCUSTOM_LOCAL_USER_hIPv4) {
 		EnterCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 		if (newValue && *newValue == INADDR_NONE) {
 			LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
@@ -240,7 +280,7 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *
 		LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 		return ERROR_SUCCESS;
 	}
-	else if (propertyId == XLLNModifyPropertyType::LiveOverLan_BROADCAST_HANDLER) {
+	else if (propertyId == XLLNModifyPropertyTypes::tLiveOverLan_BROADCAST_HANDLER) {
 		EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 		if (!newValue && !oldValue) {
 			if (liveoverlan_broadcast_handler == NULL) {
@@ -264,7 +304,7 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *
 		LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 		return ERROR_SUCCESS;
 	}
-	else if (propertyId == XLLNModifyPropertyType::POST_INIT_FUNC) {
+	else if (propertyId == XLLNModifyPropertyTypes::tPOST_INIT_FUNC) {
 		if (oldValue && newValue) {
 			return ERROR_INVALID_PARAMETER;
 		}
@@ -286,6 +326,38 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *
 		LeaveCriticalSection(&xlln_critsec_post_init_funcs);
 		return ERROR_SUCCESS;
 	}
+	else if (propertyId == XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_REGISTER) {
+		// TODO
+		XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)newValue;
+		addDebugText(handler->Identifier);
+		DWORD idLen = strlen(handler->Identifier) + 1;
+		char *identifier = (char*)malloc(sizeof(char) * idLen);
+		strcpy_s(identifier, idLen, handler->Identifier);
+
+		if (oldValue && newValue) {
+			return ERROR_INVALID_PARAMETER;
+		}
+		EnterCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+		if (oldValue) {
+			if (!xlive_recvfrom_handler_funcs.count((DWORD)oldValue)) {
+				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+				return ERROR_NOT_FOUND;
+			}
+			xlive_recvfrom_handler_funcs.erase((DWORD)oldValue);
+		}
+		else {
+			if (xlive_recvfrom_handler_funcs.count((DWORD)handler->FuncPtr)) {
+				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+				return ERROR_ALREADY_REGISTERED;
+			}
+			xlive_recvfrom_handler_funcs[(DWORD)handler->FuncPtr] = identifier;
+		}
+		LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+		return ERROR_SUCCESS;
+	}
+	else if (propertyId == XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_UNREGISTER) {
+		// TODO
+	}
 
 	return ERROR_UNKNOWN_PROPERTY;
 }
@@ -294,6 +366,58 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyType::Type propertyId, DWORD *
 DWORD WINAPI XLLNDebugLog(DWORD logLevel, const char *message)
 {
 	addDebugText(message);
+	return ERROR_SUCCESS;
+}
+/*
+std::string formattestthing(const char *const format, ...)
+{
+	auto temp = std::vector<char>{};
+	auto length = std::size_t{ 2 };
+	va_list args;
+	while (temp.size() <= length)
+	{
+		temp.resize(length + 1);
+		va_start(args, format);
+		const auto status = std::vsnprintf(temp.data(), temp.size(), format, args);
+		va_end(args);
+		if (status < 0)
+			throw std::runtime_error{ "string formatting error" };
+		length = static_cast<std::size_t>(status);
+	}
+	return std::string{ temp.data(), length };
+}
+
+// #41144
+DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	va_list args2;
+	va_copy(args2, args);
+	std::string message = formattestthing(format, args2);
+	va_end(args);
+	addDebugText(message.c_str());
+	return ERROR_SUCCESS;
+}*/
+
+// #41144
+DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
+{
+	auto temp = std::vector<char>{};
+	auto length = std::size_t{ 63 };
+	va_list args;
+	while (temp.size() <= length) {
+		temp.resize(length + 1);
+		va_start(args, format);
+		const auto status = std::vsnprintf(temp.data(), temp.size(), format, args);
+		va_end(args);
+		if (status < 0) {
+			// string formatting error.
+			return ERROR_INVALID_PARAMETER;
+		}
+		length = static_cast<std::size_t>(status);
+	}
+	addDebugText(std::string{ temp.data(), length }.c_str());
 	return ERROR_SUCCESS;
 }
 
@@ -490,6 +614,7 @@ INT InitXLLN(HMODULE hModule)
 	}
 
 	InitializeCriticalSection(&xlln_critsec_post_init_funcs);
+	InitializeCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	InitializeCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 
@@ -567,6 +692,7 @@ INT UninitXLLN()
 	INT error_DebugLog = UninitDebugLog();
 
 	DeleteCriticalSection(&xlln_critsec_post_init_funcs);
+	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	DeleteCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	return 0;

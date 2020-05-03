@@ -1,3 +1,4 @@
+#include <winsock2.h>
 #include "xdefs.h"
 #include "xwsa.h"
 #include "../xlln/DebugText.h"
@@ -23,99 +24,134 @@ INT WINAPI XWSACleanup()
 }
 
 // #16
-VOID XWSAGetOverlappedResult()
+BOOL WINAPI XWSAGetOverlappedResult(SOCKET s, LPWSAOVERLAPPED lpOverlapped, LPDWORD lpcbTransfer, BOOL fWait, LPDWORD lpdwFlags)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSAGetOverlappedResult(s, lpOverlapped, lpcbTransfer, fWait, lpdwFlags);
 }
 
 // #17
-VOID XWSACancelOverlappedIO()
+int WINAPI XWSACancelOverlappedIO(SOCKET s)
 {
 	TRACE_FX();
 	FUNC_STUB();
+	//return WSACancelAsyncRequest ?
+	return 0;
 }
 
 // #19
-VOID XWSARecv()
+int WINAPI XWSARecv(
+	SOCKET s,
+	LPWSABUF lpBuffers,
+	DWORD dwBufferCount,
+	LPDWORD lpNumberOfBytesRecvd,
+	LPDWORD lpFlags,
+	LPWSAOVERLAPPED lpOverlapped,
+	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSARecv(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
 }
 
 // #21
-VOID XWSARecvFrom()
+int WINAPI XWSARecvFrom(
+	SOCKET s,
+	LPWSABUF lpBuffers,
+	DWORD dwBufferCount,
+	LPDWORD lpNumberOfBytesRecvd,
+	LPDWORD lpFlags,
+	struct sockaddr FAR *lpFrom,
+	LPINT lpFromlen,
+	LPWSAOVERLAPPED lpOverlapped,
+	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSARecvFrom(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpFrom, lpFromlen, lpOverlapped, lpCompletionRoutine);
 }
 
 // #23
-VOID XWSASend()
+int WINAPI XWSASend(
+	SOCKET s,
+	LPWSABUF lpBuffers,
+	DWORD dwBufferCount,
+	LPDWORD lpNumberOfBytesSent,
+	DWORD dwFlags,
+	LPWSAOVERLAPPED lpOverlapped,
+	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSASend(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpOverlapped, lpCompletionRoutine);
 }
 
 // #25
-VOID XWSASendTo()
+int WINAPI XWSASendTo(
+	SOCKET s,
+	LPWSABUF lpBuffers,
+	DWORD dwBufferCount,
+	LPDWORD lpNumberOfBytesSent,
+	DWORD dwFlags,
+	const struct sockaddr FAR *lpTo,
+	int iToLen,
+	LPWSAOVERLAPPED lpOverlapped,
+	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSASendTo(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpTo, iToLen, lpOverlapped, lpCompletionRoutine);
 }
 
 // #28
-VOID XWSASetLastError()
+VOID WINAPI XWSASetLastError(int iError)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	WSASetLastError(iError);
 }
 
 // #29
-VOID XWSACreateEvent()
+WSAEVENT WINAPI XWSACreateEvent()
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSACreateEvent();
+	//return CreateEvent(NULL, TRUE, FALSE, NULL);
 }
 
 // #30
-VOID XWSACloseEvent()
+BOOL WINAPI XWSACloseEvent(WSAEVENT hEvent)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSACloseEvent(hEvent);
 }
 
 // #31
-VOID XWSASetEvent()
+BOOL WINAPI XWSASetEvent(WSAEVENT hEvent)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSASetEvent(hEvent);
 }
 
 // #32
-VOID XWSAResetEvent()
+BOOL WINAPI XWSAResetEvent(WSAEVENT hEvent)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSAResetEvent(hEvent);
 }
 
 // #33
-VOID XWSAWaitForMultipleEvents()
+DWORD WINAPI XWSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT FAR *lphEvents, BOOL fWaitAll, DWORD dwTimeout, BOOL fAlertable)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSAWaitForMultipleEvents(cEvents, lphEvents, fWaitAll, dwTimeout, fAlertable);
 }
 
 // #34
-VOID XWSAFDIsSet()
+INT WINAPI XWSAFDIsSet(SOCKET fd, fd_set *set)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return __WSAFDIsSet(fd, set);
 }
 
 // #35
-VOID XWSAEventSelect()
+int WINAPI XWSAEventSelect(SOCKET s, WSAEVENT hEventObject, long lNetworkEvents)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return WSAEventSelect(s, hEventObject, lNetworkEvents);
 }

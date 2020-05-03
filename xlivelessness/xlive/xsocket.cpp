@@ -2,6 +2,7 @@
 #include "xdefs.h"
 #include "xsocket.h"
 #include "xlive.h"
+#include "../xlln/xlln.h"
 #include "../xlln/DebugText.h"
 #include "xnet.h"
 #include "xlocator.h"
@@ -348,6 +349,10 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 						goto RETURN_LE_ZERO;
 					}
 					return result;
+				}
+				case XLLNCustomPacketType::CUSTOM_OTHER: {
+					result = XSocketRecvFromCustomHelper(result, s, buf, len, flags, from, fromlen);
+					break;
 				}
 				case XLLNCustomPacketType::UNKNOWN_USER_ASK:
 				case XLLNCustomPacketType::UNKNOWN_USER_REPLY: {

@@ -86,10 +86,19 @@ DWORD WINAPI XNetQosLookup(UINT cxna, XNADDR * apxna[], XNKID * apxnkid[], XNKEY
 }
 
 // #71
-VOID XNetQosServiceLookup()
+INT WINAPI XNetQosServiceLookup(DWORD dwFlags, WSAEVENT hEvent, XNQOS **ppxnqos)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwFlags & ~(XNET_QOS_SERVICE_LOOKUP_RESERVED))
+		return E_INVALIDARG;
+	if (!ppxnqos || !*ppxnqos)
+		return E_INVALIDARG;
+
+	//TODO XNetQosServiceLookup
+	//(*ppxnqos)->axnqosinfo->bFlags;
+
+	return E_ABORT;
+	return S_OK;
 }
 
 // #72

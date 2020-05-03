@@ -710,10 +710,27 @@ VOID XLiveVerifyArcadeLicense()
 }
 
 // #5034
-VOID XLiveProtectData()
+HRESULT WINAPI XLiveProtectData(BYTE *pabDataToProtect, DWORD dwSizeOfDataToProtect, BYTE *pabProtectedData, DWORD *pdwSizeOfProtectedData, HANDLE hProtectedData)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pabDataToProtect)
+		return E_POINTER;
+	if (dwSizeOfDataToProtect == 0)
+		return E_INVALIDARG;
+	if (!pdwSizeOfProtectedData)
+		return E_POINTER;
+	if (!pabProtectedData && *pdwSizeOfProtectedData != 0)
+		return E_INVALIDARG;
+	if (!hProtectedData || hProtectedData == INVALID_HANDLE_VALUE)
+		return E_HANDLE;
+
+	//TODO XLiveProtectData
+	for (DWORD i = 0; i < *pdwSizeOfProtectedData; i++) {
+		pabProtectedData[i] = 0;
+	}
+
+	return S_OK;
+	return E_NOT_SUFFICIENT_BUFFER;
 }
 
 // #5035

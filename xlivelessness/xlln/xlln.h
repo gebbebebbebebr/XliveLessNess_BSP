@@ -24,6 +24,7 @@ VOID XLLNPostInitCallbacks();
 INT InitXLLN(HMODULE hModule);
 INT UninitXLLN();
 INT ShowXLLN(DWORD dwShowType);
+INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
 
 extern HWND xlln_window_hwnd;
 extern BOOL xlln_debug;
