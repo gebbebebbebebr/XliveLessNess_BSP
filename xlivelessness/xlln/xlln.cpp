@@ -203,33 +203,6 @@ DWORD WINAPI XLLNLogout(DWORD dwUserIndex)
 	return ERROR_SUCCESS;
 }
 
-namespace XLLNModifyPropertyTypes {
-	const char* const TypeNames[]{
-	"UNKNOWN",
-	"FPS_LIMIT",
-	"CUSTOM_LOCAL_USER_hIPv4",
-	"LiveOverLan_BROADCAST_HANDLER",
-	"POST_INIT_FUNC",
-	"RECVFROM_CUSTOM_HANDLER_REGISTER",
-	"RECVFROM_CUSTOM_HANDLER_UNREGISTER",
-	};
-	typedef enum : BYTE {
-		tUNKNOWN = 0,
-		tFPS_LIMIT,
-		tCUSTOM_LOCAL_USER_hIPv4,
-		tLiveOverLan_BROADCAST_HANDLER,
-		tPOST_INIT_FUNC,
-		tRECVFROM_CUSTOM_HANDLER_REGISTER,
-		tRECVFROM_CUSTOM_HANDLER_UNREGISTER,
-	} TYPE;
-#pragma pack(push, 1) // Save then set byte alignment setting.
-	typedef struct {
-		char *Identifier;
-		DWORD *FuncPtr;
-	} RECVFROM_CUSTOM_HANDLER_REGISTER;
-#pragma pack(pop) // Return to original alignment setting.
-}
-
 // #41142
 DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD *newValue, DWORD *oldValue)
 {

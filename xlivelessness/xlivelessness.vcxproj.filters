@@ -19,6 +19,9 @@
     <Filter Include="Source Files\xlln">
       <UniqueIdentifier>{4d77f733-9359-4459-99a1-70e1273da435}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\utils">
+      <UniqueIdentifier>{6076c36e-f8b1-481d-99fe-77a80455bfdd}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -72,6 +75,15 @@
     <ClCompile Include="xlive\xstorage.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
+    <ClCompile Include="xlln\xlln-modules.cpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\utils.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\util-hook.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\DebugText.h">
@@ -124,6 +136,18 @@
     </ClInclude>
     <ClInclude Include="xlive\xstorage.h">
       <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlln\xlln-modules.hpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClInclude>
+    <ClInclude Include="dllmain.hpp">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\utils.hpp">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\util-hook.hpp">
+      <Filter>Source Files\utils</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

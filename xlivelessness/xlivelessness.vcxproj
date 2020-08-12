@@ -132,6 +132,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="utils\util-hook.cpp" />
+    <ClCompile Include="utils\utils.cpp" />
     <ClCompile Include="xlive\NetEntity.cpp" />
     <ClCompile Include="xlive\voice.cpp" />
     <ClCompile Include="xlive\xlive.cpp" />
@@ -147,13 +149,17 @@
     <ClCompile Include="xlive\xwsa.cpp" />
     <ClCompile Include="xlln\DebugText.cpp" />
     <ClCompile Include="xlln\RandName.cpp" />
+    <ClCompile Include="xlln\xlln-modules.cpp" />
     <ClCompile Include="xlln\xlln.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="xlive_exports.def" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="dllmain.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="utils\util-hook.hpp" />
+    <ClInclude Include="utils\utils.hpp" />
     <ClInclude Include="xlive\NetEntity.h" />
     <ClInclude Include="xlive\voice.h" />
     <ClInclude Include="xlive\xdefs.h" />
@@ -169,6 +175,7 @@
     <ClInclude Include="xlive\xwsa.h" />
     <ClInclude Include="xlln\DebugText.h" />
     <ClInclude Include="xlln\RandName.h" />
+    <ClInclude Include="xlln\xlln-modules.hpp" />
     <ClInclude Include="xlln\xlln.h" />
   </ItemGroup>
   <ItemGroup>
