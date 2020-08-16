@@ -20,9 +20,7 @@
 
 DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
 DWORD WINAPI XLLNLogout(DWORD dwUserIndex);
-// #41144
 DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...);
-VOID XLLNPostInitCallbacks();
 INT InitXLLN(HMODULE hModule);
 INT UninitXLLN();
 INT ShowXLLN(DWORD dwShowType);
@@ -31,13 +29,34 @@ INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len,
 extern HWND xlln_window_hwnd;
 extern BOOL xlln_debug;
 
+// Function call tracing.
+#define XLLN_LOG_LEVEL_TRACE	0b00000001
+// Function, variable and operation logging.
+#define XLLN_LOG_LEVEL_DEBUG	0b00000010
+// Generally useful information to log (service start/stop, configuration assumptions, etc).
+#define XLLN_LOG_LEVEL_INFO		0b00000100
+// Anything that can potentially cause application oddities, but is being handled adequately.
+#define XLLN_LOG_LEVEL_WARN		0b00001000
+// Any error which is fatal to the operation, but not the service or application (can't open a required file, missing data, etc.).
+#define XLLN_LOG_LEVEL_ERROR	0b00010000
+// Errors that will terminate the application.
+#define XLLN_LOG_LEVEL_FATAL	0b00100000
+
+// Logs related to Xlive functionality.
+#define XLLN_LOG_CONTEXT_XLIVE			(0b00000001 < 8)
+// Logs related to XLiveLessNess functionality.
+#define XLLN_LOG_CONTEXT_XLIVELESSNESS	(0b00000010 < 8)
+// Logs related to XLLN-Module functionality.
+#define XLLN_LOG_CONTEXT_XLLN_MODULE	(0b00000100 < 8)
+// Logs related to functionality from other areas of the application.
+#define XLLN_LOG_CONTEXT_OTHER			(0b10000000 < 8)
+
 namespace XLLNModifyPropertyTypes {
 	const char* const TypeNames[]{
 	"UNKNOWN",
 	"FPS_LIMIT",
 	"CUSTOM_LOCAL_USER_hIPv4",
 	"LiveOverLan_BROADCAST_HANDLER",
-	"POST_INIT_FUNC",
 	"RECVFROM_CUSTOM_HANDLER_REGISTER",
 	"RECVFROM_CUSTOM_HANDLER_UNREGISTER",
 	};
@@ -46,7 +65,6 @@ namespace XLLNModifyPropertyTypes {
 		tFPS_LIMIT,
 		tCUSTOM_LOCAL_USER_hIPv4,
 		tLiveOverLan_BROADCAST_HANDLER,
-		tPOST_INIT_FUNC,
 		tRECVFROM_CUSTOM_HANDLER_REGISTER,
 		tRECVFROM_CUSTOM_HANDLER_UNREGISTER,
 	} TYPE;
@@ -58,5 +76,13 @@ namespace XLLNModifyPropertyTypes {
 #pragma pack(pop) // Return to original alignment setting.
 }
 
+// #41140
+typedef DWORD(WINAPI *tXLLNLogin)(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
+// #41141
+typedef DWORD(WINAPI *tXLLNLogout)(DWORD dwUserIndex);
 // #41142
 typedef DWORD(WINAPI *tXLLNModifyProperty)(XLLNModifyPropertyTypes::TYPE propertyId, DWORD *newValue, DWORD *oldValue);
+// #41143
+typedef DWORD(WINAPI *tXLLNDebugLog)(DWORD logLevel, const char *message);
+// #41144
+typedef DWORD(WINAPI *tXLLNDebugLogF)(DWORD logLevel, const char *const format, ...);

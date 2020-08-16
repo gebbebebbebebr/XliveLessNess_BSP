@@ -46,20 +46,6 @@ INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len,
 }
 
 
-CRITICAL_SECTION xlln_critsec_post_init_funcs;
-std::map<DWORD, bool> xlln_post_init_funcs;
-
-VOID XLLNPostInitCallbacks()
-{
-	EnterCriticalSection(&xlln_critsec_post_init_funcs);
-	typedef BOOL(WINAPI *tXLLNPostInitFunc)();
-	for (std::map<DWORD, bool>::iterator it = xlln_post_init_funcs.begin(); it != xlln_post_init_funcs.end(); it++) {
-		tXLLNPostInitFunc callbackFunc = (tXLLNPostInitFunc)it->first;
-		BOOL result = callbackFunc();
-	}
-	LeaveCriticalSection(&xlln_critsec_post_init_funcs);
-}
-
 static HMENU CreateDLLWindowMenu(HINSTANCE hModule)
 {
 	HMENU hMenu;
@@ -277,28 +263,6 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 		LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 		return ERROR_SUCCESS;
 	}
-	else if (propertyId == XLLNModifyPropertyTypes::tPOST_INIT_FUNC) {
-		if (oldValue && newValue) {
-			return ERROR_INVALID_PARAMETER;
-		}
-		EnterCriticalSection(&xlln_critsec_post_init_funcs);
-		if (oldValue) {
-			if (!xlln_post_init_funcs.count((DWORD)oldValue)) {
-				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
-				return ERROR_NOT_FOUND;
-			}
-			xlln_post_init_funcs.erase((DWORD)oldValue);
-		}
-		else {
-			if (xlln_post_init_funcs.count((DWORD)newValue)) {
-				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
-				return ERROR_ALREADY_REGISTERED;
-			}
-			xlln_post_init_funcs[(DWORD)newValue] = false;
-		}
-		LeaveCriticalSection(&xlln_critsec_post_init_funcs);
-		return ERROR_SUCCESS;
-	}
 	else if (propertyId == XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_REGISTER) {
 		// TODO
 		XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)newValue;
@@ -313,14 +277,14 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 		EnterCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 		if (oldValue) {
 			if (!xlive_recvfrom_handler_funcs.count((DWORD)oldValue)) {
-				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+				LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 				return ERROR_NOT_FOUND;
 			}
 			xlive_recvfrom_handler_funcs.erase((DWORD)oldValue);
 		}
 		else {
 			if (xlive_recvfrom_handler_funcs.count((DWORD)handler->FuncPtr)) {
-				LeaveCriticalSection(&xlln_critsec_post_init_funcs);
+				LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 				return ERROR_ALREADY_REGISTERED;
 			}
 			xlive_recvfrom_handler_funcs[(DWORD)handler->FuncPtr] = identifier;
@@ -586,7 +550,6 @@ INT InitXLLN(HMODULE hModule)
 		Sleep(500L);
 	}
 
-	InitializeCriticalSection(&xlln_critsec_post_init_funcs);
 	InitializeCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	InitializeCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
@@ -664,7 +627,6 @@ INT UninitXLLN()
 {
 	INT error_DebugLog = UninitDebugLog();
 
-	DeleteCriticalSection(&xlln_critsec_post_init_funcs);
 	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	DeleteCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);

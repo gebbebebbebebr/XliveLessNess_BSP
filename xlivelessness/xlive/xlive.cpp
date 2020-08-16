@@ -1050,8 +1050,6 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 
 	srand((unsigned int)time(NULL));
 
-	XLLNPostInitCallbacks();
-
 	if (pPii->wLivePortOverride > 0) {
 		//TODO pPii->wLivePortOverride;
 	}
