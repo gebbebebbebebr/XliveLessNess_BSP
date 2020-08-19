@@ -24,10 +24,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="xlln\DebugText.cpp">
+    <ClCompile Include="xlln\debug-text.cpp">
       <Filter>Source Files\xlln</Filter>
     </ClCompile>
     <ClCompile Include="xlln\xlln.cpp">
@@ -57,13 +57,13 @@
     <ClCompile Include="xlive\xsocket.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
-    <ClCompile Include="xlln\RandName.cpp">
+    <ClCompile Include="xlln\rand-name.cpp">
       <Filter>Source Files\xlln</Filter>
     </ClCompile>
     <ClCompile Include="xlive\xshow.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
-    <ClCompile Include="xlive\NetEntity.cpp">
+    <ClCompile Include="xlive\net-entity.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
     <ClCompile Include="xlive\xwsa.cpp">
@@ -86,55 +86,55 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="xlln\DebugText.h">
+    <ClInclude Include="xlln\debug-text.hpp">
       <Filter>Source Files\xlln</Filter>
     </ClInclude>
-    <ClInclude Include="xlln\xlln.h">
+    <ClInclude Include="xlln\xlln.hpp">
       <Filter>Source Files\xlln</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\voice.h">
+    <ClInclude Include="xlive\voice.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xdefs.h">
+    <ClInclude Include="xlive\xdefs.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xlive.h">
+    <ClInclude Include="xlive\xlive.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xlocator.h">
+    <ClInclude Include="xlive\xlocator.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xnet.h">
+    <ClInclude Include="xlive\xnet.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xrender.h">
+    <ClInclude Include="xlive\xrender.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xsession.h">
+    <ClInclude Include="xlive\xsession.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xsocket.h">
+    <ClInclude Include="xlive\xsocket.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlln\RandName.h">
+    <ClInclude Include="xlln\rand-name.hpp">
       <Filter>Source Files\xlln</Filter>
     </ClInclude>
-    <ClInclude Include="resource.h">
+    <ClInclude Include="resource.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xshow.h">
+    <ClInclude Include="xlive\xshow.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\NetEntity.h">
+    <ClInclude Include="xlive\net-entity.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xwsa.h">
+    <ClInclude Include="xlive\xwsa.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xuser.h">
+    <ClInclude Include="xlive\xuser.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlive\xstorage.h">
+    <ClInclude Include="xlive\xstorage.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
     <ClInclude Include="xlln\xlln-modules.hpp">

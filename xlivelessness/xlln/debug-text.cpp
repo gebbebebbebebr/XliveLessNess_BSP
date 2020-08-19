@@ -1,8 +1,8 @@
-#include "../xlive/xdefs.h"
-#include "DebugText.h"
+#include "../xlive/xdefs.hpp"
+#include "debug-text.hpp"
+#include "../xlln/xlln.hpp"
+#include "../xlive/xsocket.hpp"
 #include <string>
-#include "../xlln/xlln.h"
-#include "../xlive/xsocket.h"
 
 static bool initialised_debug_log = false;
 static CRITICAL_SECTION xlln_critsec_debug_log;

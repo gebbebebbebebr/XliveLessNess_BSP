@@ -1,6 +1,6 @@
 #include <windows.h>
-#include "Voice.h"
-#include "../xlln/DebugText.h"
+#include "voice.hpp"
+#include "../xlln/debug-text.hpp"
 
 // #5008
 INT WINAPI XHVCreateEngine(PXHV_INIT_PARAMS pParams, PHANDLE phWorkerThread, PIXHV2ENGINE *ppEngine)

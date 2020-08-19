@@ -1,5 +1,5 @@
 #pragma once
-#include "xdefs.h"
+#include "xdefs.hpp"
 
 typedef DWORD                                   XHV_LOCK_TYPE;
 

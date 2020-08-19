@@ -1,8 +1,8 @@
-#include "xdefs.h"
-#include "xshow.h"
-#include "../xlln/DebugText.h"
-#include "xlive.h"
-#include "../xlln/xlln.h"
+#include "xdefs.hpp"
+#include "xshow.hpp"
+#include "../xlln/debug-text.hpp"
+#include "xlive.hpp"
+#include "../xlln/xlln.hpp"
 
 // #5206
 DWORD WINAPI XShowMessagesUI(DWORD dwUserIndex)

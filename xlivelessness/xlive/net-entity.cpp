@@ -1,6 +1,6 @@
-#include "xdefs.h"
-#include "NetEntity.h"
-#include "../xlln/xlln.h"
+#include "xdefs.hpp"
+#include "net-entity.hpp"
+#include "../xlln/xlln.hpp"
 #include <vector>
 #include <set>
 

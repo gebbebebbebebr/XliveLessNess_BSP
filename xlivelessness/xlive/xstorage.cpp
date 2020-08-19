@@ -1,7 +1,7 @@
-#include "xdefs.h"
-#include "xstorage.h"
-#include "xlive.h"
-#include "../xlln/DebugText.h"
+#include "xdefs.hpp"
+#include "xstorage.hpp"
+#include "xlive.hpp"
+#include "../xlln/debug-text.hpp"
 
 // #5304
 VOID XStorageUploadFromMemoryGetProgress()

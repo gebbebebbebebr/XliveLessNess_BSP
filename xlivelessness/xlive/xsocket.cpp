@@ -1,12 +1,12 @@
 #include <winsock2.h>
-#include "xdefs.h"
-#include "xsocket.h"
-#include "xlive.h"
-#include "../xlln/xlln.h"
-#include "../xlln/DebugText.h"
-#include "xnet.h"
-#include "xlocator.h"
-#include "NetEntity.h"
+#include "xdefs.hpp"
+#include "xsocket.hpp"
+#include "xlive.hpp"
+#include "../xlln/xlln.hpp"
+#include "../xlln/debug-text.hpp"
+#include "xnet.hpp"
+#include "xlocator.hpp"
+#include "net-entity.hpp"
 #include <ctime>
 
 #define IPPROTO_VDP 254

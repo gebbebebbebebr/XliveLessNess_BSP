@@ -1,6 +1,6 @@
 #include <winsock2.h>
-#include "xdefs.h"
-#include "../xlln/DebugText.h"
+#include "xdefs.hpp"
+#include "../xlln/debug-text.hpp"
 
 // #69
 INT WINAPI XNetQosListen(XNKID *pxnkid, PBYTE pb, UINT cb, DWORD dwBitsPerSec, DWORD dwFlags)

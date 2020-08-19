@@ -1,6 +1,6 @@
-#include "xdefs.h"
-#include "xrender.h"
-#include "../xlln/DebugText.h"
+#include "xdefs.hpp"
+#include "xrender.hpp"
+#include "../xlln/debug-text.hpp"
 #include <d3d9.h>
 #include <chrono>
 #include <thread>

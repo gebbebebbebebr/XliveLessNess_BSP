@@ -1,7 +1,7 @@
 #include "windows.h"
 #include "xlln-modules.hpp"
 #include "../dllmain.hpp"
-#include "xlln.h"
+#include "xlln.hpp"
 #include "../utils/utils.hpp"
 #include "../utils/util-hook.hpp"
 #include <string>

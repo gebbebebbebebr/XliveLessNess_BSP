@@ -1,7 +1,7 @@
-#include "xdefs.h"
-#include "xsession.h"
-#include "../xlln/DebugText.h"
-#include "xlive.h"
+#include "xdefs.hpp"
+#include "xsession.hpp"
+#include "../xlln/debug-text.hpp"
+#include "xlive.hpp"
 
 XSESSION_LOCAL_DETAILS xlive_session_details;
 

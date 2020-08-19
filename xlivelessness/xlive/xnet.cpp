@@ -1,11 +1,11 @@
 #include <winsock2.h>
-#include "xdefs.h"
-#include "xnet.h"
-#include "xlive.h"
-#include "../xlln/xlln.h"
-#include "../xlln/DebugText.h"
-#include "xsocket.h"
-#include "NetEntity.h"
+#include "xdefs.hpp"
+#include "xnet.hpp"
+#include "xlive.hpp"
+#include "../xlln/xlln.hpp"
+#include "../xlln/debug-text.hpp"
+#include "xsocket.hpp"
+#include "net-entity.hpp"
 
 BOOL xlive_net_initialized = FALSE;
 

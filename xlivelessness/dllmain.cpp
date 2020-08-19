@@ -1,6 +1,6 @@
 #include "windows.h"
 #include "dllmain.hpp"
-#include "xlln/xlln.h"
+#include "xlln/xlln.hpp"
 #include "xlln/xlln-modules.hpp"
 #include <iostream>
 

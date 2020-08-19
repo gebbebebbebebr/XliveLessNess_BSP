@@ -1,7 +1,7 @@
 #include <winsock2.h>
-#include "xdefs.h"
-#include "xwsa.h"
-#include "../xlln/DebugText.h"
+#include "xdefs.hpp"
+#include "xwsa.hpp"
+#include "../xlln/debug-text.hpp"
 
 // #1
 INT WINAPI XWSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData)

@@ -1,5 +1,5 @@
 #include "windows.h"
-#include "RandName.h"
+#include "rand-name.hpp"
 #include <string>
 
 static const DWORD MAX_RAND_NAME = 128;

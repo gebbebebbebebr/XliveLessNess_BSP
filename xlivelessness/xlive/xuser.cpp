@@ -1,8 +1,8 @@
-#include "xdefs.h"
-#include "xuser.h"
-#include "xlive.h"
-#include "xsession.h"
-#include "../xlln/DebugText.h"
+#include "xdefs.hpp"
+#include "xuser.hpp"
+#include "xlive.hpp"
+#include "xsession.hpp"
+#include "../xlln/debug-text.hpp"
 #include <stdio.h>
 
 //TODO move to a utils file.
