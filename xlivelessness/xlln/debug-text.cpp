@@ -152,11 +152,11 @@ void trace_func(const char *fxname)
 		}
 	}
 	LeaveCriticalSection(&xlln_critsec_debug_log);
-	int leng = (30 + strlen(fxname));
-	char* guibsig = (char*)malloc(sizeof(char) * leng);
-	snprintf(guibsig, leng, "%s()", fxname);
-	addDebugText(guibsig);
-	free(guibsig);
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_TRACE
+		, "TRACE %s(...)."
+		, fxname
+	);
 }
 
 VOID XllnDebugBreak(char* message)

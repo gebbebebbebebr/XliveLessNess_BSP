@@ -3,6 +3,7 @@
 #include "xlive.hpp"
 #include "xsession.hpp"
 #include "../xlln/debug-text.hpp"
+#include "../xlln/xlln.hpp"
 #include <stdio.h>
 
 //TODO move to a utils file.
@@ -748,8 +749,10 @@ DWORD ReadXUserProfileSettings(
 		FILE *save_file;
 		errno_t err_file = _wfopen_s(&save_file, save_file_path, L"rb");
 		if (err_file) {
-			addDebugText("Unable to read title save file:");
-			addDebugText(save_file_path);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
+				, "ReadXUserProfileSettings Unable to read title save file \"%ls\"."
+				, save_file_path
+			);
 			continue;
 		}
 
@@ -757,8 +760,10 @@ DWORD ReadXUserProfileSettings(
 
 		long fp_buflen = ftell(save_file);
 		if (fp_buflen < 0L || (DWORD)fp_buflen > save_file_buf_len_max) {
-			addDebugText("ERROR: Save file is larger than expected max value:");
-			addDebugText(save_file_path);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "ReadXUserProfileSettings Save file is larger than expected max value \"%ls\"."
+				, save_file_path
+			);
 			fclose(save_file);
 			continue;
 		}
@@ -767,8 +772,10 @@ DWORD ReadXUserProfileSettings(
 
 		BYTE* fp_buffer = (BYTE*)malloc(sizeof(BYTE) * fp_buflen);
 		if (!fp_buffer) {
-			addDebugText("ERROR: Unable to allocate enough memory to load save file:");
-			addDebugText(save_file_path);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "ReadXUserProfileSettings Unable to allocate enough memory to load save file \"%ls\"."
+				, save_file_path
+			);
 			fclose(save_file);
 			continue;
 		}
@@ -780,8 +787,10 @@ DWORD ReadXUserProfileSettings(
 			pSetting->source = XSOURCE_TITLE;
 		}
 		else {
-			addDebugText("INVALID xuser_data save file (or it may have cascaded from an earlier one wrt. buf_pos total mem alloc space):");
-			addDebugText(save_file_path);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "ReadXUserProfileSettings INVALID xuser_data save file (or it may have cascaded from an earlier one wrt. buf_pos total mem alloc space) \"%ls\"."
+				, save_file_path
+			);
 		}
 
 		free(fp_buffer);
@@ -1005,8 +1014,10 @@ DWORD WINAPI XUserWriteProfileSettings(DWORD dwUserIndex, DWORD dwNumSettings, c
 		FILE *save_file;
 		errno_t err_file = _wfopen_s(&save_file, save_file_path, L"wb");
 		if (err_file) {
-			addDebugText("Unable to write title save file:");
-			addDebugText(save_file_path);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "XUserWriteProfileSettings Unable to write title save file \"%ls\"."
+				, save_file_path
+			);
 			continue;
 		}
 
@@ -1017,7 +1028,9 @@ DWORD WINAPI XUserWriteProfileSettings(DWORD dwUserIndex, DWORD dwNumSettings, c
 			free(xuser_data);
 		}
 		else {
-			addDebugText("INVALID xuser_data.");
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "XUserWriteProfileSettings INVALID xuser_data."
+			);
 		}
 
 		fclose(save_file);

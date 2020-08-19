@@ -98,7 +98,7 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 
 	uint32_t resultNetter = NetterEntityEnsureExists(instanceId, portBaseHBO);
 	if (resultNetter) {
-		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 			, "XNetXnAddrToInAddr NetterEntityEnsureExists failed to create NetEntity 0x%08x:0x%04x with error 0x%08x."
 			, instanceId
 			, portBaseHBO
@@ -108,7 +108,7 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 		return E_UNEXPECTED;
 	}
 
-	XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 		, "XNetXnAddrToInAddr NetterEntityEnsureExists created 0x%08x:0x%04x."
 		, instanceId
 		, portBaseHBO
@@ -142,7 +142,7 @@ INT WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR *pxna, XNKID *pxnkid)
 
 	uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(pxna, pxnkid, instanceId);
 	if (resultNetter) {
-		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 			, "XNetInAddrToXnAddr NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
 			, instanceId
 			, resultNetter
@@ -150,7 +150,7 @@ INT WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR *pxna, XNKID *pxnkid)
 		return E_FAIL;
 	}
 
-	XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 		, "XNetInAddrToXnAddr NetterEntityGetXnaddrByInstanceId found 0x%08x."
 		, instanceId
 	);

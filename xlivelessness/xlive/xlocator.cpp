@@ -3,6 +3,7 @@
 #include "xsession.hpp"
 #include "xsocket.hpp"
 #include "../xlln/debug-text.hpp"
+#include "../xlln/xlln.hpp"
 #include "xnet.hpp"
 #include "xlive.hpp"
 #include "net-entity.hpp"
@@ -83,8 +84,9 @@ static VOID LiveOverLanBroadcast()
 	while (1) {
 		EnterCriticalSection(&liveoverlan_broadcast_lock);
 		if (local_session_details) {
-			// Broadcast.
-			addDebugText("LiveOverLan Advertise Broadcast.");
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+				, "LiveOverLan Advertise Broadcast."
+			);
 
 			EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 			if (liveoverlan_broadcast_handler) {
@@ -453,11 +455,19 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 {
 	if (session_details->HEAD.bCustomPacketType == XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE) {
 		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
-			addDebugText("LiveOverLAN: ERROR Received INVALID Broadcast Unadvertise.");
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "LiveOverLAN Received INVALID Broadcast Unadvertise from 0x%08x:0x%04x."
+				, host_pair_resolved.first
+				, host_pair_resolved.second
+			);
 			return;
 		}
 		const XUID &unregisterXuid = session_details->UNADV.xuid;// Unused.
-		addDebugText("Received Broadcast Unadvertise");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+			, "LiveOverLAN Received Broadcast Unadvertise from 0x%08x:0x%04x."
+			, host_pair_resolved.first
+			, host_pair_resolved.second
+		);
 		EnterCriticalSection(&liveoverlan_sessions_lock);
 		liveoverlan_sessions.erase(host_pair_resolved);
 		LeaveCriticalSection(&liveoverlan_sessions_lock);
@@ -465,7 +475,11 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 	else {
 		// It can be larger than this.
 		if (len < sizeof(*session_details)) {
-			addDebugText("LiveOverLAN: ERROR Received INVALID Broadcast Advertise.");
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "LiveOverLAN Received INVALID Broadcast Advertise from 0x%08x:0x%04x."
+				, host_pair_resolved.first
+				, host_pair_resolved.second
+			);
 			return;
 		}
 		// TODO Netter Entity
@@ -473,11 +487,19 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 
 		//XNADDR xnAddr;
 		//if (NetEntityGetHostPairResolved(xnAddr, host_pair_resolved) != ERROR_SUCCESS) {
-		//	addDebugText("Received Broadcast - NO USER");
+		//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+		//		, "LiveOverLAN Received Broadcast Advertise with NO USER from 0x%08x:0x%04x."
+		//		, host_pair_resolved.first
+		//		, host_pair_resolved.second
+		//	);
 		//	SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen);
 		//}
 		//else if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
-		//	addDebugText("Received Broadcast");
+		//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+		//		, "LiveOverLAN Received Broadcast Advertise from 0x%08x:0x%04x."
+		//		, host_pair_resolved.first
+		//		, host_pair_resolved.second
+		//	);
 		//	EnterCriticalSection(&liveoverlan_sessions_lock);
 		//	// Delete the old entry if there already is one.
 		//	if (liveoverlan_sessions.count(host_pair_resolved)) {
@@ -500,7 +522,11 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 		//	LeaveCriticalSection(&liveoverlan_sessions_lock);
 		//}
 		//else {
-		//	addDebugText("LiveOverLAN: ERROR Parsing Received Broadcast Advertise.");
+		//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+		//		, "LiveOverLAN Unable to parse Broadcast Advertise from 0x%08x:0x%04x."
+		//		, host_pair_resolved.first
+		//		, host_pair_resolved.second
+		//	);
 		//}
 	}
 }
@@ -545,7 +571,9 @@ static VOID LiveOverLanEmpty()
 {
 	std::mutex mymutex;
 	while (1) {
-		addDebugText("LiveOverLan Remove Old Entries");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+			, "LiveOverLAN Remove Old Entries."
+		);
 		EnterCriticalSection(&liveoverlan_sessions_lock);
 		
 		std::vector<std::pair<DWORD, WORD>> removesessions;
@@ -642,6 +670,10 @@ HRESULT WINAPI XLocatorServerAdvertise(
 	if (!xlive_xlocator_initialized)
 		return E_FAIL;
 
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+		, "LiveOverLAN Send Advertise Broadcast."
+	);
+
 	LiveOverLanBroadcastData(&xlive_users_info[dwUserIndex]->xuid, dwServerType, xnkid, xnkey, dwMaxPublicSlots, dwMaxPrivateSlots, dwFilledPublicSlots, dwFilledPrivateSlots, cProperties, pProperties);
 	LiveOverLanStartBroadcast();
 
@@ -681,7 +713,9 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 	unadvertiseData.HEAD.bCustomPacketType = XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE;
 	unadvertiseData.UNADV.xuid = xlive_users_info[dwUserIndex]->xuid;
 
-	addDebugText("LiveOverLan Unadvertise Broadcast.");
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+		, "LiveOverLAN Send Unadvertise Broadcast."
+	);
 
 	EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	if (liveoverlan_broadcast_handler) {

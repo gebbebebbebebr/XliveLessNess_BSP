@@ -36,7 +36,7 @@ uint32_t NetterEntityEnsureExists_(uint32_t instanceId, uint16_t portBaseHBO)
 	}
 	else {
 		if (xlln_net_entity_instanceid_to_netentity[instanceId]->portBaseHBO != portBaseHBO) {
-			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
 				, "Instance ID base port changed from 0x%04x:%hd to 0x%04x:%hd."
 				, xlln_net_entity_instanceid_to_netentity[instanceId]->portBaseHBO
 				, xlln_net_entity_instanceid_to_netentity[instanceId]->portBaseHBO
@@ -198,7 +198,7 @@ uint32_t NetterEntityCreate(XNADDR *pXnAddr)
 	WORD portBaseHBO = ntohs(pXnAddr->wPortOnline);
 
 	if (instanceIdInaOnline != instanceIdIna) {
-		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "ina does not match inaOnline. These are used as an instanceId (0x%08x != 0x%08x).", instanceIdIna, instanceIdInaOnline);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "ina does not match inaOnline. These are used as an instanceId (0x%08x != 0x%08x).", instanceIdIna, instanceIdInaOnline);
 		return ERROR_ASSERTION_FAILURE;
 	}
 

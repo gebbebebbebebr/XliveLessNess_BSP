@@ -18,6 +18,12 @@
 #define MYWINDOW_BTN_LOGOUT		(WM_APP + 124)
 #define MYWINDOW_BTN_TEST		(WM_APP + 125)
 
+#ifdef _DEBUG
+#define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
+#else
+#define XLLN_DEBUG_LOG(logLevel, format, ...)
+#endif
+
 DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
 DWORD WINAPI XLLNLogout(DWORD dwUserIndex);
 DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...);

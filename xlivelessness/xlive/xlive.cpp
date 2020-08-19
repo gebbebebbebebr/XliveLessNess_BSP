@@ -49,154 +49,177 @@ INT GetNetworkAdapter()
 {
 	INT result = ERROR_UNIDENTIFIED_ERROR;
 
-	//FIXME rewrite this to be more linux friendly (It appears Wine is unable to handle this code).
-	if (true) {
-		// Declare and initialize variables
-		DWORD dwRetVal = 0;
+	// Declare and initialize variables
+	DWORD dwRetVal = 0;
 
-		// Set the flags to pass to GetAdaptersAddresses
-		ULONG flags = GAA_FLAG_INCLUDE_PREFIX;
+	// Set the flags to pass to GetAdaptersAddresses
+	ULONG flags = GAA_FLAG_INCLUDE_PREFIX;
 
-		// IPv4
-		ULONG family = AF_INET;
+	// IPv4
+	ULONG family = AF_INET;
 
-		PIP_ADAPTER_ADDRESSES pAddresses = NULL;
-		// Allocate a 15 KB buffer to start with.
-		ULONG outBufLen = 15000;
-		ULONG Iterations = 0;
+	PIP_ADAPTER_ADDRESSES pAddresses = NULL;
+	// Allocate a 15 KB buffer to start with.
+	ULONG outBufLen = 15000;
+	ULONG Iterations = 0;
 
-		PIP_ADAPTER_ADDRESSES pCurrAddresses = NULL;
-		PIP_ADAPTER_UNICAST_ADDRESS pUnicast = NULL;
+	PIP_ADAPTER_ADDRESSES pCurrAddresses = NULL;
+	PIP_ADAPTER_UNICAST_ADDRESS pUnicast = NULL;
 
-		do {
-			pAddresses = (IP_ADAPTER_ADDRESSES*)HeapAlloc(GetProcessHeap(), 0, (outBufLen));
-			if (pAddresses == NULL) {
-				addDebugText("Memory allocation failed for IP_ADAPTER_ADDRESSES struct");
-				dwRetVal = ERROR_NOT_ENOUGH_MEMORY;
-				break;
-			}
+	do {
+		pAddresses = (IP_ADAPTER_ADDRESSES*)HeapAlloc(GetProcessHeap(), 0, (outBufLen));
+		if (pAddresses == NULL) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "GetNetworkAdapter memory allocation failed for IP_ADAPTER_ADDRESSES struct."
+			);
+			dwRetVal = ERROR_NOT_ENOUGH_MEMORY;
+			break;
+		}
 
-			dwRetVal = GetAdaptersAddresses(family, flags, NULL, pAddresses, &outBufLen);
+		dwRetVal = GetAdaptersAddresses(family, flags, NULL, pAddresses, &outBufLen);
 
-			if (dwRetVal == ERROR_BUFFER_OVERFLOW) {
-				HeapFree(GetProcessHeap(), 0, pAddresses);
-				pAddresses = NULL;
-			}
-			else {
-				break;
-			}
-
-			Iterations++;
-			// 3 attempts max
-		} while ((dwRetVal == ERROR_BUFFER_OVERFLOW) && (Iterations < 3));
-
-		if (dwRetVal == NO_ERROR) {
-			std::vector<EligibleAdapter*> eligible_adapters;
-
-			// If successful, output some information from the data we received
-			pCurrAddresses = pAddresses;
-			while (pCurrAddresses) {
-
-				if (pCurrAddresses->OperStatus == 1) {
-
-					//addDebugText("\tAdapter name: %s", pCurrAddresses->AdapterName);
-
-					pUnicast = pCurrAddresses->FirstUnicastAddress;
-
-					for (int i = 0; pUnicast != NULL; i++)
-					{
-						if (pUnicast->Address.lpSockaddr->sa_family == AF_INET)
-						{
-							sockaddr_in *sa_in = (sockaddr_in *)pUnicast->Address.lpSockaddr;
-							ULONG dwMask = 0;
-							dwRetVal = ConvertLengthToIpv4Mask(pUnicast->OnLinkPrefixLength, &dwMask);
-							if (dwRetVal == NO_ERROR) {
-								EligibleAdapter *ea = new EligibleAdapter;
-								ea->name = pCurrAddresses->AdapterName;
-								ea->unicastHAddr = ntohl(((sockaddr_in *)pUnicast->Address.lpSockaddr)->sin_addr.s_addr);
-								ea->unicastHMask = ntohl(dwMask);
-								ea->minLinkSpeed = pCurrAddresses->ReceiveLinkSpeed;
-								if (pCurrAddresses->TransmitLinkSpeed < pCurrAddresses->ReceiveLinkSpeed)
-									ea->minLinkSpeed = pCurrAddresses->TransmitLinkSpeed;
-								ea->hasDnsServer = pCurrAddresses->FirstDnsServerAddress ? TRUE : FALSE;
-								eligible_adapters.push_back(ea);
-							}
-						}
-						pUnicast = pUnicast->Next;
-					}
-				}
-
-				pCurrAddresses = pCurrAddresses->Next;
-			}
-
-			EligibleAdapter* chosenAdapter = NULL;
-
-			for (EligibleAdapter* ea : eligible_adapters) {
-				if (xlive_preferred_network_adapter_name && strncmp(ea->name, xlive_preferred_network_adapter_name, 50) == 0) {
-					chosenAdapter = ea;
-					break;
-				}
-				if (ea->unicastHAddr == INADDR_LOOPBACK || ea->unicastHAddr == INADDR_BROADCAST || ea->unicastHAddr == INADDR_NONE)
-					continue;
-				if (!chosenAdapter) {
-					chosenAdapter = ea;
-					continue;
-				}
-				if ((ea->hasDnsServer && !chosenAdapter->hasDnsServer) ||
-					(ea->minLinkSpeed > chosenAdapter->minLinkSpeed)) {
-					chosenAdapter = ea;
-				}
-			}
-
-			if (chosenAdapter) {
-				memcpy_s(&xlive_network_adapter, sizeof(EligibleAdapter), chosenAdapter, sizeof(EligibleAdapter));
-				xlive_network_adapter.hBroadcast = ~(xlive_network_adapter.unicastHMask) | xlive_network_adapter.unicastHAddr;
-
-				unsigned int adapter_name_buflen = strnlen_s(chosenAdapter->name, 49) + 1;
-				xlive_network_adapter.name = (char*)malloc(adapter_name_buflen);
-				memcpy_s(xlive_network_adapter.name, adapter_name_buflen, chosenAdapter->name, adapter_name_buflen);
-				xlive_network_adapter.name[adapter_name_buflen - 1] = 0;
-
-				result = ERROR_SUCCESS;
-			}
-			else {
-				result = ERROR_NETWORK_UNREACHABLE;
-			}
-
-			for (EligibleAdapter* ea : eligible_adapters) {
-				delete ea;
-			}
-			eligible_adapters.clear();
+		if (dwRetVal == ERROR_BUFFER_OVERFLOW) {
+			HeapFree(GetProcessHeap(), 0, pAddresses);
+			pAddresses = NULL;
 		}
 		else {
-			char errorMsg[400];
-			snprintf(errorMsg, 400, "Call to GetAdaptersAddresses failed with error: %d", dwRetVal);
-			addDebugText(errorMsg);
-			if (dwRetVal == ERROR_NO_DATA)
-				addDebugText("No addresses were found for the requested parameters");
-			else {
-				LPSTR lpMsgBuf = NULL;
-				if (FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-					FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-					NULL, dwRetVal, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-					// Default language
-					(LPSTR)&lpMsgBuf, 0, NULL)) {
-					snprintf(errorMsg, 400, "Error: %s", lpMsgBuf);
-					addDebugText(errorMsg);
-					LocalFree(lpMsgBuf);
+			break;
+		}
+
+		Iterations++;
+		// 3 attempts max
+	} while ((dwRetVal == ERROR_BUFFER_OVERFLOW) && (Iterations < 3));
+
+	if (dwRetVal == NO_ERROR) {
+		std::vector<EligibleAdapter*> eligible_adapters;
+
+		// If successful, output some information from the data we received
+		pCurrAddresses = pAddresses;
+		while (pCurrAddresses) {
+
+			if (pCurrAddresses->OperStatus == 1) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+					, "GetNetworkAdapter Checking elegibility of adapter: %s - %ls."
+					, pCurrAddresses->AdapterName
+					, pCurrAddresses->Description
+				);
+
+				pUnicast = pCurrAddresses->FirstUnicastAddress;
+
+				for (int i = 0; pUnicast != NULL; i++)
+				{
+					if (pUnicast->Address.lpSockaddr->sa_family == AF_INET)
+					{
+						sockaddr_in *sa_in = (sockaddr_in *)pUnicast->Address.lpSockaddr;
+						ULONG dwMask = 0;
+						dwRetVal = ConvertLengthToIpv4Mask(pUnicast->OnLinkPrefixLength, &dwMask);
+						if (dwRetVal == NO_ERROR) {
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+								, "GetNetworkAdapter Adding eligible adapter: %s - %ls."
+								, pCurrAddresses->AdapterName
+								, pCurrAddresses->Description
+							);
+							EligibleAdapter *ea = new EligibleAdapter;
+							ea->name = pCurrAddresses->AdapterName;
+							ea->unicastHAddr = ntohl(((sockaddr_in *)pUnicast->Address.lpSockaddr)->sin_addr.s_addr);
+							ea->unicastHMask = ntohl(dwMask);
+							ea->minLinkSpeed = pCurrAddresses->ReceiveLinkSpeed;
+							if (pCurrAddresses->TransmitLinkSpeed < pCurrAddresses->ReceiveLinkSpeed)
+								ea->minLinkSpeed = pCurrAddresses->TransmitLinkSpeed;
+							ea->hasDnsServer = pCurrAddresses->FirstDnsServerAddress ? TRUE : FALSE;
+							eligible_adapters.push_back(ea);
+						}
+					}
+					pUnicast = pUnicast->Next;
 				}
 			}
-			result = ERROR_UNIDENTIFIED_ERROR;
+
+			pCurrAddresses = pCurrAddresses->Next;
 		}
 
-		if (pAddresses) {
-			HeapFree(GetProcessHeap(), 0, pAddresses);
+		EligibleAdapter* chosenAdapter = NULL;
+
+		for (EligibleAdapter* ea : eligible_adapters) {
+			if (xlive_preferred_network_adapter_name && strncmp(ea->name, xlive_preferred_network_adapter_name, 50) == 0) {
+				chosenAdapter = ea;
+				break;
+			}
+			if (ea->unicastHAddr == INADDR_LOOPBACK || ea->unicastHAddr == INADDR_BROADCAST || ea->unicastHAddr == INADDR_NONE)
+				continue;
+			if (!chosenAdapter) {
+				chosenAdapter = ea;
+				continue;
+			}
+			if ((ea->hasDnsServer && !chosenAdapter->hasDnsServer) ||
+				(ea->minLinkSpeed > chosenAdapter->minLinkSpeed)) {
+				chosenAdapter = ea;
+			}
 		}
 
+		if (chosenAdapter) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+				, "GetNetworkAdapter Selected network adapter: %s."
+				, chosenAdapter->name
+			);
+
+			memcpy_s(&xlive_network_adapter, sizeof(EligibleAdapter), chosenAdapter, sizeof(EligibleAdapter));
+			xlive_network_adapter.hBroadcast = ~(xlive_network_adapter.unicastHMask) | xlive_network_adapter.unicastHAddr;
+
+			unsigned int adapter_name_buflen = strnlen_s(chosenAdapter->name, 49) + 1;
+			xlive_network_adapter.name = (char*)malloc(adapter_name_buflen);
+			memcpy_s(xlive_network_adapter.name, adapter_name_buflen, chosenAdapter->name, adapter_name_buflen);
+			xlive_network_adapter.name[adapter_name_buflen - 1] = 0;
+
+			result = ERROR_SUCCESS;
+		}
+		else {
+			result = ERROR_NETWORK_UNREACHABLE;
+		}
+
+		for (EligibleAdapter* ea : eligible_adapters) {
+			delete ea;
+		}
+		eligible_adapters.clear();
+	}
+	else {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "GetNetworkAdapter GetAdaptersAddresses failed with error: 0x%08x."
+			, dwRetVal
+		);
+		if (dwRetVal == ERROR_NO_DATA) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "GetNetworkAdapter No addresses were found for the requested parameters."
+			);
+		}
+		else {
+			LPSTR lpMsgBuf = NULL;
+			if (FormatMessageA(
+				FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS
+				, NULL
+				, dwRetVal
+				, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT)
+				, (LPSTR)&lpMsgBuf // Default language
+				, 0
+				, NULL
+			)) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "GetNetworkAdapter GetAdaptersAddresses error: %s."
+					, lpMsgBuf
+				);
+				LocalFree(lpMsgBuf);
+			}
+		}
+		result = ERROR_UNIDENTIFIED_ERROR;
+	}
+
+	if (pAddresses) {
+		HeapFree(GetProcessHeap(), 0, pAddresses);
 	}
 
 	if (result != ERROR_SUCCESS) {
-		addDebugText("ERROR: Failed to find elegible network adapter. Using Loopback Address.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "GetNetworkAdapter Failed to find elegible network adapter. Using Loopback Address."
+		);
 		xlive_network_adapter.name = NULL;
 		xlive_network_adapter.unicastHAddr = INADDR_LOOPBACK;
 		xlive_network_adapter.unicastHMask = 0;
@@ -220,7 +243,9 @@ unsigned long LocalUserHostIpv4()
 	}
 	
 	if (resolvedHostAddr == INADDR_NONE) {
-		addDebugText("ERROR: Failed to obtain Local User IPv4 Address.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "LocalUserHostIpv4 Failed to obtain Local User IPv4 Address. Using Loopback Address."
+		);
 		resolvedHostAddr = INADDR_LOOPBACK;
 	}
 	LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
@@ -1091,9 +1116,10 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 		mutex_last_error = GetLastError();
 	} while (mutex_last_error != ERROR_SUCCESS);
 
-	char debugText[50];
-	snprintf(debugText, 50, "XLive Base Port %hd.", xlive_base_port);
-	addDebugText(debugText);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+		, "XLive Base Port %hd."
+		, xlive_base_port
+	);
 
 	INT error_XSocket = InitXSocket();
 	CreateLocalUser();

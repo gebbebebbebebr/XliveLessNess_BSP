@@ -20,8 +20,11 @@ void trace_func(const char *fxname);
 VOID XllnDebugBreak(char* message);
 VOID XllnDebugBreak(const char* message);
 
-#define TRACE_FX() \
-    trace_func(__func__)
+#ifdef _DEBUG
+#define TRACE_FX() trace_func(__func__)
+#else
+#define TRACE_FX()
+#endif
 
 #define FUNC_STUB() \
     extern void FUNC_STUB2(const char* func);\

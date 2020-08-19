@@ -39,8 +39,10 @@ INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len,
 	}
 	LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	if (result != 0) {
-		// TODO
-		addDebugText("result not 0!");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_ERROR
+			, "XSocketRecvFromCustomHelper handler returned non zero value 0x%08x."
+			, result
+		);
 	}
 	return 0;
 }
@@ -266,7 +268,10 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 	else if (propertyId == XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_REGISTER) {
 		// TODO
 		XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)newValue;
-		addDebugText(handler->Identifier);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_INFO
+			, "XLLN-Module is registering a recvfrom handler 0x%08x."
+			, handler->Identifier
+		);
 		DWORD idLen = strlen(handler->Identifier) + 1;
 		char *identifier = (char*)malloc(sizeof(char) * idLen);
 		strcpy_s(identifier, idLen, handler->Identifier);
@@ -618,7 +623,9 @@ INT InitXLLN(HMODULE hModule)
 	CreateThread(0, NULL, ThreadProc, (LPVOID)hModule, NULL, NULL);
 
 	xlive_title_id = 0;
-	addDebugText("ERROR: TODO title.cfg not found. Default Title ID set.");
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
+		, "TODO title.cfg not found. Default Title ID set."
+	);
 
 	return 0;
 }

@@ -36,10 +36,14 @@ typedef struct {
 static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen, bool isAsking)
 {
 	if (isAsking) {
-		addDebugText("XLLN: Send UNKNOWN_USER_ASK.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "Send UNKNOWN_USER_ASK."
+		);
 	}
 	else {
-		addDebugText("XLLN: Send UNKNOWN_USER_REPLY.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "Send UNKNOWN_USER_REPLY."
+		);
 	}
 	const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
 
@@ -267,14 +271,14 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 	uint16_t portXliveHBO = 0;
 	uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
 	if (resultNetter) {
-		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
 			, ipv4HBO
 			, resultNetter
 		);
 	}
 	else {
-		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:0x%04x."
 			, ipv4HBO
 			, ipv4XliveHBO
@@ -336,7 +340,7 @@ INT WINAPI XSocketRecv(SOCKET s, char * buf, int len, int flags)
 INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
 {
 	if (result > 0) {
-		addDebugText(__func__);
+		TRACE_FX();
 		const uint32_t ipv4XliveNBO = ((struct sockaddr_in*)from)->sin_addr.s_addr;
 		const uint32_t ipv4XliveHBO = ntohl(ipv4XliveNBO);
 		const uint16_t portXliveNBO = ((struct sockaddr_in*)from)->sin_port;
@@ -346,7 +350,10 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		if (buf[0] == XLLN_CUSTOM_PACKET_SENTINEL) {
 			const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
 			if (result < cpHeaderLen) {
-				addDebugText("XLLN: ERROR custom packet received was too short!");
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "XSocketRecvFromHelper Custom packet received was too short in length: 0x%08x."
+					, result
+				);
 				return 0;
 			}
 			switch (buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)]) {
@@ -373,10 +380,14 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				case XLLNCustomPacketType::UNKNOWN_USER_REPLY: {
 					// Less than since there is likely another packet pushed onto the end of this one.
 					if (result < cpHeaderLen + sizeof(NET_USER_ASK::HEAD)) {
-						addDebugText("XLLN: ERROR INVALID UNKNOWN_USER_<?> Recieved.");
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+							, "XSocketRecvFromHelper INVALID UNKNOWN_USER_<?> Recieved."
+						);
 						return 0;
 					}
-					addDebugText("XLLN: UNKNOWN_USER_<?> Recieved.");
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+						, "XSocketRecvFromHelper UNKNOWN_USER_<?> Recieved."
+					);
 					return 0;
 					//NET_USER_ASK &nea = *(NET_USER_ASK*)&buf[cpHeaderLen];
 					//nea.HEAD.xnAddr.ina.s_addr = niplong;
@@ -398,7 +409,9 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					//const int UnknownUserPacketLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * nea.HEAD.numOfPorts);
 
 					//if (packet_type == XLLNCustomPacketType::UNKNOWN_USER_ASK) {
-					//	addDebugText("XLLN: UNKNOWN_USER_ASK Sending REPLY.");
+					//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+					//		, "UNKNOWN_USER_ASK Sending REPLY."
+					//	);
 					//	packet_type = XLLNCustomPacketType::UNKNOWN_USER_REPLY;
 
 					//	SendUnknownUserAskRequest(s, (char*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, from, *fromlen, false);
@@ -418,7 +431,9 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					//	return 0;
 					//}
 					//else {
-					//	addDebugText("XLLN: UNKNOWN_USER_REPLY passing original data back.");
+					//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+					//		, "UNKNOWN_USER_REPLY passing original data back."
+					//	);
 					//	//CustomMemCpy(buf, (void*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, true);
 					//	result -= UnknownUserPacketLen;
 					//	return XSocketRecvFromHelper(result, s, (char*)((DWORD)buf + UnknownUserPacketLen), len, flags, from, fromlen);
@@ -430,7 +445,10 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					return 0;
 				}
 				default: {
-					addDebugText("XLLN: ERROR unknown custom packet type received!");
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_WARN
+						, "XSocketRecvFromHelper unknown custom packet type received 0x%02hhx."
+						, buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)]
+					);
 					break;
 				}
 			}
@@ -439,7 +457,10 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		if (result <= 0) {
 			RETURN_LE_ZERO:
 			if (result < 0) {
-				XllnDebugBreak("XLLN: ERROR XSocketRecvFrom result became less than 0!");
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_FATAL
+					, "XSocketRecvFromHelper result became less than 0! It is 0x%08x."
+					, result
+				);
 			}
 			return 0;
 		}
@@ -448,7 +469,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		uint16_t portHBO = 0;
 		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
 		if (resultNetter) {
-			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:0x%04x with error 0x%08x."
 				, ipv4XliveHBO
 				, portXliveHBO
@@ -460,7 +481,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 			//return 0;
 		}
 		else {
-			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr 0x%08x:0x%04x as instanceId:0x%08x port:0x%04x."
 				, ipv4XliveHBO
 				, portXliveHBO
@@ -516,7 +537,9 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 	uint16_t portXliveHBO = 0;
 
 	if (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY) {
-		addDebugText("XSocketSendTo() - Broadcast.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "XSocketSendTo Broadcasting packet."
+		);
 
 		((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_network_adapter.hBroadcast);
 
@@ -533,14 +556,14 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 
 		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
 		if (resultNetter) {
-			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
 				, ipv4HBO
 				, resultNetter
 			);
 		}
 		else {
-			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:0x%04x."
 				, ipv4HBO
 				, ipv4XliveHBO
@@ -559,7 +582,7 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 
 		if (result == SOCKET_ERROR) {
 			INT errorSendTo = WSAGetLastError();
-			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 				, "XllnSocketSendTo sendto() failed to send to address 0x%08x:0x%04x with error 0x%08x."
 				, ipv4XliveHBO
 				, portXliveHBO
@@ -587,7 +610,10 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 	// Check if the first byte is the same as the custom XLLN packets.
 	// If so wrap the data in a new message.
 	if (buf[0] == XLLN_CUSTOM_PACKET_SENTINEL) {
-		addDebugText("Stock 00 Packet Adapted.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "XSocketSendTo Stock 00 Packet Adapted."
+		);
+
 		const int altBufLen = len + 2;
 		// Check overflow condition.
 		if (altBufLen < 0) {
