@@ -2,8 +2,8 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <TitleBinary>Bioshock2Launcher.exe</TitleBinary>
-    <TitleBinaryPath>MP\Builds\Binaries\</TitleBinaryPath>
+    <TitleBinary>GFWL-Title.exe</TitleBinary>
+    <TitleBinaryPath>Engine\</TitleBinaryPath>
     <TitleBinaryArgs>-xllndebuglogblacklist=XLiveRender,XLiveInput,XLivePreTranslateMessage,XSocketRecvFrom,XSocketWSAGetLastError,XNotifyGetNext,XUserCheckPrivilege,XNetGetEthernetLinkStatus,XLivePBufferGetByte</TitleBinaryArgs>
   </PropertyGroup>
   <PropertyGroup />

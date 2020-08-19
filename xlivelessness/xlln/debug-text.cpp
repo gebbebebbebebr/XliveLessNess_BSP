@@ -105,7 +105,7 @@ void addDebugText(char* text) {
 		}
 		// Putting SetDlgItemText(...) inside the critical section freezes the program for some incredibly stupid reason when you try to login via the XLLN window interface.
 		LeaveCriticalSection(&xlln_critsec_debug_log);
-		SetDlgItemText(xlln_window_hwnd, MYWINDOW_TBX_TEST, debug_blarg);
+		SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_TEST, debug_blarg);
 	}
 	else {
 		LeaveCriticalSection(&xlln_critsec_debug_log);
@@ -162,7 +162,7 @@ void trace_func(const char *fxname)
 VOID XllnDebugBreak(char* message)
 {
 	addDebugText(message);
-	MessageBox(NULL, message, "Illegal State", MB_OK);
+	MessageBoxA(NULL, message, "Illegal State", MB_OK);
 	__debugbreak();
 }
 

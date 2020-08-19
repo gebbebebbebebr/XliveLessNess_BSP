@@ -156,7 +156,7 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 
 	xlive_users_info_changed[dwUserIndex] = TRUE;
 
-	SetDlgItemText(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
+	SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
 	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, bLiveEnabled ? BST_CHECKED : BST_UNCHECKED);
 
 	BOOL checked = TRUE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
@@ -377,7 +377,7 @@ static void UpdateUserInputBoxes(DWORD dwUserIndex)
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive)
 		bLiveEnabled = TRUE;
 
-	SetDlgItemText(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
+	SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
 	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, bLiveEnabled ? BST_CHECKED : BST_UNCHECKED);
 
 	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
@@ -417,7 +417,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 			CheckMenuItem(xlln_window_hMenu, MYMENU_ALWAYSTOP, checked ? MF_CHECKED : MF_UNCHECKED);
 		}
 		else if (wParam == MYMENU_ABOUT) {
-			MessageBox(hwnd,
+			MessageBoxA(hwnd,
 "Created by Glitchy Scripts,\n\
 with thanks to PermaNulled.\n\
 \n\
@@ -453,8 +453,8 @@ Executable Launch Parameters:\n\
 		}
 		else if (wParam == MYWINDOW_BTN_LOGIN) {
 			char jlbuffer[16];
-			GetDlgItemText(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer, 16);
-			SetDlgItemText(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer);
+			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer, 16);
+			SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer);
 
 			BOOL live_enabled = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) == BST_CHECKED;
 			DWORD result_login = XLLNLogin(xlln_login_player, live_enabled, NULL, strnlen_s(jlbuffer, 16) == 0 ? NULL : jlbuffer);

@@ -1,6 +1,5 @@
-/.vs
-/BinOut*
+/.vs/
+/bin*
+/obj/
 /enc_temp_folder
-/xlivelessness/Debug
-/xlivelessness/Release
 /xlivelessness/xlive.aps
