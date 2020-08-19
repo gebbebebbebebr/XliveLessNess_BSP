@@ -66,14 +66,15 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "Glitchy Scripts"
-            VALUE "FileDescription", "Games for Windows Livelessness. A complete Games For Windows Live (GFWL) rewrite."
+            VALUE "CompanyName", DLL_AUTHOR
+            VALUE "FileDescription", DLL_DESCRIPTION " " DLL_BUILD_DATE_STR
             VALUE "FileVersion", DLL_VERSION_STR
-            VALUE "InternalName", "xlive.dll"
-            VALUE "LegalCopyright", "Copyright (C) 2018"
-            VALUE "OriginalFilename", "xlive.dll"
-            VALUE "ProductName", "XLivelessness"
+            VALUE "InternalName", DLL_NAME
+            VALUE "LegalCopyright", "Copyright (C) " DLL_COPYRIGHT_YEAR
+            VALUE "OriginalFilename", DLL_NAME
+            VALUE "ProductName", DLL_TITLE
             VALUE "ProductVersion", DLL_VERSION_STR
+            VALUE "Comments", DLL_BUILD_DATE_STR
         END
     END
     BLOCK "VarFileInfo"

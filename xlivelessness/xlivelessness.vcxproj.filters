@@ -119,7 +119,7 @@
     <ClInclude Include="xlln\rand-name.hpp">
       <Filter>Source Files\xlln</Filter>
     </ClInclude>
-    <ClInclude Include="resource.hpp">
+    <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="xlive\xshow.hpp">

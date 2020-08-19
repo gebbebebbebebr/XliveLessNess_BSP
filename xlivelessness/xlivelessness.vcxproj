@@ -101,6 +101,9 @@
       <ModuleDefinitionFile>./xlive_exports.def</ModuleDefinitionFile>
       <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>PROJECT_NAME=$(ProjectName);BUILD_DATETIME_YEAR=$([System.DateTime]::Now.ToUniversalTime().ToString("yyyy"));BUILD_DATETIME_MONTH=$([System.DateTime]::Now.ToUniversalTime().ToString("MM"));BUILD_DATETIME_DAY=$([System.DateTime]::Now.ToUniversalTime().ToString("dd"));BUILD_DATETIME_HOUR=$([System.DateTime]::Now.ToUniversalTime().ToString("HH"));BUILD_DATETIME_MINUTE=$([System.DateTime]::Now.ToUniversalTime().ToString("mm"));BUILD_DATETIME_SECOND=$([System.DateTime]::Now.ToUniversalTime().ToString("ss"));%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -113,6 +116,9 @@
       <ModuleDefinitionFile>./xlive_exports.def</ModuleDefinitionFile>
       <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>PROJECT_NAME=$(ProjectName);BUILD_DATETIME_YEAR=$([System.DateTime]::Now.ToUniversalTime().ToString("yyyy"));BUILD_DATETIME_MONTH=$([System.DateTime]::Now.ToUniversalTime().ToString("MM"));BUILD_DATETIME_DAY=$([System.DateTime]::Now.ToUniversalTime().ToString("dd"));BUILD_DATETIME_HOUR=$([System.DateTime]::Now.ToUniversalTime().ToString("HH"));BUILD_DATETIME_MINUTE=$([System.DateTime]::Now.ToUniversalTime().ToString("mm"));BUILD_DATETIME_SECOND=$([System.DateTime]::Now.ToUniversalTime().ToString("ss"));%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <ClCompile>
@@ -129,6 +135,9 @@
       <ModuleDefinitionFile>./xlive_exports.def</ModuleDefinitionFile>
       <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>PROJECT_NAME=$(ProjectName);BUILD_DATETIME_YEAR=$([System.DateTime]::Now.ToUniversalTime().ToString("yyyy"));BUILD_DATETIME_MONTH=$([System.DateTime]::Now.ToUniversalTime().ToString("MM"));BUILD_DATETIME_DAY=$([System.DateTime]::Now.ToUniversalTime().ToString("dd"));BUILD_DATETIME_HOUR=$([System.DateTime]::Now.ToUniversalTime().ToString("HH"));BUILD_DATETIME_MINUTE=$([System.DateTime]::Now.ToUniversalTime().ToString("mm"));BUILD_DATETIME_SECOND=$([System.DateTime]::Now.ToUniversalTime().ToString("ss"));%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -145,6 +154,9 @@
       <ModuleDefinitionFile>./xlive_exports.def</ModuleDefinitionFile>
       <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ResourceCompile>
+      <PreprocessorDefinitions>PROJECT_NAME=$(ProjectName);BUILD_DATETIME_YEAR=$([System.DateTime]::Now.ToUniversalTime().ToString("yyyy"));BUILD_DATETIME_MONTH=$([System.DateTime]::Now.ToUniversalTime().ToString("MM"));BUILD_DATETIME_DAY=$([System.DateTime]::Now.ToUniversalTime().ToString("dd"));BUILD_DATETIME_HOUR=$([System.DateTime]::Now.ToUniversalTime().ToString("HH"));BUILD_DATETIME_MINUTE=$([System.DateTime]::Now.ToUniversalTime().ToString("mm"));BUILD_DATETIME_SECOND=$([System.DateTime]::Now.ToUniversalTime().ToString("ss"));%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
@@ -173,7 +185,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="dllmain.hpp" />
-    <ClInclude Include="resource.hpp" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="utils\util-hook.hpp" />
     <ClInclude Include="utils\utils.hpp" />
     <ClInclude Include="xlive\net-entity.hpp" />
