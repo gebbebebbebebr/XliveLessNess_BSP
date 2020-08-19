@@ -1,27 +1,36 @@
 #pragma once
 #include <map>
 
+typedef std::pair<uint32_t, uint16_t> IP_PORT;
+
 typedef struct {
-	DWORD userId;
-	XUID xuid;
-	WORD hPortBase;
-	std::map<std::pair<DWORD, WORD>, WORD> host_pair_mappings;
-	std::map<std::pair<DWORD, WORD>, WORD> host_pair_resolved;
-	XNADDR xnAddr;
+	uint32_t instanceId = 0; // a generated UUID for that instance.
+	uint16_t portBaseHBO = 0; // Base Port of the instance. Host Byte Order.
+	// host byte order.
+	//std::map<IP_PORT, IP_PORT> socket_map_internal_to_external;
+	// host byte order.
+	//std::map<IP_PORT, IP_PORT> socket_map_external_to_internal;
+	// host byte order.
+	std::map<uint16_t, IP_PORT> port_internal_to_external_addr;
+	// The reverse of port_internal_to_external_addr for lookup speed. host byte order.
+	std::map<IP_PORT, uint16_t> external_addr_to_port_internal;
+	
+	//IN_ADDR     ina;                            // IP address (zero if not static/DHCP)
+	//IN_ADDR     inaOnline;                      // Secure Addr. Online IP address (zero if not online)
+	//XUID xuid;
+	//BYTE abEnet[6]; // Ethernet MAC address.
+	//BYTE abOnline[20]; // Online identification
 } NET_ENTITY;
 
 extern CRITICAL_SECTION xlln_critsec_net_entity;
-extern std::map<DWORD, NET_ENTITY*> xlln_net_entity_userId;
+extern std::map<uint32_t, NET_ENTITY*> xlln_net_entity_instanceid_to_netentity;
+extern std::map<IP_PORT, NET_ENTITY*> xlln_net_entity_external_addr_to_netentity;
 
 BOOL InitNetEntity();
 BOOL UninitNetEntity();
 
-INT NetEntityGetSecure(NET_ENTITY *&ne, DWORD inaOnlineSecure);
-INT NetEntityGetSecure(XNADDR &xnAddr, DWORD inaOnlineSecure);
-INT NetEntityGetHostPairResolved(NET_ENTITY *&ne, std::pair<DWORD, WORD> host_pair);
-INT NetEntityGetHostPairBase(XNADDR &xnAddr, std::pair<DWORD, WORD> host_pair);
-INT NetEntityGetHostPairResolved(XNADDR &xnAddr, std::pair<DWORD, WORD> host_pair);
-
-INT NetEntityCreate(DWORD userId, WORD basePort, XUID *xuid, XNADDR *xnAddr);
-INT NetEntityAddMapping_(NET_ENTITY *ne, DWORD hIPv4, WORD portOffset, WORD portResolved);
-INT NetEntityCreate(XNADDR *pXnAddr);
+uint32_t NetterEntityEnsureExists(uint32_t instanceId, uint16_t portBaseHBO);
+uint32_t NetterEntityGetByInstanceId_(NET_ENTITY *netter, uint32_t instanceId);
+uint32_t NetterEntityGetAddrByInstanceIdPort(uint32_t *ipv4XliveHBO, uint16_t *portXliveHBO, uint32_t instanceId, uint16_t portHBO);
+uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint16_t *portHBO, uint32_t ipv4XliveHBO, uint16_t portXliveHBO);
+uint32_t NetterEntityGetXnaddrByInstanceId(XNADDR *xnaddr, XNKID *xnkid, uint32_t instanceId);

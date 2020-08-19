@@ -257,34 +257,47 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 {
 	TRACE_FX();
 
-	ULONG niplong = ((struct sockaddr_in*)name)->sin_addr.s_addr;
-	ULONG hIPv4 = ntohl(niplong);
-	WORD hPort = ntohs(((struct sockaddr_in*)name)->sin_port);
-	WORD port_base = (hPort / 1000) * 1000;
-	WORD port_offset = hPort % 1000;
+	const uint32_t ipv4NBO = ((struct sockaddr_in*)name)->sin_addr.s_addr;
+	// This address may (hopefully) be an instanceId.
+	const uint32_t ipv4HBO = ntohl(ipv4NBO);
+	const uint16_t portNBO = ((struct sockaddr_in*)name)->sin_port;
+	const uint16_t portHBO = ntohs(portNBO);
 
-	EnterCriticalSection(&xlln_critsec_net_entity);
-
-	NET_ENTITY *ne;
-	if (NetEntityGetSecure(ne, hIPv4) == ERROR_SUCCESS) {
-		DWORD nIPv4 = ne->xnAddr.ina.s_addr;
-		((struct sockaddr_in*)name)->sin_addr.s_addr = nIPv4;
-
-		std::pair<DWORD, WORD> host_pair = std::make_pair(ntohl(nIPv4), hPort);
-		if (ne->host_pair_mappings.count(host_pair)) {
-			((struct sockaddr_in*)name)->sin_port = htons(ne->host_pair_mappings[host_pair]);
-		}
-		else {
-			__debugbreak();
-		}
+	uint32_t ipv4XliveHBO = 0;
+	uint16_t portXliveHBO = 0;
+	uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
+	if (resultNetter) {
+		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
+			, ipv4HBO
+			, resultNetter
+		);
 	}
 	else {
-		__debugbreak();
+		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:0x%04x."
+			, ipv4HBO
+			, ipv4XliveHBO
+			, portXliveHBO
+		);
+
+		if (ipv4XliveHBO) {
+			((struct sockaddr_in*)name)->sin_addr.s_addr = htonl(ipv4XliveHBO);
+		}
+		if (portXliveHBO) {
+			((struct sockaddr_in*)name)->sin_port = htons(portXliveHBO);
+		}
 	}
 
-	LeaveCriticalSection(&xlln_critsec_net_entity);
-
 	INT result = connect(s, name, namelen);
+
+	if (ipv4XliveHBO) {
+		((struct sockaddr_in*)name)->sin_addr.s_addr = ipv4NBO;
+	}
+	if (portXliveHBO) {
+		((struct sockaddr_in*)name)->sin_port = portNBO;
+	}
+
 	return result;
 }
 
@@ -324,9 +337,11 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 {
 	if (result > 0) {
 		addDebugText(__func__);
-		const u_long niplong = ((struct sockaddr_in*)from)->sin_addr.s_addr;
-		const WORD hPort = ntohs(((struct sockaddr_in*)from)->sin_port);
-		const std::pair<DWORD, WORD> host_pair_resolved = std::make_pair(ntohl(niplong), hPort);
+		const uint32_t ipv4XliveNBO = ((struct sockaddr_in*)from)->sin_addr.s_addr;
+		const uint32_t ipv4XliveHBO = ntohl(ipv4XliveNBO);
+		const uint16_t portXliveNBO = ((struct sockaddr_in*)from)->sin_port;
+		const uint16_t portXliveHBO = ntohs(portXliveNBO);
+		const IP_PORT externalAddrHBO = std::make_pair(ipv4XliveHBO, portXliveHBO);
 
 		if (buf[0] == XLLN_CUSTOM_PACKET_SENTINEL) {
 			const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
@@ -362,55 +377,56 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 						return 0;
 					}
 					addDebugText("XLLN: UNKNOWN_USER_<?> Recieved.");
-					NET_USER_ASK &nea = *(NET_USER_ASK*)&buf[cpHeaderLen];
-					nea.HEAD.xnAddr.ina.s_addr = niplong;
-					NetEntityCreate(&nea.HEAD.xnAddr);
-					DWORD userId = ntohl(nea.HEAD.xnAddr.inaOnline.s_addr) >> 8;
-					ULONG hIPv4 = ntohl(niplong);
-					EnterCriticalSection(&xlln_critsec_net_entity);
-					if (xlln_net_entity_userId.count(userId)) {
-						NET_ENTITY *ne = xlln_net_entity_userId[userId];
-						//TODO replace with hole punshing
-						for (DWORD i = 0; i < nea.HEAD.numOfPorts; i++) {
-							NetEntityAddMapping_(ne, hIPv4, nea.ports[i], nea.ports[i]);
-						}
-					}
-					LeaveCriticalSection(&xlln_critsec_net_entity);
+					return 0;
+					//NET_USER_ASK &nea = *(NET_USER_ASK*)&buf[cpHeaderLen];
+					//nea.HEAD.xnAddr.ina.s_addr = niplong;
+					//NetEntityCreate(&nea.HEAD.xnAddr);
+					//DWORD userId = ntohl(nea.HEAD.xnAddr.inaOnline.s_addr) >> 8;
+					//ULONG hIPv4 = ntohl(niplong);
+					//EnterCriticalSection(&xlln_critsec_net_entity);
+					//if (xlln_net_entity_userId.count(userId)) {
+					//	NET_ENTITY *ne = xlln_net_entity_userId[userId];
+					//	//TODO replace with hole punshing
+					//	for (DWORD i = 0; i < nea.HEAD.numOfPorts; i++) {
+					//		NetEntityAddMapping_(ne, hIPv4, nea.ports[i], nea.ports[i]);
+					//	}
+					//}
+					//LeaveCriticalSection(&xlln_critsec_net_entity);
 
-					XLLNCustomPacketType::Type &packet_type = *(XLLNCustomPacketType::Type*)&buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)];
+					//XLLNCustomPacketType::Type &packet_type = *(XLLNCustomPacketType::Type*)&buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)];
 
-					const int UnknownUserPacketLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * nea.HEAD.numOfPorts);
+					//const int UnknownUserPacketLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * nea.HEAD.numOfPorts);
 
-					if (packet_type == XLLNCustomPacketType::UNKNOWN_USER_ASK) {
-						addDebugText("XLLN: UNKNOWN_USER_ASK Sending REPLY.");
-						packet_type = XLLNCustomPacketType::UNKNOWN_USER_REPLY;
+					//if (packet_type == XLLNCustomPacketType::UNKNOWN_USER_ASK) {
+					//	addDebugText("XLLN: UNKNOWN_USER_ASK Sending REPLY.");
+					//	packet_type = XLLNCustomPacketType::UNKNOWN_USER_REPLY;
 
-						SendUnknownUserAskRequest(s, (char*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, from, *fromlen, false);
+					//	SendUnknownUserAskRequest(s, (char*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, from, *fromlen, false);
 
-						//TODO for efficiency can use current data if enough space avail.
-						/*nea.HEAD.xnAddr = xlive_local_xnAddr;
+					//	//TODO for efficiency can use current data if enough space avail.
+					//	/*nea.HEAD.xnAddr = xlive_local_xnAddr;
 
-						EnterCriticalSection(&xlive_critsec_sockets);
+					//	EnterCriticalSection(&xlive_critsec_sockets);
 
-						if (nea.HEAD.numOfPorts < xlive_sockets.size()) {
+					//	if (nea.HEAD.numOfPorts < xlive_sockets.size()) {
 
-						}
+					//	}
 
-						LeaveCriticalSection(&xlive_critsec_sockets);
+					//	LeaveCriticalSection(&xlive_critsec_sockets);
 
-						INT bytesSent = sendto(s, buf, result, 0, from, *fromlen);*/
-						return 0;
-					}
-					else {
-						addDebugText("XLLN: UNKNOWN_USER_REPLY passing original data back.");
-						//CustomMemCpy(buf, (void*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, true);
-						result -= UnknownUserPacketLen;
-						return XSocketRecvFromHelper(result, s, (char*)((DWORD)buf + UnknownUserPacketLen), len, flags, from, fromlen);
-					}
+					//	INT bytesSent = sendto(s, buf, result, 0, from, *fromlen);*/
+					//	return 0;
+					//}
+					//else {
+					//	addDebugText("XLLN: UNKNOWN_USER_REPLY passing original data back.");
+					//	//CustomMemCpy(buf, (void*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, true);
+					//	result -= UnknownUserPacketLen;
+					//	return XSocketRecvFromHelper(result, s, (char*)((DWORD)buf + UnknownUserPacketLen), len, flags, from, fromlen);
+					//}
 				}
 				case XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE:
 				case XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE: {
-					LiveOverLanRecieve(s, from, *fromlen, host_pair_resolved, (const LIVE_SERVER_DETAILS*)buf, result);
+					LiveOverLanRecieve(s, from, *fromlen, externalAddrHBO, (const LIVE_SERVER_DETAILS*)buf, result);
 					return 0;
 				}
 				default: {
@@ -428,28 +444,37 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 			return 0;
 		}
 
-		EnterCriticalSection(&xlln_critsec_net_entity);
+		uint32_t instanceId = 0;
+		uint16_t portHBO = 0;
+		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
+		if (resultNetter) {
+			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:0x%04x with error 0x%08x."
+				, ipv4XliveHBO
+				, portXliveHBO
+				, resultNetter
+			);
 
-		NET_ENTITY *ne;
-		if (NetEntityGetHostPairResolved(ne, host_pair_resolved) == ERROR_SUCCESS) {
-			((struct sockaddr_in*)from)->sin_addr.s_addr = ne->xnAddr.inaOnline.s_addr;
-
-			if (ne->host_pair_resolved.count(host_pair_resolved)) {
-				((struct sockaddr_in*)from)->sin_port = htons(ne->host_pair_resolved[host_pair_resolved]);
-			}
-			else {
-				LeaveCriticalSection(&xlln_critsec_net_entity);
-				SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
-				return 0;
-			}
+			// TODO Netter Entity should we be asking at all? should we ignore to prevent infinite sends?
+			//SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
+			//return 0;
 		}
 		else {
-			LeaveCriticalSection(&xlln_critsec_net_entity);
-			SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
-			return 0;
-		}
+			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr 0x%08x:0x%04x as instanceId:0x%08x port:0x%04x."
+				, ipv4XliveHBO
+				, portXliveHBO
+				, instanceId
+				, portHBO
+			);
 
-		LeaveCriticalSection(&xlln_critsec_net_entity);
+			if (ipv4XliveHBO) {
+				((struct sockaddr_in*)from)->sin_addr.s_addr = htonl(instanceId);
+			}
+			if (portXliveHBO) {
+				((struct sockaddr_in*)from)->sin_port = htons(portHBO);
+			}
+		}
 	}
 	return result;
 }
@@ -476,54 +501,78 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 	TRACE_FX();
 	INT result = SOCKET_ERROR;
 
-	WORD nPort = ((struct sockaddr_in*)to)->sin_port;
-	WORD hPort = ntohs(nPort);
-	ULONG nIPv4 = ((struct sockaddr_in*)to)->sin_addr.s_addr;
-	ULONG hIPv4 = ntohl(nIPv4);
-	WORD port_base = (hPort / 1000) * 1000;
-	WORD port_offset = hPort % 1000;
-	ADDRESS_FAMILY af = ((struct sockaddr_in*)to)->sin_family;
+	const uint32_t ipv4NBO = ((struct sockaddr_in*)to)->sin_addr.s_addr;
+	// This address may (hopefully) be an instanceId.
+	const uint32_t ipv4HBO = ntohl(ipv4NBO);
+	const uint16_t portNBO = ((struct sockaddr_in*)to)->sin_port;
+	const uint16_t portHBO = ntohs(portNBO);
 
-	if (hIPv4 == INADDR_BROADCAST || hIPv4 == INADDR_ANY) {
+	const uint16_t portOffset = portHBO % 100;
+	const uint16_t portBase = portHBO - portOffset;
+
+	//ADDRESS_FAMILY addrFam = ((struct sockaddr_in*)to)->sin_family;
+
+	uint32_t ipv4XliveHBO = 0;
+	uint16_t portXliveHBO = 0;
+
+	if (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY) {
 		addDebugText("XSocketSendTo() - Broadcast.");
 
-		((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(xlive_network_adapter.hBroadcast);
+		((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_network_adapter.hBroadcast);
 
-		for (WORD port_base = 1000; port_base <= 6000; port_base += 1000) {
-			((struct sockaddr_in*)to)->sin_port = htons(port_base + port_offset);
+		// TODO broadcast better.
+		for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
+			((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO = (portBaseInc + portOffset));
+
 			result = sendto(s, buf, len, 0, to, tolen);
 		}
+
+		result = len;
 	}
 	else {
 
-		EnterCriticalSection(&xlln_critsec_net_entity);
-
-		NET_ENTITY *ne;
-		if (NetEntityGetSecure(ne, hIPv4) == ERROR_SUCCESS) {
-			DWORD nIPv4 = ne->xnAddr.ina.s_addr;
-			((struct sockaddr_in*)to)->sin_addr.s_addr = nIPv4;
-
-			std::pair<DWORD, WORD> hIPv4PortOffset = std::make_pair(ntohl(nIPv4), ne->hPortBase + port_offset);
-			if (ne->host_pair_mappings.count(hIPv4PortOffset)) {
-				((struct sockaddr_in*)to)->sin_port = htons(ne->host_pair_mappings[hIPv4PortOffset]);
-			}
-			else {
-				__debugbreak();
-			}
+		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
+		if (resultNetter) {
+			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
+				, ipv4HBO
+				, resultNetter
+			);
 		}
 		else {
-			addDebugText("ERROR: Unable to find XNADDR, sending anyway.");
-			//__debugbreak();
+			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:0x%04x."
+				, ipv4HBO
+				, ipv4XliveHBO
+				, portXliveHBO
+			);
+
+			if (ipv4XliveHBO) {
+				((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO);
+			}
+			if (portXliveHBO) {
+				((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO);
+			}
 		}
 
-		LeaveCriticalSection(&xlln_critsec_net_entity);
-
 		result = sendto(s, buf, len, flags, to, tolen);
+
+		if (result == SOCKET_ERROR) {
+			INT errorSendTo = WSAGetLastError();
+			XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "XllnSocketSendTo sendto() failed to send to address 0x%08x:0x%04x with error 0x%08x."
+				, ipv4XliveHBO
+				, portXliveHBO
+				, errorSendTo
+			);
+		}
 	}
 
-	if (result == SOCKET_ERROR) {
-		INT Error = WSAGetLastError();
-		__debugbreak();
+	if (ipv4XliveHBO) {
+		((struct sockaddr_in*)to)->sin_addr.s_addr = ipv4NBO;
+	}
+	if (portXliveHBO) {
+		((struct sockaddr_in*)to)->sin_port = portNBO;
 	}
 
 	return result;

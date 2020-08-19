@@ -2,6 +2,7 @@
 #include "xdefs.h"
 #include "xnet.h"
 #include "xlive.h"
+#include "../xlln/xlln.h"
 #include "../xlln/DebugText.h"
 #include "xsocket.h"
 #include "NetEntity.h"
@@ -90,18 +91,30 @@ INT WINAPI XNetUnregisterKey(const XNKID* pxnkid)
 INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 {
 	TRACE_FX();
-	ULONG secure = pxna->inaOnline.s_addr;
 
-	NetEntityCreate(pxna);
+	uint32_t instanceId = ntohl(pxna->inaOnline.s_addr);
+	uint16_t portBaseHBO = ntohs(pxna->wPortOnline);
+	uint32_t ipv4HBO = ntohl(pxna->ina.s_addr);
 
-	if (secure != 0) {
-		pina->s_addr = secure;
-	}
-	else {
-		XllnDebugBreak("ERROR XNetXnAddrToInAddr NULL inaOnline.");
+	uint32_t resultNetter = NetterEntityEnsureExists(instanceId, portBaseHBO);
+	if (resultNetter) {
+		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "XNetXnAddrToInAddr NetterEntityEnsureExists failed to create NetEntity 0x%08x:0x%04x with error 0x%08x."
+			, instanceId
+			, portBaseHBO
+			, resultNetter
+		);
 		//*pina = 0;
 		return E_UNEXPECTED;
 	}
+
+	XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "XNetXnAddrToInAddr NetterEntityEnsureExists created 0x%08x:0x%04x."
+		, instanceId
+		, portBaseHBO
+	);
+
+	pina->s_addr = instanceId;
 
 	return S_OK;
 }
@@ -125,14 +138,24 @@ INT WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR *pxna, XNKID *pxnkid)
 {
 	TRACE_FX();
 
-	DWORD hSecure = ntohl(ina.s_addr);
+	uint32_t instanceId = ntohl(ina.s_addr);
 
-	if (NetEntityGetSecure(*pxna, hSecure) == ERROR_SUCCESS) {
-		return S_OK;
+	uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(pxna, pxnkid, instanceId);
+	if (resultNetter) {
+		XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "XNetInAddrToXnAddr NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
+			, instanceId
+			, resultNetter
+		);
+		return E_FAIL;
 	}
 
-	__debugbreak();
-	return E_FAIL;
+	XLLNDebugLogF(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "XNetInAddrToXnAddr NetterEntityGetXnaddrByInstanceId found 0x%08x."
+		, instanceId
+	);
+
+	return S_OK;
 }
 
 // #61

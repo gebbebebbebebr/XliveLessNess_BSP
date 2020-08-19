@@ -16,8 +16,13 @@ static BOOL xlive_xlocator_initialized = FALSE;
 CRITICAL_SECTION xlive_xlocator_enumerators_lock;
 std::map<HANDLE, std::vector<std::pair<DWORD, WORD>>> xlive_xlocator_enumerators;
 
+// TODO remove this function when NAT is solved.
+VOID WINAPI OverrideWIPLOL(LIVE_SERVER_DETAILS *lsd)
+{
+}
+
 CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
-VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = NULL;
+VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = OverrideWIPLOL;
 
 std::map<std::pair<DWORD, WORD>, XLOCATOR_SESSION*> liveoverlan_sessions;
 CRITICAL_SECTION liveoverlan_sessions_lock;
@@ -463,40 +468,40 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 			addDebugText("LiveOverLAN: ERROR Received INVALID Broadcast Advertise.");
 			return;
 		}
+		// TODO Netter Entity
+		//XLOCATOR_SEARCHRESULT *searchresult = 0;
 
-		XLOCATOR_SEARCHRESULT *searchresult = 0;
+		//XNADDR xnAddr;
+		//if (NetEntityGetHostPairResolved(xnAddr, host_pair_resolved) != ERROR_SUCCESS) {
+		//	addDebugText("Received Broadcast - NO USER");
+		//	SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen);
+		//}
+		//else if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
+		//	addDebugText("Received Broadcast");
+		//	EnterCriticalSection(&liveoverlan_sessions_lock);
+		//	// Delete the old entry if there already is one.
+		//	if (liveoverlan_sessions.count(host_pair_resolved)) {
+		//		XLOCATOR_SESSION *oldsession = liveoverlan_sessions[host_pair_resolved];
+		//		LiveOverLanDelete(oldsession->searchresult);
+		//		delete oldsession;
+		//	}
+		//	// fill in serverAddress as it is not populated from LOLBReceive.
+		//	// If the online address is zero the user is not online / it is the relay server.
+		//	if (xnAddr.inaOnline.s_addr != 0) {
+		//		searchresult->serverAddress = xnAddr;
+		//	}
 
-		XNADDR xnAddr;
-		if (NetEntityGetHostPairResolved(xnAddr, host_pair_resolved) != ERROR_SUCCESS) {
-			addDebugText("Received Broadcast - NO USER");
-			SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen);
-		}
-		else if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
-			addDebugText("Received Broadcast");
-			EnterCriticalSection(&liveoverlan_sessions_lock);
-			// Delete the old entry if there already is one.
-			if (liveoverlan_sessions.count(host_pair_resolved)) {
-				XLOCATOR_SESSION *oldsession = liveoverlan_sessions[host_pair_resolved];
-				LiveOverLanDelete(oldsession->searchresult);
-				delete oldsession;
-			}
-			// fill in serverAddress as it is not populated from LOLBReceive.
-			// If the online address is zero the user is not online / it is the relay server.
-			if (xnAddr.inaOnline.s_addr != 0) {
-				searchresult->serverAddress = xnAddr;
-			}
-
-			XLOCATOR_SESSION *newsession = new XLOCATOR_SESSION;
-			newsession->searchresult = searchresult;
-			time_t ltime;
-			time(&ltime);
-			newsession->broadcastTime = (unsigned long)ltime;
-			liveoverlan_sessions[host_pair_resolved] = newsession;
-			LeaveCriticalSection(&liveoverlan_sessions_lock);
-		}
-		else {
-			addDebugText("LiveOverLAN: ERROR Parsing Received Broadcast Advertise.");
-		}
+		//	XLOCATOR_SESSION *newsession = new XLOCATOR_SESSION;
+		//	newsession->searchresult = searchresult;
+		//	time_t ltime;
+		//	time(&ltime);
+		//	newsession->broadcastTime = (unsigned long)ltime;
+		//	liveoverlan_sessions[host_pair_resolved] = newsession;
+		//	LeaveCriticalSection(&liveoverlan_sessions_lock);
+		//}
+		//else {
+		//	addDebugText("LiveOverLAN: ERROR Parsing Received Broadcast Advertise.");
+		//}
 	}
 }
 static VOID LiveOverLanStartBroadcast()
