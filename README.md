@@ -1,4 +1,4 @@
-# XLLN - xlivelessness
+# XLiveLessNess (XLLN)
 Games for Windows LiveLessNess. A complete Games For Windows - LIVE<sup>TM</sup> (GFWL) rewrite.
 
 ## Purpose
