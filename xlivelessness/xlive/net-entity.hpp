@@ -2,6 +2,7 @@
 #include <map>
 
 typedef std::pair<uint32_t, uint16_t> IP_PORT;
+typedef std::pair<uint16_t, int16_t> PORT_INTERNAL;
 
 typedef struct {
 	uint32_t instanceId = 0; // a generated UUID for that instance.
@@ -12,8 +13,9 @@ typedef struct {
 	//std::map<IP_PORT, IP_PORT> socket_map_external_to_internal;
 	// host byte order.
 	std::map<uint16_t, IP_PORT> port_internal_to_external_addr;
+	std::map<int16_t, IP_PORT> port_internal_offset_to_external_addr;
 	// The reverse of port_internal_to_external_addr for lookup speed. host byte order.
-	std::map<IP_PORT, uint16_t> external_addr_to_port_internal;
+	std::map<IP_PORT, PORT_INTERNAL> external_addr_to_port_internal;
 	
 	//IN_ADDR     ina;                            // IP address (zero if not static/DHCP)
 	//IN_ADDR     inaOnline;                      // Secure Addr. Online IP address (zero if not online)
@@ -34,3 +36,4 @@ uint32_t NetterEntityGetByInstanceId_(NET_ENTITY *netter, uint32_t instanceId);
 uint32_t NetterEntityGetAddrByInstanceIdPort(uint32_t *ipv4XliveHBO, uint16_t *portXliveHBO, uint32_t instanceId, uint16_t portHBO);
 uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint16_t *portHBO, uint32_t ipv4XliveHBO, uint16_t portXliveHBO);
 uint32_t NetterEntityGetXnaddrByInstanceId(XNADDR *xnaddr, XNKID *xnkid, uint32_t instanceId);
+uint32_t NetterEntityAddAddrByInstanceId(uint32_t instanceId, uint16_t portInternalHBO, int16_t portInternalOffsetHBO, uint32_t addrExternalHBO, uint16_t portExternalHBO);

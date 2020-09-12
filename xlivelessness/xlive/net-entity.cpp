@@ -8,27 +8,22 @@ CRITICAL_SECTION xlln_critsec_net_entity;
 std::map<uint32_t, NET_ENTITY*> xlln_net_entity_instanceid_to_netentity;
 std::map<IP_PORT, NET_ENTITY*> xlln_net_entity_external_addr_to_netentity;
 
-NET_ENTITY* MallocNetEntity()
-{
-	NET_ENTITY *netter = new NET_ENTITY;
-	netter->port_internal_to_external_addr.clear();
-	netter->external_addr_to_port_internal.clear();
-
-	return netter;
-}
-
 uint32_t NetterEntityClearPortMappings_(NET_ENTITY *netter)
 {
-	netter->port_internal_to_external_addr.clear();
+	for (auto const &mapping : netter->external_addr_to_port_internal) {
+		xlln_net_entity_external_addr_to_netentity.erase(mapping.first);
+	}
 	netter->external_addr_to_port_internal.clear();
-	// TODO remove all mappings from xlln_net_entity_external_addr_to_netentity
+	netter->port_internal_to_external_addr.clear();
+	netter->port_internal_offset_to_external_addr.clear();
+
 	return ERROR_SUCCESS;
 }
 
 uint32_t NetterEntityEnsureExists_(uint32_t instanceId, uint16_t portBaseHBO)
 {
 	if (!xlln_net_entity_instanceid_to_netentity.count(instanceId)) {
-		NET_ENTITY *netter = MallocNetEntity();
+		NET_ENTITY *netter = new NET_ENTITY;
 		netter->instanceId = instanceId;
 		netter->portBaseHBO = portBaseHBO;
 
@@ -124,7 +119,7 @@ uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint1
 			*instanceId = netter->instanceId;
 			IP_PORT externalAddr = std::make_pair(ipv4XliveHBO, portXliveHBO);
 			if (netter->external_addr_to_port_internal.count(externalAddr)) {
-				*portHBO = netter->external_addr_to_port_internal[externalAddr];
+				*portHBO = netter->external_addr_to_port_internal[externalAddr].first;
 				result = ERROR_SUCCESS;
 			}
 			else {
@@ -183,6 +178,44 @@ uint32_t NetterEntityGetXnaddrByInstanceId(XNADDR *xnaddr, XNKID *xnkid, uint32_
 	uint32_t result = ERROR_UNHANDLED_ERROR;
 	EnterCriticalSection(&xlln_critsec_net_entity);
 	result = NetterEntityGetXnaddrByInstanceId_(xnaddr, xnkid, instanceId);
+	LeaveCriticalSection(&xlln_critsec_net_entity);
+	return result;
+}
+
+uint32_t NetterEntityAddAddrByInstanceId_(uint32_t instanceId, uint16_t portInternalHBO, int16_t portInternalOffsetHBO, uint32_t addrExternalHBO, uint16_t portExternalHBO)
+{
+	NET_ENTITY *netter = 0;
+	uint32_t resultGetInstanceId = NetterEntityGetByInstanceId_(netter, instanceId);
+	if (resultGetInstanceId) {
+		return resultGetInstanceId;
+	}
+	else if (!netter) {
+		return ERROR_NOT_FOUND;
+	}
+
+	// Erace existing mapping if one does exist.
+	if (netter->port_internal_to_external_addr.count(portInternalHBO)) {
+		IP_PORT addrPortOld = netter->port_internal_to_external_addr[portInternalHBO];
+		netter->external_addr_to_port_internal.erase(addrPortOld);
+		xlln_net_entity_external_addr_to_netentity.erase(addrPortOld);
+	}
+
+	PORT_INTERNAL internalPort = std::make_pair(portInternalHBO, portInternalOffsetHBO);
+	IP_PORT addrPort = std::make_pair(addrExternalHBO, portExternalHBO);
+
+	netter->port_internal_to_external_addr[portInternalHBO] = addrPort;
+	netter->port_internal_offset_to_external_addr[portInternalOffsetHBO] = addrPort;
+	netter->external_addr_to_port_internal[addrPort] = internalPort;
+
+	xlln_net_entity_external_addr_to_netentity[addrPort] = netter;
+
+	return ERROR_SUCCESS;
+}
+uint32_t NetterEntityAddAddrByInstanceId(uint32_t instanceId, uint16_t portInternalHBO, int16_t portInternalOffsetHBO, uint32_t addrExternalHBO, uint16_t portExternalHBO)
+{
+	uint32_t result = ERROR_UNHANDLED_ERROR;
+	EnterCriticalSection(&xlln_critsec_net_entity);
+	result = NetterEntityAddAddrByInstanceId_(instanceId, portInternalHBO, portInternalOffsetHBO, addrExternalHBO, portExternalHBO);
 	LeaveCriticalSection(&xlln_critsec_net_entity);
 	return result;
 }

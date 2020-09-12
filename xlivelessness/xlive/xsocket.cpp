@@ -13,25 +13,18 @@
 
 WORD xlive_base_port = 2000;
 BOOL xlive_netsocket_abort = FALSE;
-static SOCKET xlive_VDP_socket = NULL;
 SOCKET xlive_liveoverlan_socket = NULL;
 
-struct SocketInfo {
-	int protocol;
-	WORD hPort;
+struct SOCKET_MAPPING_INFO {
+	int32_t type = 0;
+	int32_t protocol = 0;
+	bool isVdpProtocol = false;
+	uint16_t portHBO = 0;
+	int16_t portOffsetHBO = -1;
 };
 static CRITICAL_SECTION xlive_critsec_sockets;
-static std::map<SOCKET, SocketInfo*> xlive_sockets;
-
-#pragma pack(push, 1) // Save then set byte alignment setting.
-typedef struct {
-	struct {
-		XNADDR xnAddr;
-		WORD numOfPorts;
-	} HEAD;
-	WORD ports[1];
-} NET_USER_ASK;
-#pragma pack(pop) // Return to original alignment setting.
+static std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
+static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
 static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen, bool isAsking)
 {
@@ -47,6 +40,7 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, so
 	}
 	const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
 
+	/*
 	EnterCriticalSection(&xlive_critsec_sockets);
 
 	const int cpUUHeaderLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * xlive_sockets.size());
@@ -84,6 +78,7 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, so
 	}
 
 	free(cpBuf);
+	*/
 }
 
 VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
@@ -114,6 +109,16 @@ static VOID CustomMemCpy(void *dst, void *src, rsize_t len, bool directionAscend
 SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 {
 	TRACE_FX();
+	if (type == 0 && protocol == 0) {
+		type = SOCK_STREAM;
+		protocol = IPPROTO_TCP;
+	}
+	else if (type == SOCK_DGRAM && protocol == 0) {
+		protocol = IPPROTO_UDP;
+	}
+	else if (type == SOCK_STREAM && protocol == 0) {
+		protocol = IPPROTO_TCP;
+	}
 	bool vdp = false;
 	if (protocol == IPPROTO_VDP) {
 		vdp = true;
@@ -123,20 +128,30 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 
 	SOCKET result = socket(af, type, protocol);
 
-	if (vdp) {
-		//("Socket: %08X was VDP", result);
-		xlive_VDP_socket = result;
-	}
-
 	if (result == INVALID_SOCKET) {
-		__debugbreak();
+		DWORD errorSocketCreate = GetLastError();
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "Socket create failed: 0x%08x. Type: %d. Protocol: %d."
+			, errorSocketCreate
+			, type
+			, protocol
+		);
 	}
 	else {
-		SocketInfo* si = (SocketInfo*)malloc(sizeof(SocketInfo));
-		si->protocol = protocol;
-		si->hPort = 0;
+		if (vdp) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+				, "VDP socket created: 0x%08x."
+				, result
+			);
+		}
+
+		SOCKET_MAPPING_INFO* socketMappingInfo = new SOCKET_MAPPING_INFO;
+		socketMappingInfo->type = type;
+		socketMappingInfo->protocol = protocol;
+		socketMappingInfo->isVdpProtocol = vdp;
+
 		EnterCriticalSection(&xlive_critsec_sockets);
-		xlive_sockets[result] = si;
+		xlive_socket_info[result] = socketMappingInfo;
 		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 
@@ -149,11 +164,17 @@ INT WINAPI XSocketClose(SOCKET s)
 	TRACE_FX();
 	INT result = closesocket(s);
 
-	EnterCriticalSection(&xlive_critsec_sockets);
-	SocketInfo *si = xlive_sockets[s];
-	free(si);
-	xlive_sockets.erase(s);
-	LeaveCriticalSection(&xlive_critsec_sockets);
+	{
+		EnterCriticalSection(&xlive_critsec_sockets);
+		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
+		xlive_socket_info.erase(s);
+		if (socketMappingInfo->portOffsetHBO != -1) {
+			xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
+		}
+		LeaveCriticalSection(&xlive_critsec_sockets);
+
+		delete socketMappingInfo;
+	}
 
 	return result;
 }
@@ -165,7 +186,12 @@ INT WINAPI XSocketShutdown(SOCKET s, int how)
 	INT result = shutdown(s, how);
 
 	EnterCriticalSection(&xlive_critsec_sockets);
-	xlive_sockets[s]->hPort = 0;
+	SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
+	if (socketMappingInfo->portOffsetHBO != -1) {
+		xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
+	}
+	socketMappingInfo->portHBO = 0;
+	socketMappingInfo->portOffsetHBO = -1;
 	LeaveCriticalSection(&xlive_critsec_sockets);
 
 	return result;
@@ -223,36 +249,88 @@ INT WINAPI XSocketGetPeerName(SOCKET s, struct sockaddr *name, int *namelen)
 SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 {
 	TRACE_FX();
-	WORD hPort = ntohs(((struct sockaddr_in*)name)->sin_port);
-	WORD port_base = (hPort / 1000) * 1000;
-	WORD port_offset = hPort % 1000;
-	WORD hPortShift = xlive_base_port + port_offset;
 
-	if (port_offset == 0) {
-		xlive_liveoverlan_socket = s;
-	}
-	if (false) {}
-	//else if (s == xlive_VDP_socket) {
-	//	__debugbreak();
-	//	//("[h2mod-voice] Game bound potential voice socket to : %i", ntohs(port));
-	//	((struct sockaddr_in*)name)->sin_port = htons(xlive_base_port + 10);
-	//}
-	else {
-		((struct sockaddr_in*)name)->sin_port = htons(hPortShift);
+	const uint16_t portNBO = ((struct sockaddr_in*)name)->sin_port;
+	const uint16_t portHBO = ntohs(portNBO);
+
+	const uint16_t portOffset = portHBO % 100;
+	const uint16_t portBase = portHBO - portOffset;
+
+	const uint16_t portShiftedHBO = xlive_base_port + portOffset;
+
+	if (portBase == 1000) {
+		((struct sockaddr_in*)name)->sin_port = htons(portShiftedHBO);
 	}
 
 	SOCKET result = bind(s, name, namelen);
 
-	if (result == SOCKET_ERROR) {
-		char debugText[200];
-		snprintf(debugText, sizeof(debugText), "Socket Bind ERROR.\nAnother program has taken port:\nBase: %hd\nOffset: %hd\nNew: %hd\nOriginal: %hd", xlive_base_port, port_offset, hPortShift, hPort);
-		XllnDebugBreak(debugText);
+	if (portBase == 1000) {
+		((struct sockaddr_in*)name)->sin_port = portNBO;
+	}
+
+	if (result == ERROR_SUCCESS) {
+		int protocol;
+		int isVdp;
+		if (portBase == 1000) {
+			EnterCriticalSection(&xlive_critsec_sockets);
+
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
+			socketMappingInfo->portHBO = portHBO;
+			socketMappingInfo->portOffsetHBO = portOffset;
+			protocol = socketMappingInfo->protocol;
+			isVdp = socketMappingInfo->isVdpProtocol;
+			xlive_port_offset_sockets[portOffset] = s;
+
+			LeaveCriticalSection(&xlive_critsec_sockets);
+
+			if (portOffset == 0) {
+				xlive_liveoverlan_socket = s;
+			}
+		}
+		else {
+			EnterCriticalSection(&xlive_critsec_sockets);
+
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
+			socketMappingInfo->portHBO = portHBO;
+			socketMappingInfo->portOffsetHBO = -1;
+			protocol = socketMappingInfo->protocol;
+			isVdp = socketMappingInfo->isVdpProtocol;
+
+			LeaveCriticalSection(&xlive_critsec_sockets);
+		}
+
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+			, "Socket 0x%08x bind. Protocol: %s%d%s. Port: %hd."
+			, s
+			, protocol == IPPROTO_UDP ? "UDP:" : (protocol == IPPROTO_TCP ? "TCP:" : "")
+			, protocol
+			, isVdp ? " was VDP" : ""
+			, portHBO
+		);
+	}
+	else if (result == SOCKET_ERROR) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "Socket 0x%08x bind error, another program has taken port:\nBase: %hd.\nOffset: %hd.\nNew-shifted: %hd.\nOriginal: %hd."
+			, s
+			, xlive_base_port
+			, portOffset
+			, portShiftedHBO
+			, portHBO
+		);
 	}
 	else {
-		EnterCriticalSection(&xlive_critsec_sockets);
-		xlive_sockets[s]->hPort = hPortShift;
-		LeaveCriticalSection(&xlive_critsec_sockets);
+		DWORD errorSocketBind = GetLastError();
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "Socket 0x%08x bind error: 0x%08x.\nBase: %hd.\nOffset: %hd.\nNew-shifted: %hd.\nOriginal: %hd."
+			, s
+			, errorSocketBind
+			, xlive_base_port
+			, portOffset
+			, portShiftedHBO
+			, portHBO
+		);
 	}
+
 	return result;
 }
 
@@ -347,6 +425,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		const uint16_t portXliveHBO = ntohs(portXliveNBO);
 		const IP_PORT externalAddrHBO = std::make_pair(ipv4XliveHBO, portXliveHBO);
 
+		bool allowedToRequestWhoDisReply = true;
+
 		if (buf[0] == XLLN_CUSTOM_PACKET_SENTINEL) {
 			const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
 			if (result < cpHeaderLen) {
@@ -356,7 +436,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				);
 				return 0;
 			}
-			switch (buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)]) {
+			XLLNCustomPacketType::Type &packetType = *(XLLNCustomPacketType::Type*)&buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)];
+			switch (packetType) {
 				case XLLNCustomPacketType::STOCK_PACKET: {
 					CustomMemCpy(buf, (void*)((DWORD)buf + cpHeaderLen), result - cpHeaderLen, true);
 					result -= cpHeaderLen;
@@ -378,8 +459,9 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				}
 				case XLLNCustomPacketType::UNKNOWN_USER_ASK:
 				case XLLNCustomPacketType::UNKNOWN_USER_REPLY: {
+					allowedToRequestWhoDisReply = false;
 					// Less than since there is likely another packet pushed onto the end of this one.
-					if (result < cpHeaderLen + sizeof(NET_USER_ASK::HEAD)) {
+					if (result < cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET)) {
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 							, "XSocketRecvFromHelper INVALID UNKNOWN_USER_<?> Recieved."
 						);
@@ -388,56 +470,82 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 						, "XSocketRecvFromHelper UNKNOWN_USER_<?> Recieved."
 					);
+					
+					XLLNCustomPacketType::NET_USER_PACKET &nea = *(XLLNCustomPacketType::NET_USER_PACKET*)&buf[cpHeaderLen];
+					uint32_t resultNetter = NetterEntityEnsureExists(nea.instanceId, nea.portBaseHBO);
+					if (resultNetter) {
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+							, "XSocketRecvFromHelper INVALID UNKNOWN_USER_<?> Recieved. Failed to create Net Entity: 0x%08x:%hd with error 0x%08x."
+							, nea.instanceId
+							, nea.portBaseHBO
+							, resultNetter
+						);
+						return 0;
+					}
+
+					resultNetter = NetterEntityAddAddrByInstanceId(nea.instanceId, nea.socketInternalPortHBO, nea.socketInternalPortOffsetHBO, ipv4XliveHBO, portXliveHBO);
+					if (resultNetter) {
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+							, "XSocketRecvFromHelper UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hd 0x%08x:0x%04x) to Net Entity 0x%08x:%hd with error 0x%08x."
+							, nea.socketInternalPortHBO
+							, nea.socketInternalPortOffsetHBO
+							, ipv4XliveHBO
+							, portXliveHBO
+							, nea.instanceId
+							, nea.portBaseHBO
+							, resultNetter
+						);
+						return 0;
+					}
+
+					if (packetType == XLLNCustomPacketType::UNKNOWN_USER_ASK) {
+						packetType = XLLNCustomPacketType::UNKNOWN_USER_REPLY;
+
+						nea.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
+						nea.portBaseHBO = xlive_base_port;
+						{
+							EnterCriticalSection(&xlive_critsec_sockets);
+							SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
+							nea.socketInternalPortHBO = socketMappingInfo->portHBO;
+							nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
+							LeaveCriticalSection(&xlive_critsec_sockets);
+						}
+
+						int32_t sendBufLen = result;
+						if (nea.instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
+							nea.instanceIdConsumeRemaining = 0;
+							sendBufLen = cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET);
+						}
+
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+							, "UNKNOWN_USER_ASK Sending REPLY to Net Entity 0x%08x:%hd%s."
+							, nea.instanceId
+							, nea.portBaseHBO
+							, sendBufLen == result ? " with extra payload" : ""
+						);
+
+						int32_t bytesSent = sendto(s, buf, sendBufLen, 0, from, *fromlen);
+					}
+
+					if (nea.instanceIdConsumeRemaining == 0 || nea.instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
+						// Remove the custom packet stuff from the front of the buffer.
+						result -= cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET);
+						if (result) {
+							CustomMemCpy(
+								buf
+								, (void*)((uint8_t*)buf + cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET))
+								, result
+								, true
+							);
+
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+								, "UNKNOWN_USER_<?> passing data back into recvfrom helper."
+							);
+
+							return XSocketRecvFromHelper(result, s, buf, len, flags, from, fromlen);
+						}
+					}
 					return 0;
-					//NET_USER_ASK &nea = *(NET_USER_ASK*)&buf[cpHeaderLen];
-					//nea.HEAD.xnAddr.ina.s_addr = niplong;
-					//NetEntityCreate(&nea.HEAD.xnAddr);
-					//DWORD userId = ntohl(nea.HEAD.xnAddr.inaOnline.s_addr) >> 8;
-					//ULONG hIPv4 = ntohl(niplong);
-					//EnterCriticalSection(&xlln_critsec_net_entity);
-					//if (xlln_net_entity_userId.count(userId)) {
-					//	NET_ENTITY *ne = xlln_net_entity_userId[userId];
-					//	//TODO replace with hole punshing
-					//	for (DWORD i = 0; i < nea.HEAD.numOfPorts; i++) {
-					//		NetEntityAddMapping_(ne, hIPv4, nea.ports[i], nea.ports[i]);
-					//	}
-					//}
-					//LeaveCriticalSection(&xlln_critsec_net_entity);
-
-					//XLLNCustomPacketType::Type &packet_type = *(XLLNCustomPacketType::Type*)&buf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)];
-
-					//const int UnknownUserPacketLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * nea.HEAD.numOfPorts);
-
-					//if (packet_type == XLLNCustomPacketType::UNKNOWN_USER_ASK) {
-					//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-					//		, "UNKNOWN_USER_ASK Sending REPLY."
-					//	);
-					//	packet_type = XLLNCustomPacketType::UNKNOWN_USER_REPLY;
-
-					//	SendUnknownUserAskRequest(s, (char*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, from, *fromlen, false);
-
-					//	//TODO for efficiency can use current data if enough space avail.
-					//	/*nea.HEAD.xnAddr = xlive_local_xnAddr;
-
-					//	EnterCriticalSection(&xlive_critsec_sockets);
-
-					//	if (nea.HEAD.numOfPorts < xlive_sockets.size()) {
-
-					//	}
-
-					//	LeaveCriticalSection(&xlive_critsec_sockets);
-
-					//	INT bytesSent = sendto(s, buf, result, 0, from, *fromlen);*/
-					//	return 0;
-					//}
-					//else {
-					//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-					//		, "UNKNOWN_USER_REPLY passing original data back."
-					//	);
-					//	//CustomMemCpy(buf, (void*)((DWORD)buf + UnknownUserPacketLen), result - UnknownUserPacketLen, true);
-					//	result -= UnknownUserPacketLen;
-					//	return XSocketRecvFromHelper(result, s, (char*)((DWORD)buf + UnknownUserPacketLen), len, flags, from, fromlen);
-					//}
 				}
 				case XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE:
 				case XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE: {
@@ -476,9 +584,12 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				, resultNetter
 			);
 
-			// TODO Netter Entity should we be asking at all? should we ignore to prevent infinite sends?
-			//SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
-			//return 0;
+			if (allowedToRequestWhoDisReply) {
+				// TODO FIXME
+				SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
+			}
+			// We don't want whatever this was being passed to the Title.
+			result = 0;
 		}
 		else {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -561,6 +672,11 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 				, ipv4HBO
 				, resultNetter
 			);
+
+			sendto(s, buf, len, flags, to, tolen);
+			__debugbreak();
+
+			result = len;
 		}
 		else {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -576,18 +692,18 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 			if (portXliveHBO) {
 				((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO);
 			}
-		}
 
-		result = sendto(s, buf, len, flags, to, tolen);
+			result = sendto(s, buf, len, flags, to, tolen);
 
-		if (result == SOCKET_ERROR) {
-			INT errorSendTo = WSAGetLastError();
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XllnSocketSendTo sendto() failed to send to address 0x%08x:0x%04x with error 0x%08x."
-				, ipv4XliveHBO
-				, portXliveHBO
-				, errorSendTo
-			);
+			if (result == SOCKET_ERROR) {
+				INT errorSendTo = WSAGetLastError();
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+					, "XllnSocketSendTo sendto() failed to send to address 0x%08x:0x%04x with error 0x%08x."
+					, ipv4XliveHBO
+					, portXliveHBO
+					, errorSendTo
+				);
+			}
 		}
 	}
 
@@ -614,14 +730,14 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 			, "XSocketSendTo Stock 00 Packet Adapted."
 		);
 
-		const int altBufLen = len + 2;
+		const size_t altBufLen = len + 2;
 		// Check overflow condition.
 		if (altBufLen < 0) {
 			WSASetLastError(WSAEMSGSIZE);
 			return SOCKET_ERROR;
 		}
 
-		char *altBuf = (char*)malloc(sizeof(char) * altBufLen);
+		char *altBuf = new char[altBufLen];
 
 		altBuf[0] = XLLN_CUSTOM_PACKET_SENTINEL;
 		altBuf[1] = XLLNCustomPacketType::STOCK_PACKET;
@@ -629,7 +745,7 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 
 		result = XllnSocketSendTo(s, altBuf, altBufLen, flags, to, tolen);
 
-		free(altBuf);
+		delete[] altBuf;
 	}
 	else {
 		result = XllnSocketSendTo(s, buf, len, flags, to, tolen);
