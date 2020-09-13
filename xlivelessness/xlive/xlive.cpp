@@ -260,19 +260,22 @@ void CreateLocalUser()
 
 	unsigned long resolvedHostAddr = LocalUserHostIpv4();
 
-	//DWORD user_id = 0x6061B52F;
-	DWORD user_id = rand();
+	DWORD instanceId = htonl((rand() + (rand() << 16)) << 8);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "CreateLocalUser() instanceId: 0x%08x."
+		, instanceId
+	);
 	DWORD mac_fix = 0x00131000;
 
 	pAddr->ina.s_addr = htonl(resolvedHostAddr);
 	pAddr->wPortOnline = htons(xlive_base_port);
-	pAddr->inaOnline.s_addr = user_id << 8;
+	pAddr->inaOnline.s_addr = htonl(instanceId);
 
 	memset(&(pAddr->abEnet), 0, 6);
 	memset(&(pAddr->abOnline), 0, 6);
 
-	memcpy(&(pAddr->abEnet), &user_id, 4);
-	memcpy(&(pAddr->abOnline), &user_id, 4);
+	memcpy(&(pAddr->abEnet), &instanceId, 4);
+	memcpy(&(pAddr->abOnline), &instanceId, 4);
 
 	memcpy((BYTE*)&(pAddr->abEnet) + 3, (BYTE*)&mac_fix + 1, 3);
 	memcpy((BYTE*)&(pAddr->abOnline) + 17, (BYTE*)&mac_fix + 1, 3);

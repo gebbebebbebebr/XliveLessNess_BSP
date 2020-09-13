@@ -8,11 +8,8 @@ typedef struct {
 	uint32_t instanceId = 0; // a generated UUID for that instance.
 	uint16_t portBaseHBO = 0; // Base Port of the instance. Host Byte Order.
 	// host byte order.
-	//std::map<IP_PORT, IP_PORT> socket_map_internal_to_external;
-	// host byte order.
-	//std::map<IP_PORT, IP_PORT> socket_map_external_to_internal;
-	// host byte order.
 	std::map<uint16_t, IP_PORT> port_internal_to_external_addr;
+	// host byte order.
 	std::map<int16_t, IP_PORT> port_internal_offset_to_external_addr;
 	// The reverse of port_internal_to_external_addr for lookup speed. host byte order.
 	std::map<IP_PORT, PORT_INTERNAL> external_addr_to_port_internal;
@@ -32,7 +29,7 @@ BOOL InitNetEntity();
 BOOL UninitNetEntity();
 
 uint32_t NetterEntityEnsureExists(uint32_t instanceId, uint16_t portBaseHBO);
-uint32_t NetterEntityGetByInstanceId_(NET_ENTITY *netter, uint32_t instanceId);
+uint32_t NetterEntityGetByInstanceId_(NET_ENTITY **netter, uint32_t instanceId);
 uint32_t NetterEntityGetAddrByInstanceIdPort(uint32_t *ipv4XliveHBO, uint16_t *portXliveHBO, uint32_t instanceId, uint16_t portHBO);
 uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint16_t *portHBO, uint32_t ipv4XliveHBO, uint16_t portXliveHBO);
 uint32_t NetterEntityGetXnaddrByInstanceId(XNADDR *xnaddr, XNKID *xnkid, uint32_t instanceId);

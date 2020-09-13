@@ -38,47 +38,38 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, so
 			, "Send UNKNOWN_USER_REPLY."
 		);
 	}
-	const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
+	const int32_t cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
+	const int32_t userAskRequestLen = cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET);
+	const int32_t userAskPacketLen = userAskRequestLen + dataLen;
 
-	/*
-	EnterCriticalSection(&xlive_critsec_sockets);
-
-	const int cpUUHeaderLen = cpHeaderLen + sizeof(NET_USER_ASK::HEAD) + (sizeof(WORD) * xlive_sockets.size());
-	int cpTotalLen = cpUUHeaderLen + dataLen;
-
-	// Check overflow condition.
-	if (cpTotalLen < 0) {
-		// Send only UNKNOWN_USER_ASK.
-		cpTotalLen = cpUUHeaderLen;
+	uint8_t *packetBuffer = new uint8_t[userAskPacketLen];
+	packetBuffer[0] = XLLN_CUSTOM_PACKET_SENTINEL;
+	packetBuffer[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)] = isAsking ? XLLNCustomPacketType::UNKNOWN_USER_ASK : XLLNCustomPacketType::UNKNOWN_USER_REPLY;
+	XLLNCustomPacketType::NET_USER_PACKET &nea = *(XLLNCustomPacketType::NET_USER_PACKET*)&packetBuffer[cpHeaderLen];
+	nea.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
+	nea.portBaseHBO = xlive_base_port;
+	nea.instanceIdConsumeRemaining = 0;
+	{
+		EnterCriticalSection(&xlive_critsec_sockets);
+		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
+		nea.socketInternalPortHBO = socketMappingInfo->portHBO;
+		nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
+		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 
-	BYTE *cpBuf = (BYTE*)malloc(cpTotalLen);
-	cpBuf[0] = XLLN_CUSTOM_PACKET_SENTINEL;
-	cpBuf[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)] = isAsking ? XLLNCustomPacketType::UNKNOWN_USER_ASK : XLLNCustomPacketType::UNKNOWN_USER_REPLY;
-	NET_USER_ASK &nea = *(NET_USER_ASK*)&cpBuf[cpHeaderLen];
-	nea.HEAD.numOfPorts = (WORD)xlive_sockets.size();
-	DWORD i = 0;
-	for (auto const &socket : xlive_sockets) {
-		nea.ports[i++] = socket.second->hPort;
+	// Copy the extra data if any onto the back.
+	if (userAskPacketLen != userAskRequestLen) {
+		memcpy_s(&packetBuffer[userAskRequestLen], dataLen, data, dataLen);
 	}
 
-	LeaveCriticalSection(&xlive_critsec_sockets);
+	INT bytesSent = sendto(socket, (char*)packetBuffer, userAskPacketLen, 0, to, tolen);
 
-	nea.HEAD.xnAddr = xlive_local_xnAddr;
-
-	if (cpTotalLen > cpUUHeaderLen) {
-		memcpy_s(&cpBuf[cpUUHeaderLen], dataLen, data, dataLen);
+	if (bytesSent <= 0 && userAskPacketLen != userAskRequestLen) {
+		// Send only UNKNOWN_USER_<?>.
+		bytesSent = sendto(socket, (char*)packetBuffer, userAskRequestLen, 0, to, tolen);
 	}
 
-	INT bytesSent = sendto(socket, (char*)cpBuf, cpTotalLen, 0, to, tolen);
-
-	if (bytesSent <= 0 && cpTotalLen > cpUUHeaderLen) {
-		// Send only UNKNOWN_USER_ASK.
-		bytesSent = sendto(socket, (char*)cpBuf, cpUUHeaderLen, 0, to, tolen);
-	}
-
-	free(cpBuf);
-	*/
+	delete[] packetBuffer;
 }
 
 VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
@@ -357,7 +348,7 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 	}
 	else {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:0x%04x."
+			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:%hd."
 			, ipv4HBO
 			, ipv4XliveHBO
 			, portXliveHBO
@@ -486,7 +477,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					resultNetter = NetterEntityAddAddrByInstanceId(nea.instanceId, nea.socketInternalPortHBO, nea.socketInternalPortOffsetHBO, ipv4XliveHBO, portXliveHBO);
 					if (resultNetter) {
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-							, "XSocketRecvFromHelper UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hd 0x%08x:0x%04x) to Net Entity 0x%08x:%hd with error 0x%08x."
+							, "XSocketRecvFromHelper UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hd 0x%08x:%hd) to Net Entity 0x%08x:%hd with error 0x%08x."
 							, nea.socketInternalPortHBO
 							, nea.socketInternalPortOffsetHBO
 							, ipv4XliveHBO
@@ -578,14 +569,13 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
 		if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:0x%04x with error 0x%08x."
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hd with error 0x%08x."
 				, ipv4XliveHBO
 				, portXliveHBO
 				, resultNetter
 			);
 
 			if (allowedToRequestWhoDisReply) {
-				// TODO FIXME
 				SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
 			}
 			// We don't want whatever this was being passed to the Title.
@@ -593,7 +583,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		}
 		else {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr 0x%08x:0x%04x as instanceId:0x%08x port:0x%04x."
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr 0x%08x:%hd as instanceId:0x%08x port:%hd."
 				, ipv4XliveHBO
 				, portXliveHBO
 				, instanceId
@@ -680,7 +670,7 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		}
 		else {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:0x%04x."
+				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:%hd."
 				, ipv4HBO
 				, ipv4XliveHBO
 				, portXliveHBO
