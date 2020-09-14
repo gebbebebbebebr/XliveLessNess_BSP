@@ -590,10 +590,10 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				, portHBO
 			);
 
-			if (ipv4XliveHBO) {
+			if (instanceId) {
 				((struct sockaddr_in*)from)->sin_addr.s_addr = htonl(instanceId);
 			}
-			if (portXliveHBO) {
+			if (portHBO) {
 				((struct sockaddr_in*)from)->sin_port = htons(portHBO);
 			}
 		}

@@ -137,7 +137,7 @@ uint32_t NetterEntityGetXnaddrByInstanceId_(XNADDR *xnaddr, XNKID *xnkid, uint32
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (xnaddr) {
-		memset(xnaddr, 0, sizeof(XNKID));
+		memset(xnaddr, 0, sizeof(XNADDR));
 	}
 	if (xnkid) {
 		memset(xnkid, 0, sizeof(XNKID));
@@ -159,11 +159,14 @@ uint32_t NetterEntityGetXnaddrByInstanceId_(XNADDR *xnaddr, XNKID *xnkid, uint32
 
 		DWORD mac_fix = 0x00131000;
 
+		memset(&(xnaddr->abEnet), 0, 6);
+		memset(&(xnaddr->abOnline), 0, 6);
+
 		memcpy(&(xnaddr->abEnet), &instanceId, 4);
 		memcpy(&(xnaddr->abOnline), &instanceId, 4);
 
-		memcpy((BYTE*)&(xnaddr->abEnet) + 3, (BYTE*)&instanceId + 1, 3);
-		memcpy((BYTE*)&(xnaddr->abOnline) + 17, (BYTE*)&instanceId + 1, 3);
+		memcpy((BYTE*)&(xnaddr->abEnet) + 3, (BYTE*)&mac_fix + 1, 3);
+		memcpy((BYTE*)&(xnaddr->abOnline) + 17, (BYTE*)&mac_fix + 1, 3);
 	}
 
 	if (xnkid) {

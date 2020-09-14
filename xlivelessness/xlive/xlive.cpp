@@ -260,11 +260,12 @@ void CreateLocalUser()
 
 	unsigned long resolvedHostAddr = LocalUserHostIpv4();
 
-	DWORD instanceId = htonl((rand() + (rand() << 16)) << 8);
+	DWORD instanceId = ntohl((rand() + (rand() << 16)) << 8);
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 		, "CreateLocalUser() instanceId: 0x%08x."
 		, instanceId
 	);
+
 	DWORD mac_fix = 0x00131000;
 
 	pAddr->ina.s_addr = htonl(resolvedHostAddr);
