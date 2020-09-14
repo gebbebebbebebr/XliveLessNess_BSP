@@ -26,8 +26,9 @@ static CRITICAL_SECTION xlive_critsec_sockets;
 static std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
-static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen, bool isAsking)
+VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
 {
+	bool isAsking = true;
 	if (isAsking) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 			, "Send UNKNOWN_USER_ASK."
@@ -39,23 +40,20 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, so
 		);
 	}
 	const int32_t cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
-	const int32_t userAskRequestLen = cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET);
-	const int32_t userAskPacketLen = userAskRequestLen + dataLen;
+	const int32_t userAskRequestLen = cpHeaderLen + sizeof(XNADDR);
+	int32_t userAskPacketLen = userAskRequestLen + dataLen;
+
+	// Check overflow condition.
+	if (userAskPacketLen < 0) {
+		// Send only UNKNOWN_USER_<?>.
+		userAskPacketLen = userAskRequestLen;
+	}
 
 	uint8_t *packetBuffer = new uint8_t[userAskPacketLen];
 	packetBuffer[0] = XLLN_CUSTOM_PACKET_SENTINEL;
 	packetBuffer[sizeof(XLLN_CUSTOM_PACKET_SENTINEL)] = isAsking ? XLLNCustomPacketType::UNKNOWN_USER_ASK : XLLNCustomPacketType::UNKNOWN_USER_REPLY;
-	XLLNCustomPacketType::NET_USER_PACKET &nea = *(XLLNCustomPacketType::NET_USER_PACKET*)&packetBuffer[cpHeaderLen];
-	nea.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
-	nea.portBaseHBO = xlive_base_port;
-	nea.instanceIdConsumeRemaining = 0;
-	{
-		EnterCriticalSection(&xlive_critsec_sockets);
-		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
-		nea.socketInternalPortHBO = socketMappingInfo->portHBO;
-		nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
-		LeaveCriticalSection(&xlive_critsec_sockets);
-	}
+	XNADDR &xnAddr = *(XNADDR*)&packetBuffer[cpHeaderLen];
+	memcpy_s(&xnAddr, sizeof(xnAddr), &xlive_local_xnAddr, sizeof(xlive_local_xnAddr));
 
 	// Copy the extra data if any onto the back.
 	if (userAskPacketLen != userAskRequestLen) {
@@ -70,11 +68,6 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, so
 	}
 
 	delete[] packetBuffer;
-}
-
-VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
-{
-	SendUnknownUserAskRequest(socket, data, dataLen, to, tolen, true);
 }
 
 static VOID CustomMemCpy(void *dst, void *src, rsize_t len, bool directionAscending)
@@ -338,15 +331,20 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 
 	uint32_t ipv4XliveHBO = 0;
 	uint16_t portXliveHBO = 0;
-	uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
-	if (resultNetter) {
+	XNADDR *userPxna = xlive_users_secure.count(ipv4HBO) ? xlive_users_secure[ipv4HBO] : NULL;
+	if (!userPxna) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
 			, ipv4HBO
-			, resultNetter
+			, 0
 		);
 	}
 	else {
+		const uint16_t portOffset = portHBO % 100;
+		const uint16_t portBase = portHBO - portOffset;
+		ipv4XliveHBO = ntohl(userPxna->ina.s_addr);
+		portXliveHBO = (ntohs(userPxna->wPortOnline) + portOffset);
+
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:%hd."
 			, ipv4HBO
@@ -452,7 +450,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				case XLLNCustomPacketType::UNKNOWN_USER_REPLY: {
 					allowedToRequestWhoDisReply = false;
 					// Less than since there is likely another packet pushed onto the end of this one.
-					if (result < cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET)) {
+					if (result < cpHeaderLen + sizeof(XNADDR)) {
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 							, "XSocketRecvFromHelper INVALID UNKNOWN_USER_<?> Recieved."
 						);
@@ -461,80 +459,47 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 						, "XSocketRecvFromHelper UNKNOWN_USER_<?> Recieved."
 					);
-					
-					XLLNCustomPacketType::NET_USER_PACKET &nea = *(XLLNCustomPacketType::NET_USER_PACKET*)&buf[cpHeaderLen];
-					uint32_t resultNetter = NetterEntityEnsureExists(nea.instanceId, nea.portBaseHBO);
-					if (resultNetter) {
-						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-							, "XSocketRecvFromHelper INVALID UNKNOWN_USER_<?> Recieved. Failed to create Net Entity: 0x%08x:%hd with error 0x%08x."
-							, nea.instanceId
-							, nea.portBaseHBO
-							, resultNetter
-						);
-						return 0;
-					}
 
-					resultNetter = NetterEntityAddAddrByInstanceId(nea.instanceId, nea.socketInternalPortHBO, nea.socketInternalPortOffsetHBO, ipv4XliveHBO, portXliveHBO);
-					if (resultNetter) {
-						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-							, "XSocketRecvFromHelper UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hd 0x%08x:%hd) to Net Entity 0x%08x:%hd with error 0x%08x."
-							, nea.socketInternalPortHBO
-							, nea.socketInternalPortOffsetHBO
-							, ipv4XliveHBO
-							, portXliveHBO
-							, nea.instanceId
-							, nea.portBaseHBO
-							, resultNetter
-						);
-						return 0;
-					}
+
+					XNADDR &xnAddr = *(XNADDR*)&buf[cpHeaderLen];
+					xnAddr.ina.s_addr = ipv4XliveNBO;
+					CreateUser(&xnAddr);
 
 					if (packetType == XLLNCustomPacketType::UNKNOWN_USER_ASK) {
 						packetType = XLLNCustomPacketType::UNKNOWN_USER_REPLY;
 
-						nea.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
-						nea.portBaseHBO = xlive_base_port;
-						{
-							EnterCriticalSection(&xlive_critsec_sockets);
-							SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-							nea.socketInternalPortHBO = socketMappingInfo->portHBO;
-							nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
-							LeaveCriticalSection(&xlive_critsec_sockets);
-						}
+						memcpy_s(&xnAddr, sizeof(xnAddr), &xlive_local_xnAddr, sizeof(xlive_local_xnAddr));
 
 						int32_t sendBufLen = result;
-						if (nea.instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
-							nea.instanceIdConsumeRemaining = 0;
-							sendBufLen = cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET);
+						if (true) {
+							sendBufLen = cpHeaderLen + sizeof(XNADDR);
 						}
 
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 							, "UNKNOWN_USER_ASK Sending REPLY to Net Entity 0x%08x:%hd%s."
-							, nea.instanceId
-							, nea.portBaseHBO
+							, ntohl(xnAddr.inaOnline.s_addr)
+							, ntohs(xnAddr.wPortOnline)
 							, sendBufLen == result ? " with extra payload" : ""
 						);
 
 						int32_t bytesSent = sendto(s, buf, sendBufLen, 0, from, *fromlen);
 					}
 
-					if (nea.instanceIdConsumeRemaining == 0 || nea.instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
+					else {
 						// Remove the custom packet stuff from the front of the buffer.
-						result -= cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET);
-						if (result) {
-							CustomMemCpy(
-								buf
-								, (void*)((uint8_t*)buf + cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET))
-								, result
-								, true
-							);
+						result -= cpHeaderLen + sizeof(XNADDR);
+						CustomMemCpy(
+							buf
+							, (void*)((uint8_t*)buf + cpHeaderLen + sizeof(XNADDR))
+							, result
+							, true
+						);
 
-							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-								, "UNKNOWN_USER_<?> passing data back into recvfrom helper."
-							);
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+							, "UNKNOWN_USER_<?> passing data back into recvfrom helper."
+						);
 
-							return XSocketRecvFromHelper(result, s, buf, len, flags, from, fromlen);
-						}
+						return XSocketRecvFromHelper(result, s, buf, len, flags, from, fromlen);
 					}
 					return 0;
 				}
@@ -566,13 +531,16 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 
 		uint32_t instanceId = 0;
 		uint16_t portHBO = 0;
-		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
-		if (resultNetter) {
+		const uint16_t portOffset = portXliveHBO % 100;
+		const uint16_t portBase = portXliveHBO - portOffset;
+		const std::pair<DWORD, WORD> hostpair = std::make_pair(ipv4XliveHBO, portBase);
+		XNADDR *userPxna = xlive_users_hostpair.count(hostpair) ? xlive_users_hostpair[hostpair] : NULL;
+		if (!userPxna) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hd with error 0x%08x."
 				, ipv4XliveHBO
 				, portXliveHBO
-				, resultNetter
+				, 0
 			);
 
 			if (allowedToRequestWhoDisReply) {
@@ -582,6 +550,9 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 			result = 0;
 		}
 		else {
+			instanceId = ntohl(userPxna->inaOnline.s_addr);
+			portHBO = 1000 + portOffset;
+
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr 0x%08x:%hd as instanceId:0x%08x port:%hd."
 				, ipv4XliveHBO
@@ -654,13 +625,12 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		result = len;
 	}
 	else {
-
-		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
-		if (resultNetter) {
+		XNADDR *userPxna = xlive_users_secure.count(ipv4HBO) ? xlive_users_secure[ipv4HBO] : NULL;
+		if (!userPxna) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
 				, ipv4HBO
-				, resultNetter
+				, 0
 			);
 
 			sendto(s, buf, len, flags, to, tolen);
@@ -669,6 +639,9 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 			result = len;
 		}
 		else {
+			ipv4XliveHBO = ntohl(userPxna->ina.s_addr);
+			portXliveHBO = (ntohs(userPxna->wPortOnline) + portOffset);
+
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:%hd."
 				, ipv4HBO
