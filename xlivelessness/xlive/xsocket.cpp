@@ -26,7 +26,7 @@ static CRITICAL_SECTION xlive_critsec_sockets;
 static std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
-static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen, bool isAsking)
+static VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, sockaddr *to, int tolen, bool isAsking, uint32_t instanceIdConsumeRemaining)
 {
 	if (isAsking) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -48,7 +48,7 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, so
 	XLLNCustomPacketType::NET_USER_PACKET &nea = *(XLLNCustomPacketType::NET_USER_PACKET*)&packetBuffer[cpHeaderLen];
 	nea.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
 	nea.portBaseHBO = xlive_base_port;
-	nea.instanceIdConsumeRemaining = 0;
+	nea.instanceIdConsumeRemaining = instanceIdConsumeRemaining;
 	{
 		EnterCriticalSection(&xlive_critsec_sockets);
 		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
@@ -72,10 +72,10 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, so
 	delete[] packetBuffer;
 }
 
-VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
-{
-	SendUnknownUserAskRequest(socket, data, dataLen, to, tolen, true);
-}
+//VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
+//{
+//	SendUnknownUserAskRequest(socket, data, dataLen, to, tolen, true, 0);
+//}
 
 static VOID CustomMemCpy(void *dst, void *src, rsize_t len, bool directionAscending)
 {
@@ -345,6 +345,8 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 			, ipv4HBO
 			, resultNetter
 		);
+		ipv4XliveHBO = 0;
+		portXliveHBO = 0;
 	}
 	else {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -416,7 +418,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		const uint16_t portXliveHBO = ntohs(portXliveNBO);
 		const IP_PORT externalAddrHBO = std::make_pair(ipv4XliveHBO, portXliveHBO);
 
-		bool allowedToRequestWhoDisReply = true;
+		bool allowedToRequestWhoDisInReaction = true;
 
 		if (buf[0] == XLLN_CUSTOM_PACKET_SENTINEL) {
 			const int cpHeaderLen = sizeof(XLLN_CUSTOM_PACKET_SENTINEL) + sizeof(XLLNCustomPacketType::Type);
@@ -450,7 +452,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				}
 				case XLLNCustomPacketType::UNKNOWN_USER_ASK:
 				case XLLNCustomPacketType::UNKNOWN_USER_REPLY: {
-					allowedToRequestWhoDisReply = false;
+					allowedToRequestWhoDisInReaction = false;
 					// Less than since there is likely another packet pushed onto the end of this one.
 					if (result < cpHeaderLen + sizeof(XLLNCustomPacketType::NET_USER_PACKET)) {
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
@@ -575,8 +577,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				, resultNetter
 			);
 
-			if (allowedToRequestWhoDisReply) {
-				SendUnknownUserAskRequest(s, buf, result, from, *fromlen);
+			if (allowedToRequestWhoDisInReaction) {
+				SendUnknownUserAskRequest(s, buf, result, from, *fromlen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
 			}
 			// We don't want whatever this was being passed to the Title.
 			result = 0;
@@ -663,8 +665,16 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 				, resultNetter
 			);
 
-			sendto(s, buf, len, flags, to, tolen);
-			__debugbreak();
+			if (resultNetter == ERROR_PORT_NOT_SET) {
+				if (ipv4XliveHBO) {
+					((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO);
+				}
+				if (portXliveHBO) {
+					((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO);
+				}
+
+				SendUnknownUserAskRequest(s, buf, len, to, tolen, true, ipv4HBO);
+			}
 
 			result = len;
 		}

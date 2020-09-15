@@ -253,9 +253,7 @@ DWORD WINAPI XNetGetTitleXnAddr(XNADDR *pAddr)
 	if (!xlive_net_initialized)
 		return XNET_GET_XNADDR_PENDING;
 	if (pAddr) {
-		xlive_local_xnAddr.ina.s_addr = htonl(LocalUserHostIpv4());
-		// test without editing local version?
-		*pAddr = xlive_local_xnAddr;
+		*pAddr = xlive_local_xnAddr; // same as memcpy.
 	}
 	return XNET_GET_XNADDR_STATIC | XNET_GET_XNADDR_ETHERNET | XNET_GET_XNADDR_ONLINE;
 }

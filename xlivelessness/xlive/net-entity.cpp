@@ -78,7 +78,14 @@ uint32_t NetterEntityGetAddrByInstanceIdPort_(uint32_t *ipv4XliveHBO, uint16_t *
 	}
 
 	if (!netter->port_internal_to_external_addr.count(portHBO)) {
-		return ERROR_PORT_NOT_SET;
+		for (auto const &externalAddr : netter->port_internal_to_external_addr)
+		{
+			*ipv4XliveHBO = externalAddr.second.first;
+			*portXliveHBO = externalAddr.second.second - (externalAddr.second.second % 100) + (portHBO % 100);
+
+			return ERROR_PORT_NOT_SET;
+		}
+		return ERROR_PORT_UNREACHABLE;
 	}
 
 	*ipv4XliveHBO = netter->port_internal_to_external_addr[portHBO].first;

@@ -258,7 +258,7 @@ void CreateLocalUser()
 
 	XNADDR *pAddr = &xlive_local_xnAddr;
 
-	unsigned long resolvedHostAddr = LocalUserHostIpv4();
+	//unsigned long resolvedHostAddr = LocalUserHostIpv4();
 
 	DWORD instanceId = ntohl((rand() + (rand() << 16)) << 8);
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -268,7 +268,7 @@ void CreateLocalUser()
 
 	DWORD mac_fix = 0x00131000;
 
-	pAddr->ina.s_addr = htonl(resolvedHostAddr);
+	pAddr->ina.s_addr = htonl(instanceId);
 	pAddr->wPortOnline = htons(xlive_base_port);
 	pAddr->inaOnline.s_addr = htonl(instanceId);
 
