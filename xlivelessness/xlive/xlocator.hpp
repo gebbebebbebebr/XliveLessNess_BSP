@@ -43,6 +43,7 @@ extern CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
 extern VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*);
 extern std::map<uint32_t, XLOCATOR_SESSION*> liveoverlan_sessions;
 extern CRITICAL_SECTION liveoverlan_sessions_lock;
+extern CRITICAL_SECTION liveoverlan_broadcast_lock;
 
 VOID LiveOverLanAbort();
 VOID LiveOverLanClone(XLOCATOR_SEARCHRESULT **dst, XLOCATOR_SEARCHRESULT *src);

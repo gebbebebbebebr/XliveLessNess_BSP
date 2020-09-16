@@ -6,6 +6,7 @@
 #include "../xlive/xlocator.hpp"
 #include "../xlive/xrender.hpp"
 #include "../xlive/xsocket.hpp"
+#include "../xlive/net-entity.hpp"
 #include "rand-name.hpp"
 #include "../resource.h"
 #include <string>
@@ -211,34 +212,6 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 		else {
 			return ERROR_NOT_SUPPORTED;
 		}
-		return ERROR_SUCCESS;
-	}
-	else if (propertyId == XLLNModifyPropertyTypes::tCUSTOM_LOCAL_USER_hIPv4) {
-		EnterCriticalSection(&xlive_critsec_custom_local_user_hipv4);
-		if (newValue && *newValue == INADDR_NONE) {
-			LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
-			return ERROR_INVALID_PARAMETER;
-		}
-		if (!newValue && !oldValue) {
-			if (xlive_custom_local_user_hipv4 == INADDR_NONE) {
-				LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
-				return ERROR_NOT_FOUND;
-			}
-			xlive_custom_local_user_hipv4 = INADDR_NONE;
-			LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
-			return ERROR_SUCCESS;
-		}
-		if (newValue && !oldValue && xlive_custom_local_user_hipv4 != INADDR_NONE) {
-			LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
-			return ERROR_ALREADY_REGISTERED;
-		}
-		if (oldValue) {
-			*oldValue = xlive_custom_local_user_hipv4;
-		}
-		if (newValue) {
-			xlive_custom_local_user_hipv4 = *newValue;
-		}
-		LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
 		return ERROR_SUCCESS;
 	}
 	else if (propertyId == XLLNModifyPropertyTypes::tLiveOverLan_BROADCAST_HANDLER) {
@@ -556,8 +529,16 @@ INT InitXLLN(HMODULE hModule)
 	}
 
 	InitializeCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-	InitializeCriticalSection(&xlive_critsec_custom_local_user_hipv4);
+	InitializeCriticalSection(&xlive_critsec_network_adapter);
 	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+	InitializeCriticalSection(&xlln_critsec_net_entity);
+	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
+	InitializeCriticalSection(&xlive_critsec_xnotify);
+	InitializeCriticalSection(&liveoverlan_broadcast_lock);
+	InitializeCriticalSection(&liveoverlan_sessions_lock);
+	InitializeCriticalSection(&xlive_critsec_fps_limit);
+	InitializeCriticalSection(&xlive_critsec_sockets);
+	InitializeCriticalSection(&xlln_critsec_debug_log);
 
 	wchar_t mutex_name[40];
 	DWORD mutex_last_error;
@@ -635,7 +616,16 @@ INT UninitXLLN()
 	INT error_DebugLog = UninitDebugLog();
 
 	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-	DeleteCriticalSection(&xlive_critsec_custom_local_user_hipv4);
+	DeleteCriticalSection(&xlive_critsec_network_adapter);
 	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+	DeleteCriticalSection(&xlln_critsec_net_entity);
+	DeleteCriticalSection(&xlive_xlocator_enumerators_lock);
+	DeleteCriticalSection(&xlive_critsec_xnotify);
+	DeleteCriticalSection(&liveoverlan_broadcast_lock);
+	DeleteCriticalSection(&liveoverlan_sessions_lock);
+	DeleteCriticalSection(&xlive_critsec_fps_limit);
+	DeleteCriticalSection(&xlive_critsec_sockets);
+	DeleteCriticalSection(&xlln_critsec_debug_log);
+
 	return 0;
 }

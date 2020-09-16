@@ -26,7 +26,7 @@ static std::condition_variable liveoverlan_cond_empty;
 static std::thread liveoverlan_empty_thread;
 static std::atomic<bool> liveoverlan_empty_exit = TRUE;
 
-static CRITICAL_SECTION liveoverlan_broadcast_lock;
+CRITICAL_SECTION liveoverlan_broadcast_lock;
 static std::condition_variable liveoverlan_cond_broadcast;
 static std::thread liveoverlan_thread;
 static BOOL liveoverlan_running = FALSE;
@@ -926,9 +926,6 @@ HRESULT WINAPI XLocatorServiceInitialize(XLOCATOR_INIT_INFO *pXii, PHANDLE phLoc
 	if (!xlive_xlocator_initialized)
 		return E_FAIL;
 
-	InitializeCriticalSection(&liveoverlan_broadcast_lock);
-	InitializeCriticalSection(&liveoverlan_sessions_lock);
-
 	LiveOverLanStartEmpty();
 	
 	if (phLocatorService)
@@ -948,8 +945,6 @@ HRESULT WINAPI XLocatorServiceUnInitialize(HANDLE hLocatorService)
 
 	LiveOverLanStopBroadcast();
 	LiveOverLanStopEmpty();
-	DeleteCriticalSection(&liveoverlan_broadcast_lock);
-	DeleteCriticalSection(&liveoverlan_sessions_lock);
 
 	xlive_xlocator_initialized = FALSE;
 

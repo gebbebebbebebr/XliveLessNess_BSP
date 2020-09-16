@@ -33,13 +33,11 @@ bool xlive_invite_to_game = false;
 
 DWORD xlive_title_id = 0;
 
-static CRITICAL_SECTION d_lock;
+CRITICAL_SECTION xlive_critsec_xnotify;
 
-static char* xlive_preferred_network_adapter_name = NULL;
+CRITICAL_SECTION xlive_critsec_network_adapter;
+char* xlive_preferred_network_adapter_name = NULL;
 EligibleAdapter xlive_network_adapter;
-
-CRITICAL_SECTION xlive_critsec_custom_local_user_hipv4;
-unsigned long xlive_custom_local_user_hipv4 = INADDR_NONE;
 
 BOOL xlive_online_initialized = FALSE;
 
@@ -139,6 +137,8 @@ INT GetNetworkAdapter()
 
 		EligibleAdapter* chosenAdapter = NULL;
 
+		EnterCriticalSection(&xlive_critsec_network_adapter);
+
 		for (EligibleAdapter* ea : eligible_adapters) {
 			if (xlive_preferred_network_adapter_name && strncmp(ea->name, xlive_preferred_network_adapter_name, 50) == 0) {
 				chosenAdapter = ea;
@@ -175,6 +175,8 @@ INT GetNetworkAdapter()
 		else {
 			result = ERROR_NETWORK_UNREACHABLE;
 		}
+
+		LeaveCriticalSection(&xlive_critsec_network_adapter);
 
 		for (EligibleAdapter* ea : eligible_adapters) {
 			delete ea;
@@ -220,36 +222,17 @@ INT GetNetworkAdapter()
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 			, "GetNetworkAdapter Failed to find elegible network adapter. Using Loopback Address."
 		);
+		EnterCriticalSection(&xlive_critsec_network_adapter);
 		xlive_network_adapter.name = NULL;
 		xlive_network_adapter.unicastHAddr = INADDR_LOOPBACK;
 		xlive_network_adapter.unicastHMask = 0;
 		xlive_network_adapter.hBroadcast = INADDR_BROADCAST;
 		xlive_network_adapter.hasDnsServer = FALSE;
 		xlive_network_adapter.minLinkSpeed = 0;
+		LeaveCriticalSection(&xlive_critsec_network_adapter);
 	}
 
 	return result;
-}
-
-unsigned long LocalUserHostIpv4()
-{
-	unsigned long resolvedHostAddr;
-	EnterCriticalSection(&xlive_critsec_custom_local_user_hipv4);
-	if (xlive_custom_local_user_hipv4 != INADDR_NONE) {
-		resolvedHostAddr = xlive_custom_local_user_hipv4;
-	}
-	else {
-		resolvedHostAddr = xlive_network_adapter.unicastHAddr;
-	}
-	
-	if (resolvedHostAddr == INADDR_NONE) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "LocalUserHostIpv4 Failed to obtain Local User IPv4 Address. Using Loopback Address."
-		);
-		resolvedHostAddr = INADDR_LOOPBACK;
-	}
-	LeaveCriticalSection(&xlive_critsec_custom_local_user_hipv4);
-	return resolvedHostAddr;
 }
 
 void CreateLocalUser()
@@ -258,9 +241,7 @@ void CreateLocalUser()
 
 	XNADDR *pAddr = &xlive_local_xnAddr;
 
-	//unsigned long resolvedHostAddr = LocalUserHostIpv4();
-
-	DWORD instanceId = ntohl((rand() + (rand() << 16)) << 8);
+	uint32_t instanceId = ntohl((rand() + (rand() << 16)) << 8);
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 		, "CreateLocalUser() instanceId: 0x%08x."
 		, instanceId
@@ -388,15 +369,16 @@ BOOL XNotifyGetNextHelper(ULONGLONG notificationArea, PDWORD pdwId, PULONG_PTR p
 BOOL WINAPI XNotifyGetNext(HANDLE hNotification, DWORD dwMsgFilter, PDWORD pdwId, PULONG_PTR pParam)
 {
 	TRACE_FX();
-	EnterCriticalSection(&d_lock);
+	EnterCriticalSection(&xlive_critsec_xnotify);
 	ResetEvent(hNotification);
 
 	BOOL result = FALSE;
 
 	int noteId = 0;
 	for (; noteId < g_dwListener; noteId++) {
-		if (g_listener[noteId].id == hNotification)
+		if (g_listener[noteId].id == hNotification) {
 			break;
+		}
 	}
 	if (noteId == g_dwListener) {
 		//noteId = -1;
@@ -406,9 +388,10 @@ BOOL WINAPI XNotifyGetNext(HANDLE hNotification, DWORD dwMsgFilter, PDWORD pdwId
 		result = XNotifyGetNextHelper(dwMsgFilter ? dwMsgFilter : g_listener[noteId].area, pdwId, pParam);
 	}
 
-	if (result)
+	if (result) {
 		SetEvent(hNotification);
-	LeaveCriticalSection(&d_lock);
+	}
+	LeaveCriticalSection(&xlive_critsec_xnotify);
 	return result;
 }
 
@@ -494,8 +477,6 @@ VOID WINAPI XLiveUninitialize()
 	INT error_XRender = UninitXRender();
 	INT error_NetEntity = UninitNetEntity();
 	INT error_XSocket = UninitXSocket();
-	DeleteCriticalSection(&xlive_xlocator_enumerators_lock);
-	DeleteCriticalSection(&d_lock);
 }
 
 // #5005
@@ -1083,6 +1064,8 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 		//TODO pPii->wLivePortOverride;
 	}
 
+	EnterCriticalSection(&xlive_critsec_network_adapter);
+
 	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
 		unsigned int adapter_name_buflen = strnlen_s(pPii->pszAdapterName, 49) + 1;
 		xlive_preferred_network_adapter_name = (char*)malloc(adapter_name_buflen);
@@ -1092,14 +1075,13 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 
 	memset(&xlive_network_adapter, 0x00, sizeof(EligibleAdapter));
 
+	LeaveCriticalSection(&xlive_critsec_network_adapter);
+
 	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
 		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
 		memset(xlive_users_info[i], 0, sizeof(XUSER_SIGNIN_INFO));
 		xlive_users_info_changed[i] = FALSE;
 	}
-
-	InitializeCriticalSection(&d_lock);
-	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
 
 	wchar_t mutex_name[40];
 	DWORD mutex_last_error;

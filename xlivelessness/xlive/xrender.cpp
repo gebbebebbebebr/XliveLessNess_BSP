@@ -10,7 +10,7 @@ BOOL Initialised_XRender = FALSE;
 static LPDIRECT3DDEVICE9 pDevice;
 static D3DPRESENT_PARAMETERS *pD3DPP;
 
-static CRITICAL_SECTION xlive_critsec_fps_limit;
+CRITICAL_SECTION xlive_critsec_fps_limit;
 std::atomic<DWORD> xlive_fps_limit = 60;
 
 static std::chrono::system_clock::time_point nextFrame;
@@ -19,8 +19,6 @@ static std::chrono::system_clock::duration desiredRenderTime;
 INT InitXRender(XLIVE_INITIALIZE_INFO* pPii)
 {
 	TRACE_FX();
-
-	InitializeCriticalSection(&xlive_critsec_fps_limit);
 
 	pDevice = (LPDIRECT3DDEVICE9)pPii->pD3D;
 	pD3DPP = (D3DPRESENT_PARAMETERS*)pPii->pD3DPP;
@@ -34,8 +32,6 @@ INT InitXRender(XLIVE_INITIALIZE_INFO* pPii)
 INT UninitXRender()
 {
 	TRACE_FX();
-
-	DeleteCriticalSection(&xlive_critsec_fps_limit);
 
 	return S_OK;
 }

@@ -232,14 +232,10 @@ uint32_t NetterEntityAddAddrByInstanceId(uint32_t instanceId, uint16_t portInter
 
 BOOL InitNetEntity()
 {
-	InitializeCriticalSection(&xlln_critsec_net_entity);
-
 	return TRUE;
 }
 
 BOOL UninitNetEntity()
 {
-	DeleteCriticalSection(&xlln_critsec_net_entity);
-
 	return TRUE;
 }

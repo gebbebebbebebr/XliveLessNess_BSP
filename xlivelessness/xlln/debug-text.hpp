@@ -5,6 +5,8 @@
 INT InitDebugLog(DWORD dwInstanceId);
 INT UninitDebugLog();
 
+extern CRITICAL_SECTION xlln_critsec_debug_log;
+
 bool addDebugTextBlacklist(char *black_text);
 int getDebugTextArrayMaxLen();
 void addDebugText(char* text);

@@ -22,7 +22,7 @@ struct SOCKET_MAPPING_INFO {
 	uint16_t portHBO = 0;
 	int16_t portOffsetHBO = -1;
 };
-static CRITICAL_SECTION xlive_critsec_sockets;
+CRITICAL_SECTION xlive_critsec_sockets;
 static std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
@@ -246,6 +246,14 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 
 	if (portBase == 1000) {
 		((struct sockaddr_in*)name)->sin_port = htons(portShiftedHBO);
+	}
+
+	if (((struct sockaddr_in*)name)->sin_addr.s_addr == htonl(INADDR_ANY)) {
+		EnterCriticalSection(&xlive_critsec_network_adapter);
+		if (xlive_preferred_network_adapter_name && xlive_network_adapter.unicastHAddr != INADDR_LOOPBACK) {
+			((struct sockaddr_in*)name)->sin_addr.s_addr = htonl(xlive_network_adapter.unicastHAddr);
+		}
+		LeaveCriticalSection(&xlive_critsec_network_adapter);
 	}
 
 	SOCKET result = bind(s, name, namelen);
@@ -638,7 +646,9 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 			, "XSocketSendTo Broadcasting packet."
 		);
 
+		EnterCriticalSection(&xlive_critsec_network_adapter);
 		((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_network_adapter.hBroadcast);
+		LeaveCriticalSection(&xlive_critsec_network_adapter);
 
 		// TODO broadcast better.
 		for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
@@ -797,14 +807,10 @@ USHORT WINAPI XSocketHTONS(USHORT hostshort)
 
 BOOL InitXSocket()
 {
-	InitializeCriticalSection(&xlive_critsec_sockets);
-
 	return TRUE;
 }
 
 BOOL UninitXSocket()
 {
-	DeleteCriticalSection(&xlive_critsec_sockets);
-
 	return TRUE;
 }

@@ -5,7 +5,7 @@
 #include <string>
 
 static bool initialised_debug_log = false;
-static CRITICAL_SECTION xlln_critsec_debug_log;
+CRITICAL_SECTION xlln_critsec_debug_log;
 
 // for the on screen debug log.
 static char** DebugStr;
@@ -180,8 +180,6 @@ void FUNC_STUB2(const char* func)
 
 INT InitDebugLog(DWORD dwInstanceId)
 {
-	InitializeCriticalSection(&xlln_critsec_debug_log);
-
 	blacklist_len_max = 50;
 	blacklist = (char**)malloc(sizeof(char*) * blacklist_len_max);
 
@@ -204,7 +202,6 @@ INT InitDebugLog(DWORD dwInstanceId)
 INT UninitDebugLog()
 {
 	initialised_debug_log = false;
-	DeleteCriticalSection(&xlln_critsec_debug_log);
 
 	return S_OK;
 }
