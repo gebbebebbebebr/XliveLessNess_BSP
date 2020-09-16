@@ -26,7 +26,7 @@ static CRITICAL_SECTION xlive_critsec_sockets;
 static std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
-static VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, sockaddr *to, int tolen, bool isAsking, uint32_t instanceIdConsumeRemaining)
+VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, sockaddr *to, int tolen, bool isAsking, uint32_t instanceIdConsumeRemaining)
 {
 	if (isAsking) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -71,11 +71,6 @@ static VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataL
 
 	delete[] packetBuffer;
 }
-
-//VOID SendUnknownUserAskRequest(SOCKET socket, char* data, int dataLen, sockaddr *to, int tolen)
-//{
-//	SendUnknownUserAskRequest(socket, data, dataLen, to, tolen, true, 0);
-//}
 
 static VOID CustomMemCpy(void *dst, void *src, rsize_t len, bool directionAscending)
 {
@@ -416,7 +411,6 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		const uint32_t ipv4XliveHBO = ntohl(ipv4XliveNBO);
 		const uint16_t portXliveNBO = ((struct sockaddr_in*)from)->sin_port;
 		const uint16_t portXliveHBO = ntohs(portXliveNBO);
-		const IP_PORT externalAddrHBO = std::make_pair(ipv4XliveHBO, portXliveHBO);
 
 		bool allowedToRequestWhoDisInReaction = true;
 
@@ -542,7 +536,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				}
 				case XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE:
 				case XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE: {
-					LiveOverLanRecieve(s, from, *fromlen, externalAddrHBO, (const LIVE_SERVER_DETAILS*)buf, result);
+					LiveOverLanRecieve(s, from, *fromlen, ipv4XliveHBO, portXliveHBO, (const LIVE_SERVER_DETAILS*)buf, result);
 					return 0;
 				}
 				default: {

@@ -15,17 +15,12 @@
 static BOOL xlive_xlocator_initialized = FALSE;
 
 CRITICAL_SECTION xlive_xlocator_enumerators_lock;
-std::map<HANDLE, std::vector<std::pair<DWORD, WORD>>> xlive_xlocator_enumerators;
-
-// TODO remove this function when NAT is solved.
-VOID WINAPI OverrideWIPLOL(LIVE_SERVER_DETAILS *lsd)
-{
-}
+std::map<HANDLE, std::vector<uint32_t>> xlive_xlocator_enumerators;
 
 CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
-VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = OverrideWIPLOL;
+VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = 0;
 
-std::map<std::pair<DWORD, WORD>, XLOCATOR_SESSION*> liveoverlan_sessions;
+std::map<uint32_t, XLOCATOR_SESSION*> liveoverlan_sessions;
 CRITICAL_SECTION liveoverlan_sessions_lock;
 static std::condition_variable liveoverlan_cond_empty;
 static std::thread liveoverlan_empty_thread;
@@ -451,25 +446,39 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	local_session_details = new_local_sd;
 	LeaveCriticalSection(&liveoverlan_broadcast_lock);
 }
-VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<DWORD, WORD> host_pair_resolved, const LIVE_SERVER_DETAILS *session_details, INT &len)
+VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t ipv4XliveHBO, const uint16_t portXliveHBO, const LIVE_SERVER_DETAILS *session_details, INT &len)
 {
 	if (session_details->HEAD.bCustomPacketType == XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE) {
 		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
 				, "LiveOverLAN Received INVALID Broadcast Unadvertise from 0x%08x:0x%04x."
-				, host_pair_resolved.first
-				, host_pair_resolved.second
+				, ipv4XliveHBO
+				, portXliveHBO
 			);
 			return;
 		}
 		const XUID &unregisterXuid = session_details->UNADV.xuid;// Unused.
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
 			, "LiveOverLAN Received Broadcast Unadvertise from 0x%08x:0x%04x."
-			, host_pair_resolved.first
-			, host_pair_resolved.second
+			, ipv4XliveHBO
+			, portXliveHBO
 		);
+
+		uint32_t instanceId = 0;
+		uint16_t portHBO = 0;
+		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
+		if (resultNetter) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hd with error 0x%08x."
+				, ipv4XliveHBO
+				, portXliveHBO
+				, resultNetter
+			);
+			return;
+		}
+
 		EnterCriticalSection(&liveoverlan_sessions_lock);
-		liveoverlan_sessions.erase(host_pair_resolved);
+		liveoverlan_sessions.erase(instanceId);
 		LeaveCriticalSection(&liveoverlan_sessions_lock);
 	}
 	else {
@@ -477,57 +486,65 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<
 		if (len < sizeof(*session_details)) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
 				, "LiveOverLAN Received INVALID Broadcast Advertise from 0x%08x:0x%04x."
-				, host_pair_resolved.first
-				, host_pair_resolved.second
+				, ipv4XliveHBO
+				, portXliveHBO
 			);
 			return;
 		}
-		// TODO Netter Entity
-		//XLOCATOR_SEARCHRESULT *searchresult = 0;
 
-		//XNADDR xnAddr;
-		//if (NetEntityGetHostPairResolved(xnAddr, host_pair_resolved) != ERROR_SUCCESS) {
-		//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-		//		, "LiveOverLAN Received Broadcast Advertise with NO USER from 0x%08x:0x%04x."
-		//		, host_pair_resolved.first
-		//		, host_pair_resolved.second
-		//	);
-		//	SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen);
-		//}
-		//else if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
-		//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-		//		, "LiveOverLAN Received Broadcast Advertise from 0x%08x:0x%04x."
-		//		, host_pair_resolved.first
-		//		, host_pair_resolved.second
-		//	);
-		//	EnterCriticalSection(&liveoverlan_sessions_lock);
-		//	// Delete the old entry if there already is one.
-		//	if (liveoverlan_sessions.count(host_pair_resolved)) {
-		//		XLOCATOR_SESSION *oldsession = liveoverlan_sessions[host_pair_resolved];
-		//		LiveOverLanDelete(oldsession->searchresult);
-		//		delete oldsession;
-		//	}
-		//	// fill in serverAddress as it is not populated from LOLBReceive.
-		//	// If the online address is zero the user is not online / it is the relay server.
-		//	if (xnAddr.inaOnline.s_addr != 0) {
-		//		searchresult->serverAddress = xnAddr;
-		//	}
+		uint32_t instanceId = 0;
+		uint16_t portHBO = 0;
+		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
+		if (resultNetter) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hd with error 0x%08x."
+				, ipv4XliveHBO
+				, portXliveHBO
+				, resultNetter
+			);
 
-		//	XLOCATOR_SESSION *newsession = new XLOCATOR_SESSION;
-		//	newsession->searchresult = searchresult;
-		//	time_t ltime;
-		//	time(&ltime);
-		//	newsession->broadcastTime = (unsigned long)ltime;
-		//	liveoverlan_sessions[host_pair_resolved] = newsession;
-		//	LeaveCriticalSection(&liveoverlan_sessions_lock);
-		//}
-		//else {
-		//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-		//		, "LiveOverLAN Unable to parse Broadcast Advertise from 0x%08x:0x%04x."
-		//		, host_pair_resolved.first
-		//		, host_pair_resolved.second
-		//	);
-		//}
+			SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
+			return;
+		}
+
+		XLOCATOR_SEARCHRESULT *searchresult = 0;
+		if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+				, "LiveOverLAN Received Broadcast Advertise from 0x%08x."
+				, instanceId
+			);
+			EnterCriticalSection(&liveoverlan_sessions_lock);
+			// Delete the old entry if there already is one.
+			if (liveoverlan_sessions.count(instanceId)) {
+				XLOCATOR_SESSION *oldsession = liveoverlan_sessions[instanceId];
+				LiveOverLanDelete(oldsession->searchresult);
+				delete oldsession;
+			}
+
+			// fill in serverAddress as it is not populated from LOLBReceive.
+			uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(&searchresult->serverAddress, 0, instanceId);
+			if (resultNetter) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+					, "LiveOverLanRecieve NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
+					, instanceId
+					, resultNetter
+				);
+			}
+
+			XLOCATOR_SESSION *newsession = new XLOCATOR_SESSION;
+			newsession->searchresult = searchresult;
+			time_t ltime;
+			time(&ltime);
+			newsession->broadcastTime = (unsigned long)ltime;
+			liveoverlan_sessions[instanceId] = newsession;
+			LeaveCriticalSection(&liveoverlan_sessions_lock);
+		}
+		else {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "LiveOverLAN Unable to parse Broadcast Advertise from 0x%08x."
+				, instanceId
+			);
+		}
 	}
 }
 static VOID LiveOverLanStartBroadcast()
@@ -576,7 +593,7 @@ static VOID LiveOverLanEmpty()
 		);
 		EnterCriticalSection(&liveoverlan_sessions_lock);
 		
-		std::vector<std::pair<DWORD, WORD>> removesessions;
+		std::vector<uint32_t> removesessions;
 		time_t ltime;
 		time(&ltime);//seconds since epoch.
 		DWORD timetoremove = ((DWORD)ltime) - 15;

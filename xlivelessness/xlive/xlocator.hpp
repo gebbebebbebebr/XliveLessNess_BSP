@@ -38,14 +38,14 @@ typedef struct {
 #pragma pack(pop) // Return to original alignment setting.
 
 extern CRITICAL_SECTION xlive_xlocator_enumerators_lock;
-extern std::map<HANDLE, std::vector<std::pair<DWORD, WORD>>> xlive_xlocator_enumerators;
+extern std::map<HANDLE, std::vector<uint32_t>> xlive_xlocator_enumerators;
 extern CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
 extern VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*);
-extern std::map<std::pair<DWORD, WORD>, XLOCATOR_SESSION*> liveoverlan_sessions;
+extern std::map<uint32_t, XLOCATOR_SESSION*> liveoverlan_sessions;
 extern CRITICAL_SECTION liveoverlan_sessions_lock;
 
 VOID LiveOverLanAbort();
 VOID LiveOverLanClone(XLOCATOR_SEARCHRESULT **dst, XLOCATOR_SEARCHRESULT *src);
 VOID LiveOverLanDelete(XLOCATOR_SEARCHRESULT *xlocator_result);
 BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWORD buflen);
-VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const std::pair<DWORD, WORD> hostpair, const LIVE_SERVER_DETAILS *session_details, INT &len);
+VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t ipv4XliveHBO, const uint16_t portXliveHBO, const LIVE_SERVER_DETAILS *session_details, INT &len);
