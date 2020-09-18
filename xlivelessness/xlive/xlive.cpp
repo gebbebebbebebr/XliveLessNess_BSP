@@ -1235,12 +1235,8 @@ DWORD WINAPI XInviteGetAcceptedInfo(DWORD dwUserIndex, XINVITE_INFO *pInfo)
 	//TODO XInviteGetAcceptedInfo
 	if (xlive_invite_to_game) {
 		xlive_invite_to_game = false;
-		unsigned long resolvedNetAddr;
-		if ((resolvedNetAddr = inet_addr("192.168.0.22")) == htonl(INADDR_NONE)) {
-			return ERROR;
-		}
 
-		pInfo->hostInfo.hostAddress.ina.s_addr = resolvedNetAddr;
+		//pInfo->hostInfo.hostAddress.ina.s_addr = resolvedNetAddr;
 		pInfo->hostInfo.hostAddress.wPortOnline = htons(2000);
 
 		XUID host_xuid = 1234561000000032;

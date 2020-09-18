@@ -2,9 +2,9 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros">
-    <TitleBinary>GFWL-Title.exe</TitleBinary>
-    <TitleBinaryPath>Engine\</TitleBinaryPath>
-    <TitleBinaryArgs>-xllndebuglogblacklist=XLiveRender,XLiveInput,XLivePreTranslateMessage,XSocketRecvFrom,XSocketWSAGetLastError,XNotifyGetNext,XUserCheckPrivilege,XNetGetEthernetLinkStatus,XLivePBufferGetByte</TitleBinaryArgs>
+    <TitleBinary>halo2.exe</TitleBinary>
+    <TitleBinaryPath></TitleBinaryPath>
+    <TitleBinaryArgs>-xllndebuglogblacklist=XLiveRender,XLiveInput,XLivePreTranslateMessage,XSocketRecvFrom,XSocketWSAGetLastError,XNotifyGetNext,XUserCheckPrivilege,XNetGetEthernetLinkStatus,XLivePBufferGetByte,XSocketHTONL,XSocketNTOHL,XSocketHTONS,XSocketNTOHS</TitleBinaryArgs>
   </PropertyGroup>
   <PropertyGroup />
   <ItemDefinitionGroup />

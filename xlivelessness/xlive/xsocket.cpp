@@ -26,6 +26,9 @@ CRITICAL_SECTION xlive_critsec_sockets;
 static std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
+uint32_t xlive_broadcast_override_ipv4HBO = 0;
+uint16_t xlive_broadcast_override_portHBO = 0;
+
 VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, sockaddr *to, int tolen, bool isAsking, uint32_t instanceIdConsumeRemaining)
 {
 	if (isAsking) {
@@ -646,15 +649,26 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 			, "XSocketSendTo Broadcasting packet."
 		);
 
-		EnterCriticalSection(&xlive_critsec_network_adapter);
-		((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_network_adapter.hBroadcast);
-		LeaveCriticalSection(&xlive_critsec_network_adapter);
+		if (xlive_broadcast_override_ipv4HBO) {
+			((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_broadcast_override_ipv4HBO);
+		}
+		else {
+			EnterCriticalSection(&xlive_critsec_network_adapter);
+			((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_network_adapter.hBroadcast);
+			LeaveCriticalSection(&xlive_critsec_network_adapter);
+		}
 
-		// TODO broadcast better.
-		for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
-			((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO = (portBaseInc + portOffset));
+		if (xlive_broadcast_override_portHBO) {
+			((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO = (xlive_broadcast_override_portHBO));
 
 			result = sendto(s, buf, len, 0, to, tolen);
+		}
+		else {
+			for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
+				((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO = (portBaseInc + portOffset));
+
+				result = sendto(s, buf, len, 0, to, tolen);
+			}
 		}
 
 		result = len;

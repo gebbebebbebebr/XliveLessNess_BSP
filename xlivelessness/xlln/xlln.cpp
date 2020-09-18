@@ -1,6 +1,7 @@
 #include "windows.h"
 #include "xlln.hpp"
 #include "debug-text.hpp"
+#include "../utils/utils.hpp"
 #include "../xlive/xdefs.hpp"
 #include "../xlive/xlive.hpp"
 #include "../xlive/xlocator.hpp"
@@ -104,18 +105,39 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 	wc.cbClsExtra = 0;
 	wc.cbWndExtra = 0;
 	wc.hbrBackground = (HBRUSH)COLOR_BACKGROUND;
-	if (!RegisterClassExW(&wc))
+	if (!RegisterClassExW(&wc)) {
 		return FALSE;
+	}
 
-	wchar_t title[80];
-	swprintf_s(title, 80, L"XLLN v%d.%d.%d.%d", DLL_VERSION);
+	wchar_t *windowTitle = FormMallocString(L"XLLN v%d.%d.%d.%d", DLL_VERSION);
 
 	HWND hwdParent = NULL;// FindWindowW(L"Window Injected Into ClassName", L"Window Injected Into Caption");
-	xlln_window_hwnd = CreateWindowExW(0, windowclassname, title, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 400, xlln_debug ? 700 : 165, hwdParent, xlln_window_hMenu, hModule, NULL);
+	xlln_window_hwnd = CreateWindowExW(0, windowclassname, windowTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 500, xlln_debug ? 700 : 225, hwdParent, xlln_window_hMenu, hModule, NULL);
+
+	free(windowTitle);
+
 	ShowWindow(xlln_window_hwnd, xlln_debug ? SW_NORMAL : SW_HIDE);
+
+	int textBoxes[] = { MYWINDOW_TBX_USERNAME, MYWINDOW_TBX_TEST, MYWINDOW_TBX_BROADCAST };
 
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0)) {
+		bool consume = false;
+		if (msg.message == WM_KEYDOWN) {
+			HWND wndItem;
+			if (msg.wParam == 'A' && GetKeyState(VK_CONTROL) < 0 && (wndItem = GetFocus())) {
+				for (uint8_t i = 0; i < sizeof(textBoxes) / sizeof(textBoxes[0]); i++) {
+					if (wndItem == GetDlgItem(xlln_window_hwnd, textBoxes[i])) {
+						SendDlgItemMessage(xlln_window_hwnd, textBoxes[i], EM_SETSEL, 0, -1);
+						consume = true;
+						break;
+					}
+				}
+			}
+		}
+		if (consume) {
+			continue;
+		}
 		// Handle tab ordering
 		if (!IsDialogMessage(xlln_window_hwnd, &msg)) {
 			// Translate virtual-key msg into character msg
@@ -349,28 +371,41 @@ static void UpdateUserInputBoxes(DWORD dwUserIndex)
 	CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[dwUserIndex], checked ? MF_CHECKED : MF_UNCHECKED);
 
 	checked = FALSE;
-	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn)
+	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn) {
 		checked = TRUE;
+	}
 	BOOL bLiveEnabled = FALSE;
-	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive)
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive) {
 		bLiveEnabled = TRUE;
+	}
 
 	SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
 	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, bLiveEnabled ? BST_CHECKED : BST_UNCHECKED);
 
 	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
 	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
+
+	InvalidateRect(xlln_window_hwnd, NULL, FALSE);
 }
 
 static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	if (message == WM_PAINT) {
-		/*PAINTSTRUCT ps;
+		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(xlln_window_hwnd, &ps);
-		TCHAR greeting[] = TEXT("Hello, World!");
-		TextOut(hdc, 5, 5, greeting, strlen(greeting));
+		SetTextColor(hdc, RGB(0, 0, 0));
+		SetBkColor(hdc, 0x00C8C8C8);
+		{
+			char *textLabel = FormMallocString("Player %d username:", xlln_login_player + 1);
+			TextOutA(hdc, 140, 10, textLabel, strlen(textLabel));
+			free(textLabel);
+		}
+		{
+			char textLabel[] = "Broadcast address:";
+			TextOutA(hdc, 5, 120, textLabel, strlen(textLabel));
+		}
 
-		EndPaint(xlln_window_hwnd, &ps);*/
+		EndPaint(xlln_window_hwnd, &ps);
 	}
 	else if (message == WM_SYSCOMMAND) {
 		if (wParam == SC_CLOSE) {
@@ -445,6 +480,22 @@ Executable Launch Parameters:\n\
 			extern bool xlive_invite_to_game;
 			xlive_invite_to_game = true;
 		}
+		else if (wParam == ((EN_CHANGE << 16) | MYWINDOW_TBX_BROADCAST)) {
+			char jlbuffer[50];
+			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, jlbuffer, 50);
+			char *colon = strrchr(jlbuffer, ':');
+			if (colon) {
+				colon[0] = 0;
+				uint16_t tempuint = 0;
+				if (sscanf_s(&colon[1], "%hu", &tempuint) == 1) {
+					xlive_broadcast_override_portHBO = tempuint;
+				}
+				unsigned long resolvedNetAddr;
+				if ((resolvedNetAddr = inet_addr(jlbuffer)) != htonl(INADDR_NONE)) {
+					xlive_broadcast_override_ipv4HBO = ntohl(resolvedNetAddr);
+				}
+			}
+		}
 		return 0;
 	}
 	else if (message == WM_CTLCOLORSTATIC) {
@@ -455,28 +506,28 @@ Executable Launch Parameters:\n\
 	}
 	else if (message == WM_CREATE) {
 
-		HWND hWndControl;
+		CreateWindowA("edit", "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+			140, 28, 260, 22, hwnd, (HMENU)MYWINDOW_TBX_USERNAME, xlln_hModule, NULL);
 
-		CreateWindowA("edit", "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP,
-			10, 10, 260, 22, hwnd, (HMENU)MYWINDOW_TBX_USERNAME, xlln_hModule, NULL);
-
-		hWndControl = CreateWindowA("button", "Live Enabled", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-			10, 40, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_LIVEENABLE, xlln_hModule, NULL);
+		CreateWindowA("button", "Live Enabled", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+			140, 51, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_LIVEENABLE, xlln_hModule, NULL);
 
 		CreateWindowA("button", "Login", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-			10, 70, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGIN, xlln_hModule, NULL);
+			140, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGIN, xlln_hModule, NULL);
 
 		CreateWindowA("button", "Logout", WS_CHILD | WS_TABSTOP,
-			10, 70, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGOUT, xlln_hModule, NULL);
+			140, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGOUT, xlln_hModule, NULL);
 
-		hWndControl = CreateWindowA("edit", "", WS_CHILD | (xlln_debug ? WS_VISIBLE : 0) | WS_BORDER | ES_MULTILINE | WS_SIZEBOX | WS_TABSTOP | WS_HSCROLL,
-			10, 120, 350, 500, hwnd, (HMENU)MYWINDOW_TBX_TEST, xlln_hModule, NULL);
+		CreateWindowA("edit", "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+			5, 140, 475, 22, hwnd, (HMENU)MYWINDOW_TBX_BROADCAST, xlln_hModule, NULL);
+
+		CreateWindowA("edit", "", WS_CHILD | (xlln_debug ? WS_VISIBLE : 0) | WS_BORDER | ES_MULTILINE | WS_SIZEBOX | WS_TABSTOP | WS_HSCROLL,
+			5, 170, 475, 460, hwnd, (HMENU)MYWINDOW_TBX_TEST, xlln_hModule, NULL);
 
 		if (xlln_debug) {
 			CreateWindowA("button", "Test", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-				85, 70, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_TEST, xlln_hModule, NULL);
+				5, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_TEST, xlln_hModule, NULL);
 		}
-
 	}
 	else if (message == WM_DESTROY) {
 		PostQuitMessage(0);

@@ -17,6 +17,7 @@
 #define MYWINDOW_CHK_LIVEENABLE	(WM_APP + 123)
 #define MYWINDOW_BTN_LOGOUT		(WM_APP + 124)
 #define MYWINDOW_BTN_TEST		(WM_APP + 125)
+#define MYWINDOW_TBX_BROADCAST	(WM_APP + 126)
 
 #ifdef _DEBUG
 #define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
@@ -49,13 +50,13 @@ extern BOOL xlln_debug;
 #define XLLN_LOG_LEVEL_FATAL	0b00100000
 
 // Logs related to Xlive functionality.
-#define XLLN_LOG_CONTEXT_XLIVE			(0b00000001 < 8)
+#define XLLN_LOG_CONTEXT_XLIVE			(0b00000001 << 8)
 // Logs related to XLiveLessNess functionality.
-#define XLLN_LOG_CONTEXT_XLIVELESSNESS	(0b00000010 < 8)
+#define XLLN_LOG_CONTEXT_XLIVELESSNESS	(0b00000010 << 8)
 // Logs related to XLLN-Module functionality.
-#define XLLN_LOG_CONTEXT_XLLN_MODULE	(0b00000100 < 8)
+#define XLLN_LOG_CONTEXT_XLLN_MODULE	(0b00000100 << 8)
 // Logs related to functionality from other areas of the application.
-#define XLLN_LOG_CONTEXT_OTHER			(0b10000000 < 8)
+#define XLLN_LOG_CONTEXT_OTHER			(0b10000000 << 8)
 
 namespace XLLNModifyPropertyTypes {
 	const char* const TypeNames[]{
