@@ -1,3 +1,4 @@
+#include <winsock2.h>
 #include "windows.h"
 #include "xlln.hpp"
 #include "debug-text.hpp"
@@ -10,6 +11,7 @@
 #include "../xlive/net-entity.hpp"
 #include "rand-name.hpp"
 #include "../resource.h"
+#include <ws2tcpip.h>
 #include <string>
 #include <time.h>
 
@@ -481,20 +483,89 @@ Executable Launch Parameters:\n\
 			xlive_invite_to_game = true;
 		}
 		else if (wParam == ((EN_CHANGE << 16) | MYWINDOW_TBX_BROADCAST)) {
-			char jlbuffer[50];
-			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, jlbuffer, 50);
-			char *colon = strrchr(jlbuffer, ':');
-			if (colon) {
-				colon[0] = 0;
-				uint16_t tempuint = 0;
-				if (sscanf_s(&colon[1], "%hu", &tempuint) == 1) {
-					xlive_broadcast_override_portHBO = tempuint;
+			char jlbuffer[500];
+			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, jlbuffer, 500);
+			EnterCriticalSection(&xlive_critsec_broadcast_addresses);
+			xlive_broadcast_addresses.clear();
+			SOCKADDR_STORAGE temp_addr;
+			char *current = jlbuffer;
+			while (1) {
+				char *comma = strchr(current, ',');
+				if (comma) {
+					comma[0] = 0;
 				}
-				unsigned long resolvedNetAddr;
-				if ((resolvedNetAddr = inet_addr(jlbuffer)) != htonl(INADDR_NONE)) {
-					xlive_broadcast_override_ipv4HBO = ntohl(resolvedNetAddr);
+
+				char *colon = strrchr(current, ':');
+				if (colon) {
+					colon[0] = 0;
+
+					if (current[0] == '[') {
+						current = &current[1];
+						if (colon[-1] == ']') {
+							colon[-1] = 0;
+						}
+					}
+
+					uint16_t portHBO = 0;
+					if (sscanf_s(&colon[1], "%hu", &portHBO) == 1) {
+						addrinfo hints;
+						memset(&hints, 0, sizeof(hints));
+
+						hints.ai_family = PF_UNSPEC;
+						hints.ai_socktype = SOCK_DGRAM;
+						hints.ai_protocol = IPPROTO_UDP;
+
+						struct in6_addr serveraddr;
+						int rc = inet_pton(AF_INET, current, &serveraddr);
+						if (rc == 1) {
+							hints.ai_family = AF_INET;
+							hints.ai_flags |= AI_NUMERICHOST;
+						}
+						else {
+							rc = inet_pton(AF_INET6, current, &serveraddr);
+							if (rc == 1) {
+								hints.ai_family = AF_INET6;
+								hints.ai_flags |= AI_NUMERICHOST;
+							}
+						}
+
+						addrinfo *res;
+						int error = getaddrinfo(current, NULL, &hints, &res);
+						if (!error) {
+							memset(&temp_addr, 0, sizeof(temp_addr));
+
+							addrinfo *nextRes = res;
+							while (nextRes) {
+								if (nextRes->ai_family == AF_INET) {
+									memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
+									(*(struct sockaddr_in*)&temp_addr).sin_port = htons(portHBO);
+									xlive_broadcast_addresses.push_back(temp_addr);
+									break;
+								}
+								else if (nextRes->ai_family == AF_INET6) {
+									memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
+									(*(struct sockaddr_in6*)&temp_addr).sin6_port = htons(portHBO);
+									xlive_broadcast_addresses.push_back(temp_addr);
+									break;
+								}
+								else {
+									nextRes = nextRes->ai_next;
+								}
+							}
+
+							freeaddrinfo(res);
+						}
+					}
+				}
+
+				if (comma) {
+					current = &comma[1];
+				}
+				else {
+					break;
 				}
 			}
+			LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
 		}
 		return 0;
 	}
@@ -589,6 +660,7 @@ INT InitXLLN(HMODULE hModule)
 	InitializeCriticalSection(&liveoverlan_sessions_lock);
 	InitializeCriticalSection(&xlive_critsec_fps_limit);
 	InitializeCriticalSection(&xlive_critsec_sockets);
+	InitializeCriticalSection(&xlive_critsec_broadcast_addresses);
 	InitializeCriticalSection(&xlln_critsec_debug_log);
 
 	wchar_t mutex_name[40];
@@ -676,6 +748,7 @@ INT UninitXLLN()
 	DeleteCriticalSection(&liveoverlan_sessions_lock);
 	DeleteCriticalSection(&xlive_critsec_fps_limit);
 	DeleteCriticalSection(&xlive_critsec_sockets);
+	DeleteCriticalSection(&xlive_critsec_broadcast_addresses);
 	DeleteCriticalSection(&xlln_critsec_debug_log);
 
 	return 0;

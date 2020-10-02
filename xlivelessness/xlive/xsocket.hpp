@@ -1,13 +1,14 @@
 #pragma once
 #include <stdint.h>
+#include <vector>
 
 extern WORD xlive_base_port;
 extern BOOL xlive_netsocket_abort;
 extern SOCKET xlive_liveoverlan_socket;
 extern CRITICAL_SECTION xlive_critsec_sockets;
 
-extern uint32_t xlive_broadcast_override_ipv4HBO;
-extern uint16_t xlive_broadcast_override_portHBO;
+extern CRITICAL_SECTION xlive_critsec_broadcast_addresses;
+extern std::vector<SOCKADDR_STORAGE> xlive_broadcast_addresses;
 
 #define XLLN_CUSTOM_PACKET_SENTINEL (BYTE)0x00
 namespace XLLNCustomPacketType {

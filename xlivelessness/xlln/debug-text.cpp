@@ -1,7 +1,6 @@
 #include "../xlive/xdefs.hpp"
 #include "debug-text.hpp"
 #include "../xlln/xlln.hpp"
-#include "../xlive/xsocket.hpp"
 #include <string>
 
 static bool initialised_debug_log = false;
