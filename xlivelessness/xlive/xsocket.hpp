@@ -10,43 +10,32 @@ extern CRITICAL_SECTION xlive_critsec_sockets;
 extern CRITICAL_SECTION xlive_critsec_broadcast_addresses;
 extern std::vector<SOCKADDR_STORAGE> xlive_broadcast_addresses;
 
-#define XLLN_CUSTOM_PACKET_SENTINEL (BYTE)0x00
-namespace XLLNCustomPacketType {
-	enum Type : BYTE {
-		UNKNOWN = 0x00,
-		STOCK_PACKET,
-		STOCK_PACKET_FORWARDED,
-		CUSTOM_OTHER,
-		UNKNOWN_USER_ASK,
-		UNKNOWN_USER_REPLY,
-		LIVE_OVER_LAN_ADVERTISE,
-		LIVE_OVER_LAN_UNADVERTISE,
-
-	};
-}
-
-namespace XLLNCustomPacketType {
-	const char* const TypeNames[]{
+namespace XLLNNetPacketType {
+	const char* const TYPE_NAMES[]{
 	"UNKNOWN",
-	"STOCK_PACKET",
-	"STOCK_PACKET_FORWARDED",
-	"CUSTOM_OTHER",
+	"TITLE_PACKET",
+	"TITLE_BROADCAST_PACKET",
+	"PACKET_FORWARDED",
 	"UNKNOWN_USER_ASK",
 	"UNKNOWN_USER_REPLY",
+	"CUSTOM_OTHER",
 	"LIVE_OVER_LAN_ADVERTISE",
 	"LIVE_OVER_LAN_UNADVERTISE",
 	};
-	typedef enum : BYTE {
+	typedef enum : uint8_t {
 		tUNKNOWN = 0,
-		tSTOCK_PACKET,
-		tSTOCK_PACKET_FORWARDED,
-		tCUSTOM_OTHER,
+		tTITLE_PACKET,
+		tTITLE_BROADCAST_PACKET,
+		tPACKET_FORWARDED,
 		tUNKNOWN_USER_ASK,
 		tUNKNOWN_USER_REPLY,
+		tCUSTOM_OTHER,
 		tLIVE_OVER_LAN_ADVERTISE,
 		tLIVE_OVER_LAN_UNADVERTISE,
 	} TYPE;
 #pragma pack(push, 1) // Save then set byte alignment setting.
+
+	typedef sockaddr_storage PACKET_FORWARDED;
 
 	typedef struct {
 		char *Identifier;

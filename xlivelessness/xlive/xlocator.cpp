@@ -438,8 +438,7 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 		}
 	}
 
-	new_local_sd->HEAD.bSentinel = XLLN_CUSTOM_PACKET_SENTINEL;
-	new_local_sd->HEAD.bCustomPacketType = XLLNCustomPacketType::LIVE_OVER_LAN_ADVERTISE;
+	new_local_sd->HEAD.bCustomPacketType = XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE;
 
 	EnterCriticalSection(&liveoverlan_broadcast_lock);
 	if (local_session_details)
@@ -449,7 +448,7 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 }
 VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t ipv4XliveHBO, const uint16_t portXliveHBO, const LIVE_SERVER_DETAILS *session_details, INT &len)
 {
-	if (session_details->HEAD.bCustomPacketType == XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE) {
+	if (session_details->HEAD.bCustomPacketType == XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE) {
 		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
 				, "LiveOverLAN Received INVALID Broadcast Unadvertise from 0x%08x:0x%04x."
@@ -470,7 +469,7 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t i
 		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
 		if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hd with error 0x%08x."
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hu with error 0x%08x."
 				, ipv4XliveHBO
 				, portXliveHBO
 				, resultNetter
@@ -498,7 +497,7 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t i
 		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
 		if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hd with error 0x%08x."
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hu with error 0x%08x."
 				, ipv4XliveHBO
 				, portXliveHBO
 				, resultNetter
@@ -727,8 +726,7 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 	LiveOverLanStopBroadcast();
 
 	LIVE_SERVER_DETAILS unadvertiseData;
-	unadvertiseData.HEAD.bSentinel = XLLN_CUSTOM_PACKET_SENTINEL;
-	unadvertiseData.HEAD.bCustomPacketType = XLLNCustomPacketType::LIVE_OVER_LAN_UNADVERTISE;
+	unadvertiseData.HEAD.bCustomPacketType = XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE;
 	unadvertiseData.UNADV.xuid = xlive_users_info[dwUserIndex]->xuid;
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO

@@ -112,11 +112,6 @@ INT GetNetworkAdapter()
 						ULONG dwMask = 0;
 						dwRetVal = ConvertLengthToIpv4Mask(pUnicast->OnLinkPrefixLength, &dwMask);
 						if (dwRetVal == NO_ERROR) {
-							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-								, "GetNetworkAdapter Adding eligible adapter: %s - %ls."
-								, pCurrAddresses->AdapterName
-								, pCurrAddresses->Description
-							);
 							EligibleAdapter *ea = new EligibleAdapter;
 							ea->name = pCurrAddresses->AdapterName;
 							ea->unicastHAddr = ntohl(((sockaddr_in *)pUnicast->Address.lpSockaddr)->sin_addr.s_addr);
@@ -126,6 +121,13 @@ INT GetNetworkAdapter()
 								ea->minLinkSpeed = pCurrAddresses->TransmitLinkSpeed;
 							ea->hasDnsServer = pCurrAddresses->FirstDnsServerAddress ? TRUE : FALSE;
 							eligible_adapters.push_back(ea);
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+								, "GetNetworkAdapter Adding eligible adapter: %s - %ls - 0x%08x - 0x%08x."
+								, pCurrAddresses->AdapterName
+								, pCurrAddresses->Description
+								, ea->unicastHAddr
+								, ea->unicastHMask
+							);
 						}
 					}
 					pUnicast = pUnicast->Next;
@@ -144,8 +146,9 @@ INT GetNetworkAdapter()
 				chosenAdapter = ea;
 				break;
 			}
-			if (ea->unicastHAddr == INADDR_LOOPBACK || ea->unicastHAddr == INADDR_BROADCAST || ea->unicastHAddr == INADDR_NONE)
+			if (ea->unicastHAddr == INADDR_LOOPBACK || ea->unicastHAddr == INADDR_BROADCAST || ea->unicastHAddr == INADDR_NONE) {
 				continue;
+			}
 			if (!chosenAdapter) {
 				chosenAdapter = ea;
 				continue;
@@ -1097,13 +1100,13 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 			xlive_base_port = 1000;
 			break;
 		}
-		swprintf(mutex_name, 40, L"Global\\XLLNBasePort#%hd", xlive_base_port);
+		swprintf(mutex_name, 40, L"Global\\XLLNBasePort#%hu", xlive_base_port);
 		mutex = CreateMutexW(0, TRUE, mutex_name);
 		mutex_last_error = GetLastError();
 	} while (mutex_last_error != ERROR_SUCCESS);
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
-		, "XLive Base Port %hd."
+		, "XLive Base Port %hu."
 		, xlive_base_port
 	);
 

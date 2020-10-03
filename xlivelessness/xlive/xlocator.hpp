@@ -10,7 +10,6 @@ typedef struct {
 #pragma pack(push, 1) // Save then set byte alignment setting.
 typedef struct {
 	struct {
-		BYTE bSentinel;
 		BYTE bCustomPacketType;
 	} HEAD;
 	union {

@@ -99,7 +99,7 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 	uint32_t resultNetter = NetterEntityEnsureExists(instanceId, portBaseHBO);
 	if (resultNetter) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-			, "XNetXnAddrToInAddr NetterEntityEnsureExists failed to create NetEntity 0x%08x:%hd with error 0x%08x."
+			, "XNetXnAddrToInAddr NetterEntityEnsureExists failed to create NetEntity 0x%08x:%hu with error 0x%08x."
 			, instanceId
 			, portBaseHBO
 			, resultNetter
@@ -109,7 +109,7 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 	}
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-		, "XNetXnAddrToInAddr NetterEntityEnsureExists created 0x%08x:%hd."
+		, "XNetXnAddrToInAddr NetterEntityEnsureExists created 0x%08x:%hu."
 		, instanceId
 		, portBaseHBO
 	);
