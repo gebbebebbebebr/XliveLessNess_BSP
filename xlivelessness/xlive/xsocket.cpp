@@ -681,6 +681,11 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		}
 
 		if (!broadcastOverriden) {
+			{
+				EnterCriticalSection(&xlive_critsec_network_adapter);
+				((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_network_adapter.hBroadcast);
+				LeaveCriticalSection(&xlive_critsec_network_adapter);
+			}
 			for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
 				((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO = (portBaseInc + portOffset));
 
