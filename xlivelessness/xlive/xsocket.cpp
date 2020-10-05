@@ -13,17 +13,9 @@
 
 WORD xlive_base_port = 2000;
 BOOL xlive_netsocket_abort = FALSE;
-SOCKET xlive_liveoverlan_socket = NULL;
 
-struct SOCKET_MAPPING_INFO {
-	int32_t type = 0;
-	int32_t protocol = 0;
-	bool isVdpProtocol = false;
-	uint16_t portHBO = 0;
-	int16_t portOffsetHBO = -1;
-};
 CRITICAL_SECTION xlive_critsec_sockets;
-static std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
+std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
 CRITICAL_SECTION xlive_critsec_broadcast_addresses;
@@ -134,6 +126,7 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 		}
 
 		SOCKET_MAPPING_INFO* socketMappingInfo = new SOCKET_MAPPING_INFO;
+		socketMappingInfo->socket = result;
 		socketMappingInfo->type = type;
 		socketMappingInfo->protocol = protocol;
 		socketMappingInfo->isVdpProtocol = vdp;
@@ -197,13 +190,26 @@ INT WINAPI XSocketIOCTLSocket(SOCKET s, __int32 cmd, ULONG *argp)
 INT WINAPI XSocketSetSockOpt(SOCKET s, int level, int optname, const char *optval, int optlen)
 {
 	TRACE_FX();
-	if ((level & SO_BROADCAST) > 0) {
-		//"XSocketSetSockOpt - SO_BROADCAST";
+
+	if (level == SOL_SOCKET && optname == SO_BROADCAST && optlen) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+			, "XSocketSetSockOpt SO_BROADCAST 0x%02hhx."
+			, *optval
+		);
+		EnterCriticalSection(&xlive_critsec_sockets);
+		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
+		socketMappingInfo->broadcast = *optval > 0;
+		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 
 	INT result = setsockopt(s, level, optname, optval, optlen);
 	if (result == SOCKET_ERROR) {
-		__debugbreak();
+		DWORD errorSocketOpt = GetLastError();
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "XSocketSetSockOpt error 0x%08x on socket 0x%08x."
+			, s
+			, errorSocketOpt
+		);
 	}
 
 	return result;
@@ -278,10 +284,6 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 			xlive_port_offset_sockets[portOffset] = s;
 
 			LeaveCriticalSection(&xlive_critsec_sockets);
-
-			if (portOffset == 0) {
-				xlive_liveoverlan_socket = s;
-			}
 		}
 		else {
 			EnterCriticalSection(&xlive_critsec_sockets);
@@ -304,27 +306,29 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 			, portHBO
 		);
 	}
-	else if (result == SOCKET_ERROR) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-			, "Socket 0x%08x bind error, another program has taken port:\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
-			, s
-			, xlive_base_port
-			, portOffset
-			, portShiftedHBO
-			, portHBO
-		);
-	}
 	else {
 		DWORD errorSocketBind = GetLastError();
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-			, "Socket 0x%08x bind error: 0x%08x.\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
-			, s
-			, errorSocketBind
-			, xlive_base_port
-			, portOffset
-			, portShiftedHBO
-			, portHBO
-		);
+		if (errorSocketBind == WSAEADDRINUSE) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "Socket 0x%08x bind error, another program has taken port:\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
+				, s
+				, xlive_base_port
+				, portOffset
+				, portShiftedHBO
+				, portHBO
+			);
+		}
+		else {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "Socket 0x%08x bind error: 0x%08x.\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
+				, s
+				, errorSocketBind
+				, xlive_base_port
+				, portOffset
+				, portShiftedHBO
+				, portHBO
+			);
+		}
 	}
 
 	return result;
@@ -450,7 +454,10 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				int altFromLen = sizeof(SOCKADDR_STORAGE);
 				memcpy(&packetForwardSocketData, &buf[cpHeaderLen], altFromLen);
 
-				CustomMemCpy(buf, (void*)((uint32_t)buf + packetHeader), result - packetHeader, true);
+				CustomMemCpy(buf, (void*)((uint32_t)buf + packetHeader), (result -= packetHeader), true);
+
+				// TODO We don't need to always send this.
+				SendUnknownUserAskRequest(s, 0, 0, (sockaddr*)&packetForwardSocketData, altFromLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
 
 				result = XSocketRecvFromHelper(result, s, buf, len, flags, (sockaddr*)&packetForwardSocketData, &altFromLen);
 				memcpy(from, &packetForwardSocketData, *fromlen);

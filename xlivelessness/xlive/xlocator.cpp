@@ -74,6 +74,44 @@ VOID LiveOverLanDelete(XLOCATOR_SEARCHRESULT *xlocator_result)
 	delete xlocator_result;
 }
 
+static bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
+{
+	SOCKET_MAPPING_INFO *socketInfoSearch = 0;
+	{
+		EnterCriticalSection(&xlive_critsec_sockets);
+
+		for (auto const &socketInfoPair : xlive_socket_info) {
+			if (socketInfoPair.second->broadcast) {
+				if (socketInfoSearch) {
+					if (socketInfoSearch->portOffsetHBO == -1) {
+						// Only use the socket if the port is smaller in value.
+						if (socketInfoPair.second->portOffsetHBO == -1 && socketInfoPair.second->portHBO > socketInfoSearch->portHBO) {
+							continue;
+						}
+					}
+					else {
+						if (socketInfoPair.second->portOffsetHBO == -1) {
+							continue;
+						}
+						// Only use the socket if the port is smaller in value.
+						else if (socketInfoPair.second->portOffsetHBO > socketInfoSearch->portOffsetHBO) {
+							continue;
+						}
+					}
+				}
+				socketInfoSearch = socketInfoPair.second;
+			}
+		}
+
+		if (socketInfoSearch) {
+			memcpy(socketInfo, socketInfoSearch, sizeof(SOCKET_MAPPING_INFO));
+		}
+
+		LeaveCriticalSection(&xlive_critsec_sockets);
+	}
+	return socketInfoSearch != 0;
+}
+
 static VOID LiveOverLanBroadcast()
 {
 	std::mutex mutexPause;
@@ -91,16 +129,32 @@ static VOID LiveOverLanBroadcast()
 			}
 			else {
 				LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-				if (!xlive_liveoverlan_socket) {
-					XllnDebugBreak("xlive_liveoverlan_socket never got initialized!");
+				SOCKET_MAPPING_INFO socketInfoLiveOverLan;
+				if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+						, "LiveOverLan socket not found!"
+					);
 				}
+				else {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
+						, "LiveOverLan socket: 0x%08x."
+						, socketInfoLiveOverLan.socket
+					);
 
-				SOCKADDR_IN SendStruct;
-				SendStruct.sin_port = htons(1000);
-				SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-				SendStruct.sin_family = AF_INET;
+					SOCKADDR_IN SendStruct;
+					SendStruct.sin_port = htons(socketInfoLiveOverLan.portHBO);
+					SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+					SendStruct.sin_family = AF_INET;
 
-				XllnSocketSendTo(xlive_liveoverlan_socket, (char*)local_session_details, local_session_details->ADV.propsSize + sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::ADV), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
+					XllnSocketSendTo(
+						socketInfoLiveOverLan.socket
+						, (char*)local_session_details
+						, local_session_details->ADV.propsSize + sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::ADV)
+						, 0
+						, (SOCKADDR*)&SendStruct
+						, sizeof(SendStruct)
+					);
+				}
 			}
 		}
 		LeaveCriticalSection(&liveoverlan_broadcast_lock);
@@ -740,16 +794,32 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 	}
 	else {
 		LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-		if (!xlive_liveoverlan_socket) {
-			XllnDebugBreak("xlive_liveoverlan_socket never got initialized!");
+		SOCKET_MAPPING_INFO socketInfoLiveOverLan;
+		if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "LiveOverLan socket not found!"
+			);
 		}
+		else {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
+				, "LiveOverLan socket: 0x%08x."
+				, socketInfoLiveOverLan.socket
+			);
 
-		SOCKADDR_IN SendStruct;
-		SendStruct.sin_port = htons(1000);
-		SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-		SendStruct.sin_family = AF_INET;
+			SOCKADDR_IN SendStruct;
+			SendStruct.sin_port = htons(socketInfoLiveOverLan.portHBO);
+			SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+			SendStruct.sin_family = AF_INET;
 
-		XllnSocketSendTo(xlive_liveoverlan_socket, (char*)&unadvertiseData, sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::UNADV), 0, (SOCKADDR*)&SendStruct, sizeof(SendStruct));
+			XllnSocketSendTo(
+				socketInfoLiveOverLan.socket
+				, (char*)&unadvertiseData
+				, sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::UNADV)
+				, 0
+				, (SOCKADDR*)&SendStruct
+				, sizeof(SendStruct)
+			);
+		}
 	}
 
 	if (pXOverlapped) {

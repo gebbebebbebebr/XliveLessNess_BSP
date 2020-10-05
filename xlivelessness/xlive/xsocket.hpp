@@ -1,11 +1,22 @@
 #pragma once
 #include <stdint.h>
 #include <vector>
+#include <map>
 
 extern WORD xlive_base_port;
 extern BOOL xlive_netsocket_abort;
-extern SOCKET xlive_liveoverlan_socket;
+
+struct SOCKET_MAPPING_INFO {
+	SOCKET socket = 0;
+	int32_t type = 0;
+	int32_t protocol = 0;
+	bool isVdpProtocol = false;
+	uint16_t portHBO = 0;
+	int16_t portOffsetHBO = -1;
+	bool broadcast = false;
+};
 extern CRITICAL_SECTION xlive_critsec_sockets;
+extern std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 
 extern CRITICAL_SECTION xlive_critsec_broadcast_addresses;
 extern std::vector<SOCKADDR_STORAGE> xlive_broadcast_addresses;
