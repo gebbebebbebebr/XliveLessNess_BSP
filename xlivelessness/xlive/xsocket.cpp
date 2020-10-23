@@ -108,11 +108,20 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 
 	SOCKET result = socket(af, type, protocol);
 
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "XSocketCreate: 0x%08x. AF: %d. Type: %d. Protocol: %d."
+		, result
+		, af
+		, type
+		, protocol
+	);
+
 	if (result == INVALID_SOCKET) {
 		DWORD errorSocketCreate = GetLastError();
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "Socket create failed: 0x%08x. Type: %d. Protocol: %d."
+			, "Socket create failed: 0x%08x. AF: %d. Type: %d. Protocol: %d."
 			, errorSocketCreate
+			, af
 			, type
 			, protocol
 		);
@@ -145,16 +154,34 @@ INT WINAPI XSocketClose(SOCKET s)
 	TRACE_FX();
 	INT result = closesocket(s);
 
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "XSocketClose Socket: 0x%08x."
+		, s
+	);
+
+	if (result) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "XSocketClose error 0x%08x. Socket: 0x%08x."
+			, result
+			, s
+		);
+	}
+
 	{
+		SOCKET_MAPPING_INFO *socketMappingInfo = 0;
 		EnterCriticalSection(&xlive_critsec_sockets);
-		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-		xlive_socket_info.erase(s);
-		if (socketMappingInfo->portOffsetHBO != -1) {
-			xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
+		if (xlive_socket_info.count(s)) {
+			socketMappingInfo = xlive_socket_info[s];
+			xlive_socket_info.erase(s);
+			if (socketMappingInfo->portOffsetHBO != -1) {
+				xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
+			}
 		}
 		LeaveCriticalSection(&xlive_critsec_sockets);
 
-		delete socketMappingInfo;
+		if (socketMappingInfo) {
+			delete socketMappingInfo;
+		}
 	}
 
 	return result;
@@ -166,14 +193,33 @@ INT WINAPI XSocketShutdown(SOCKET s, int how)
 	TRACE_FX();
 	INT result = shutdown(s, how);
 
-	EnterCriticalSection(&xlive_critsec_sockets);
-	SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-	if (socketMappingInfo->portOffsetHBO != -1) {
-		xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "XSocketShutdown Socket: 0x%08x. how: %d."
+		, s
+		, how
+	);
+
+	if (result) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "XSocketShutdown error 0x%08x. Socket: 0x%08x. how: %d."
+			, result
+			, s
+			, how
+		);
 	}
-	socketMappingInfo->portHBO = 0;
-	socketMappingInfo->portOffsetHBO = -1;
-	LeaveCriticalSection(&xlive_critsec_sockets);
+	
+	{
+		EnterCriticalSection(&xlive_critsec_sockets);
+		if (xlive_socket_info.count(s)) {
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
+			if (socketMappingInfo->portOffsetHBO != -1) {
+				xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
+			}
+			socketMappingInfo->portHBO = 0;
+			socketMappingInfo->portOffsetHBO = -1;
+		}
+		LeaveCriticalSection(&xlive_critsec_sockets);
+	}
 
 	return result;
 }
@@ -348,10 +394,20 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 	uint32_t ipv4XliveHBO = 0;
 	uint16_t portXliveHBO = 0;
 	uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
-	if (resultNetter) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
+	if (resultNetter == ERROR_PORT_NOT_SET) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort ERROR_PORT_NOT_SET address/instanceId 0x%08x:%hu as 0x%08x:%hu."
 			, ipv4HBO
+			, portHBO
+			, ipv4XliveHBO
+			, portXliveHBO
+		);
+	}
+	else if (resultNetter) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
+			, ipv4HBO
+			, portHBO
 			, resultNetter
 		);
 		ipv4XliveHBO = 0;
@@ -359,18 +415,19 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 	}
 	else {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:%hu."
+			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as 0x%08x:%hu."
 			, ipv4HBO
+			, portHBO
 			, ipv4XliveHBO
 			, portXliveHBO
 		);
+	}
 
-		if (ipv4XliveHBO) {
-			((struct sockaddr_in*)name)->sin_addr.s_addr = htonl(ipv4XliveHBO);
-		}
-		if (portXliveHBO) {
-			((struct sockaddr_in*)name)->sin_port = htons(portXliveHBO);
-		}
+	if (ipv4XliveHBO) {
+		((struct sockaddr_in*)name)->sin_addr.s_addr = htonl(ipv4XliveHBO);
+	}
+	if (portXliveHBO) {
+		((struct sockaddr_in*)name)->sin_port = htons(portXliveHBO);
 	}
 
 	INT result = connect(s, name, namelen);
@@ -707,8 +764,9 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
 		if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x with error 0x%08x."
+				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
 				, ipv4HBO
+				, portHBO
 				, resultNetter
 			);
 
@@ -727,8 +785,9 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		}
 		else {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x as 0x%08x:%hu."
+				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as 0x%08x:%hu."
 				, ipv4HBO
+				, portHBO
 				, ipv4XliveHBO
 				, portXliveHBO
 			);
@@ -745,7 +804,7 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 			if (result == SOCKET_ERROR) {
 				INT errorSendTo = WSAGetLastError();
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-					, "XllnSocketSendTo sendto() failed to send to address 0x%08x:0x%04x with error 0x%08x."
+					, "XllnSocketSendTo sendto() failed to send to address 0x%08x:0x%hu with error 0x%08x."
 					, ipv4XliveHBO
 					, portXliveHBO
 					, errorSendTo
