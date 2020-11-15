@@ -480,7 +480,7 @@ DWORD WINAPI XUserSetContextEx(DWORD dwUserIndex, DWORD dwContextId, DWORD dwCon
 		return ERROR_NO_SUCH_USER;
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
 		return ERROR_NOT_LOGGED_ON;
-	if (dwContextId != X_CONTEXT_PRESENCE || dwContextId != X_CONTEXT_GAME_TYPE || dwContextId != X_CONTEXT_GAME_MODE || dwContextId != X_CONTEXT_SESSION_JOINABLE)
+	if (dwContextId != X_CONTEXT_PRESENCE && dwContextId != X_CONTEXT_GAME_TYPE && dwContextId != X_CONTEXT_GAME_MODE && dwContextId != X_CONTEXT_SESSION_JOINABLE && dwContextId != X_CONTEXT_GAME_TYPE_RANKED && dwContextId != X_CONTEXT_GAME_TYPE_STANDARD)
 		return ERROR_INVALID_PARAMETER;
 
 	if (dwContextId == X_CONTEXT_GAME_TYPE) {

@@ -430,19 +430,34 @@ DWORD WINAPI XGetOverlappedExtendedError(PXOVERLAPPED pOverlapped)
 {
 	TRACE_FX();
 	if (!pOverlapped) {
-		return ERROR_INVALID_PARAMETER;
+		return GetLastError();
 	}
-
-	return pOverlapped->dwExtendedError;
+	if (pOverlapped->InternalLow != ERROR_IO_PENDING) {
+		return pOverlapped->dwExtendedError;
+	}
+	return ERROR_IO_INCOMPLETE;
 }
 
 // #1083
 DWORD WINAPI XGetOverlappedResult(PXOVERLAPPED pOverlapped, LPDWORD pdwResult, BOOL bWait)
 {
 	TRACE_FX();
-	if (bWait) {
-		while (pOverlapped->InternalLow == ERROR_IO_INCOMPLETE) {
-			Sleep(50L);
+	if (!pOverlapped) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (pOverlapped->InternalLow == ERROR_IO_PENDING) {
+		DWORD waitResult;
+		if (bWait && pOverlapped->hEvent != 0) {
+			waitResult = WaitForSingleObject(pOverlapped->hEvent, 0xFFFFFFFF);
+		}
+		else {
+			waitResult = WAIT_TIMEOUT;
+		}
+		if (waitResult == WAIT_TIMEOUT) {
+			return ERROR_IO_INCOMPLETE;
+		}
+		if (waitResult) {
+			return GetLastError();
 		}
 	}
 
@@ -830,6 +845,7 @@ DWORD WINAPI XCancelOverlapped(XOVERLAPPED *pXOverlapped)
 	if (!pXOverlapped)
 		return ERROR_INVALID_PARAMETER;
 	//TODO XCancelOverlapped
+	SetLastError(ERROR_SUCCESS);
 	return ERROR_SUCCESS;
 }
 
@@ -1056,6 +1072,9 @@ VOID XLiveGetLocalOnlinePort()
 HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLiveVersion)
 {
 	TRACE_FX();
+
+	// if (IsDebuggerPresent())
+	// return E_DEBUGGER_PRESENT;
 
 	while (xlive_debug_pause && !IsDebuggerPresent()) {
 		Sleep(500L);
