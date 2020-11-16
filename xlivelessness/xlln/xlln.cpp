@@ -148,7 +148,7 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 			DispatchMessage(&msg);
 		}
 	}
-	return TRUE;
+	return ERROR_SUCCESS;
 }
 
 
@@ -612,8 +612,22 @@ Executable Launch Parameters:\n\
 	return DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
-INT ShowXLLN(DWORD dwShowType)
+static DWORD WINAPI ThreadShowXlln(LPVOID lpParam)
 {
+	DWORD *threadArgs = (DWORD*)lpParam;
+	DWORD mainThreadId = threadArgs[0];
+	DWORD dwShowType = threadArgs[1];
+	delete[] threadArgs;
+
+	// Wait a moment for some Titles to process user input that triggers this event before poping the menu.
+	// Otherwise the Title might have issues consuming input correctly and for example repeat the action over and over.
+	Sleep(200);
+
+	DWORD currentThreadId = GetCurrentThreadId();
+
+	// Attach to the main thread as secondary threads cannot use GUI functions.
+	AttachThreadInput(currentThreadId, mainThreadId, TRUE);
+
 	if (dwShowType == XLLN_SHOW_HIDE) {
 		ShowWindow(xlln_window_hwnd, SW_HIDE);
 	}
@@ -626,6 +640,17 @@ INT ShowXLLN(DWORD dwShowType)
 		SetWindowPos(xlln_window_hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 		SendMessage(xlln_window_hwnd, WM_NEXTDLGCTL, (WPARAM)GetDlgItem(xlln_window_hwnd, MYWINDOW_TBX_USERNAME), TRUE);
 	}
+
+	AttachThreadInput(currentThreadId, mainThreadId, FALSE);
+
+	return ERROR_SUCCESS;
+}
+
+INT ShowXLLN(DWORD dwShowType)
+{
+	DWORD *threadArgs = new DWORD[2]{ GetCurrentThreadId(), dwShowType };
+	CreateThread(0, NULL, ThreadShowXlln, (LPVOID)threadArgs, NULL, NULL);
+
 	return ERROR_SUCCESS;
 }
 
