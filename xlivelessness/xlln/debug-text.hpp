@@ -7,7 +7,10 @@ INT UninitDebugLog();
 
 extern CRITICAL_SECTION xlln_critsec_debug_log;
 
+bool addDebugTextBlacklist(const char *black_text);
 bool addDebugTextBlacklist(char *black_text);
+extern char **blacklist;
+extern int blacklist_len;
 int getDebugTextArrayMaxLen();
 void addDebugText(char* text);
 void addDebugText(const char* text);

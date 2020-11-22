@@ -177,6 +177,7 @@
     <ClCompile Include="xlive\xwsa.cpp" />
     <ClCompile Include="xlln\debug-text.cpp" />
     <ClCompile Include="xlln\rand-name.cpp" />
+    <ClCompile Include="xlln\xlln-config.cpp" />
     <ClCompile Include="xlln\xlln-modules.cpp" />
     <ClCompile Include="xlln\xlln.cpp" />
   </ItemGroup>
@@ -203,6 +204,7 @@
     <ClInclude Include="xlive\xwsa.hpp" />
     <ClInclude Include="xlln\debug-text.hpp" />
     <ClInclude Include="xlln\rand-name.hpp" />
+    <ClInclude Include="xlln\xlln-config.hpp" />
     <ClInclude Include="xlln\xlln-modules.hpp" />
     <ClInclude Include="xlln\xlln.hpp" />
   </ItemGroup>

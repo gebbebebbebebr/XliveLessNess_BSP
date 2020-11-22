@@ -84,6 +84,9 @@
     <ClCompile Include="utils\util-hook.cpp">
       <Filter>Source Files\utils</Filter>
     </ClCompile>
+    <ClCompile Include="xlln\xlln-config.cpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -148,6 +151,9 @@
     </ClInclude>
     <ClInclude Include="utils\util-hook.hpp">
       <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="xlln\xlln-config.hpp">
+      <Filter>Source Files\xlln</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

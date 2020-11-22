@@ -15,9 +15,10 @@
 #define MYWINDOW_TBX_USERNAME	(WM_APP + 121)
 #define MYWINDOW_TBX_TEST		(WM_APP + 122)
 #define MYWINDOW_CHK_LIVEENABLE	(WM_APP + 123)
-#define MYWINDOW_BTN_LOGOUT		(WM_APP + 124)
-#define MYWINDOW_BTN_TEST		(WM_APP + 125)
-#define MYWINDOW_TBX_BROADCAST	(WM_APP + 126)
+#define MYWINDOW_CHK_AUTOLOGIN	(WM_APP + 124)
+#define MYWINDOW_BTN_LOGOUT		(WM_APP + 125)
+#define MYWINDOW_BTN_TEST		(WM_APP + 126)
+#define MYWINDOW_TBX_BROADCAST	(WM_APP + 127)
 
 #ifdef _DEBUG
 #define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
@@ -31,6 +32,7 @@ DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...);
 INT InitXLLN(HMODULE hModule);
 INT UninitXLLN();
 INT ShowXLLN(DWORD dwShowType);
+void UpdateUserInputBoxes(DWORD dwUserIndex);
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
 
 extern HWND xlln_window_hwnd;

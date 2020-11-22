@@ -1,5 +1,6 @@
 #include "../xlive/xdefs.hpp"
 #include "debug-text.hpp"
+#include "../utils/utils.hpp"
 #include "../xlln/xlln.hpp"
 #include <string>
 
@@ -14,10 +15,18 @@ static bool DebugTextDisplay = false;
 static FILE* debugFile = NULL;
 static char debug_blarg[0x1000];
 
-static char **blacklist;
-static int blacklist_len = 0;
+char **blacklist;
+int blacklist_len = 0;
 static int blacklist_len_max = 0;
 
+bool addDebugTextBlacklist(const char *black_text)
+{
+	if (strlen(black_text) <= 0) {
+		return false;
+	}
+	char *malloced = FormMallocString("%s", black_text);
+	return addDebugTextBlacklist(malloced);
+}
 bool addDebugTextBlacklist(char *black_text)
 {
 	if (!xlln_debug || !initialised_debug_log) {

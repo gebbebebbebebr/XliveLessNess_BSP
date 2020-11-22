@@ -20,6 +20,9 @@
 BOOL xlive_debug_pause = FALSE;
 
 BOOL xlive_users_info_changed[XLIVE_LOCAL_USER_COUNT];
+BOOL xlive_users_auto_login[XLIVE_LOCAL_USER_COUNT];
+BOOL xlive_users_live_enabled[XLIVE_LOCAL_USER_COUNT];
+CHAR xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
 XUSER_SIGNIN_INFO* xlive_users_info[XLIVE_LOCAL_USER_COUNT];
 
 struct NOTIFY_LISTENER {
@@ -1098,12 +1101,6 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	memset(&xlive_network_adapter, 0x00, sizeof(EligibleAdapter));
 
 	LeaveCriticalSection(&xlive_critsec_network_adapter);
-
-	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
-		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
-		memset(xlive_users_info[i], 0, sizeof(XUSER_SIGNIN_INFO));
-		xlive_users_info_changed[i] = FALSE;
-	}
 
 	wchar_t mutex_name[40];
 	DWORD mutex_last_error;

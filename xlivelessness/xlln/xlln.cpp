@@ -2,6 +2,7 @@
 #include "windows.h"
 #include "xlln.hpp"
 #include "debug-text.hpp"
+#include "xlln-config.hpp"
 #include "../utils/utils.hpp"
 #include "../xlive/xdefs.hpp"
 #include "../xlive/xlive.hpp"
@@ -118,6 +119,11 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 
 	free(windowTitle);
 
+	for (int iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
+		memcpy(xlive_users_info[iUser]->szUserName, xlive_users_username[iUser], XUSER_NAME_SIZE);
+		UpdateUserInputBoxes(iUser);
+	}
+
 	ShowWindow(xlln_window_hwnd, xlln_debug ? SW_NORMAL : SW_HIDE);
 
 	int textBoxes[] = { MYWINDOW_TBX_USERNAME, MYWINDOW_TBX_TEST, MYWINDOW_TBX_BROADCAST };
@@ -168,7 +174,8 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 		dwUserId = rand();
 	}
 	if (szUsername) {
-		strncpy_s(xlive_users_info[dwUserIndex]->szUserName, XUSER_NAME_SIZE, szUsername, XUSER_NAME_SIZE);
+		memcpy(xlive_users_info[dwUserIndex]->szUserName, szUsername, XUSER_NAME_SIZE);
+		xlive_users_info[dwUserIndex]->szUserName[XUSER_NAME_SIZE] = 0;
 	}
 	else {
 		wchar_t generated_name[XUSER_NAME_SIZE];
@@ -178,19 +185,26 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 
 	xlive_users_info[dwUserIndex]->UserSigninState = bLiveEnabled ? eXUserSigninState_SignedInToLive : eXUserSigninState_SignedInLocally;
 	//0x0009000000000000 - online xuid?
-	xlive_users_info[dwUserIndex]->xuid = 0xE000007300000000 + dwUserId;
+	//0x0009000006F93463
+	//xlive_users_info[dwUserIndex]->xuid = 0xE000007300000000 + dwUserId;
+	xlive_users_info[dwUserIndex]->xuid = 0x0009000000000000 + dwUserId;
 	xlive_users_info[dwUserIndex]->dwInfoFlags;
 
 	xlive_users_info_changed[dwUserIndex] = TRUE;
+	xlive_users_auto_login[dwUserIndex] = FALSE;
 
-	SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
-	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, bLiveEnabled ? BST_CHECKED : BST_UNCHECKED);
+	if (dwUserIndex == xlln_login_player) {
+		SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
+		CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, bLiveEnabled ? BST_CHECKED : BST_UNCHECKED);
 
-	BOOL checked = TRUE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
-	//CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], checked ? MF_CHECKED : MF_UNCHECKED);
+		CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, BST_UNCHECKED);
 
-	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
-	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
+		BOOL checked = TRUE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
+		//CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], checked ? MF_CHECKED : MF_UNCHECKED);
+
+		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
+		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
+	}
 
 	return ERROR_SUCCESS;
 }
@@ -207,11 +221,13 @@ DWORD WINAPI XLLNLogout(DWORD dwUserIndex)
 	xlive_users_info[dwUserIndex]->UserSigninState = eXUserSigninState_NotSignedIn;
 	xlive_users_info_changed[dwUserIndex] = TRUE;
 
-	BOOL checked = FALSE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
-	//CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], checked ? MF_CHECKED : MF_UNCHECKED);
+	if (dwUserIndex == xlln_login_player) {
+		BOOL checked = FALSE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
+		//CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], checked ? MF_CHECKED : MF_UNCHECKED);
 
-	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
-	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
+		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
+		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
+	}
 
 	return ERROR_SUCCESS;
 }
@@ -360,32 +376,27 @@ DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
 	return ERROR_SUCCESS;
 }
 
-static void UpdateUserInputBoxes(DWORD dwUserIndex)
+void UpdateUserInputBoxes(DWORD dwUserIndex)
 {
 	for (DWORD i = 0; i < 4; i++) {
-		if (i == dwUserIndex) {
-			continue;
-		}
-		BOOL checked = FALSE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
+		BOOL checked = i == xlln_login_player ? TRUE : FALSE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
 		CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[i], checked ? MF_CHECKED : MF_UNCHECKED);
 	}
-	BOOL checked = TRUE;
-	CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[dwUserIndex], checked ? MF_CHECKED : MF_UNCHECKED);
 
-	checked = FALSE;
-	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn) {
-		checked = TRUE;
-	}
-	BOOL bLiveEnabled = FALSE;
-	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive) {
-		bLiveEnabled = TRUE;
+	if (dwUserIndex != xlln_login_player) {
+		return;
 	}
 
 	SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
-	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, bLiveEnabled ? BST_CHECKED : BST_UNCHECKED);
 
-	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
-	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
+	bool liveEnabled = xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive || xlive_users_live_enabled[dwUserIndex];
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, liveEnabled ? BST_CHECKED : BST_UNCHECKED);
+
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, xlive_users_auto_login[dwUserIndex] ? BST_CHECKED : BST_UNCHECKED);
+
+	bool loggedIn = xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn;
+	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), loggedIn ? SW_HIDE : SW_SHOWNORMAL);
+	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), loggedIn ? SW_SHOWNORMAL : SW_HIDE);
 
 	InvalidateRect(xlln_window_hwnd, NULL, FALSE);
 }
@@ -442,8 +453,7 @@ Executable Launch Parameters:\n\
 -xllndebuglog ? Enable debug log.\n\
 -xlivedebug ? Sleep XLiveInitialize until debugger attach.\n\
 -xlivenetdisable ? Disable all network functionality.\n\
--xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
--xllndebuglogblacklist=<function_name,func_name,...> ? Exclude the listed function names from the debug log."
+-xliveportbase=<ushort> ? Change the Base Port (default 2000)."
 				, "About", MB_OK);
 		}
 		else if (wParam == MYMENU_LOGIN1) {
@@ -463,16 +473,30 @@ Executable Launch Parameters:\n\
 			UpdateUserInputBoxes(xlln_login_player);
 		}
 		else if (wParam == MYWINDOW_CHK_LIVEENABLE) {
-			BOOL checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) != BST_CHECKED;
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) != BST_CHECKED;
 			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlive_users_live_enabled[xlln_login_player] = checked;
+		}
+		else if (wParam == MYWINDOW_CHK_AUTOLOGIN) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlive_users_auto_login[xlln_login_player] = checked;
 		}
 		else if (wParam == MYWINDOW_BTN_LOGIN) {
-			char jlbuffer[16];
-			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer, 16);
+			char jlbuffer[32];
+			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer, 32);
+			TrimRemoveConsecutiveSpaces(jlbuffer);
+			jlbuffer[XUSER_NAME_SIZE - 1] = 0;
 			SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer);
 
-			BOOL live_enabled = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) == BST_CHECKED;
-			DWORD result_login = XLLNLogin(xlln_login_player, live_enabled, NULL, strnlen_s(jlbuffer, 16) == 0 ? NULL : jlbuffer);
+			BOOL liveEnabled = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) == BST_CHECKED;
+			BOOL autoLoginChecked = xlive_users_auto_login[xlln_login_player];
+			if (jlbuffer[0] != 0) {
+				memcpy(xlive_users_username[xlln_login_player], jlbuffer, XUSER_NAME_SIZE);
+			}
+			DWORD result_login = XLLNLogin(xlln_login_player, liveEnabled, NULL, jlbuffer[0] == 0 ? NULL : jlbuffer);
+			xlive_users_auto_login[xlln_login_player] = autoLoginChecked;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, autoLoginChecked ? BST_CHECKED : BST_UNCHECKED);
 		}
 		else if (wParam == MYWINDOW_BTN_LOGOUT) {
 			DWORD result_logout = XLLNLogout(xlln_login_player);
@@ -583,6 +607,9 @@ Executable Launch Parameters:\n\
 		CreateWindowA("button", "Live Enabled", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 			140, 51, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_LIVEENABLE, xlln_hModule, NULL);
 
+		CreateWindowA("button", "Auto Login", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+			280, 51, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_AUTOLOGIN, xlln_hModule, NULL);
+
 		CreateWindowA("button", "Login", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 			140, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGIN, xlln_hModule, NULL);
 
@@ -648,6 +675,38 @@ static DWORD WINAPI ThreadShowXlln(LPVOID lpParam)
 
 INT ShowXLLN(DWORD dwShowType)
 {
+	if (dwShowType == XLLN_SHOW_LOGIN) {
+		bool anyGotAutoLogged = false;
+
+		// Check if there are any accounts already logged in.
+		for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
+			if (xlive_users_info[i]->UserSigninState != eXUserSigninState_NotSignedIn) {
+				anyGotAutoLogged = true;
+				break;
+			}
+		}
+
+		// If no accounts are logged in then auto login the ones that have the flag.
+		if (!anyGotAutoLogged) {
+			for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
+				if (xlive_users_auto_login[i]) {
+					anyGotAutoLogged = true;
+					BOOL autoLoginChecked = xlive_users_auto_login[i];
+					XLLNLogin(i, xlive_users_live_enabled[i], 0, strlen(xlive_users_info[i]->szUserName) > 0 ? xlive_users_info[i]->szUserName : 0);
+					xlive_users_auto_login[i] = autoLoginChecked;
+					if (i == xlln_login_player) {
+						CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, autoLoginChecked ? BST_CHECKED : BST_UNCHECKED);
+					}
+				}
+			}
+
+			// If there were accounts that were auto logged in then do not pop the XLLN window.
+			if (anyGotAutoLogged) {
+				return ERROR_SUCCESS;
+			}
+		}
+	}
+
 	DWORD *threadArgs = new DWORD[2]{ GetCurrentThreadId(), dwShowType };
 	CreateThread(0, NULL, ThreadShowXlln, (LPVOID)threadArgs, NULL, NULL);
 
@@ -666,7 +725,9 @@ INT InitXLLN(HMODULE hModule)
 				xlln_debug_pause = TRUE;
 			}
 			else if (wcscmp(lpwszArglist[i], L"-xllndebuglog") == 0) {
+#ifdef _DEBUG
 				xlln_debug = TRUE;
+#endif
 			}
 		}
 	}
@@ -723,30 +784,19 @@ INT InitXLLN(HMODULE hModule)
 					xlive_base_port = tempuint;
 				}
 			}
-			else if (wcsstr(lpwszArglist[i], L"-xllndebuglogblacklist=") != NULL) {
-				wchar_t *blacklist = &lpwszArglist[i][23];
-				while (true) {
-					wchar_t *next_item = wcschr(blacklist, L',');
-					if (next_item) {
-						next_item++[0] = 0;
-					}
-					if (blacklist[0] != 0 && blacklist[0] != L',') {
-						int black_text_len = wcsnlen_s(blacklist, 0x1000 - 1) + 1;
-						char *black_text = (char*)malloc(sizeof(char) * black_text_len);
-						snprintf(black_text, black_text_len, "%ws", blacklist);
-						if (!addDebugTextBlacklist(black_text)) {
-							free(black_text);
-						}
-					}
-					if (!next_item || !next_item[0]) {
-						break;
-					}
-					blacklist = next_item;
-				}
-			}
 		}
 	}
 	LocalFree(lpwszArglist);
+
+	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
+		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
+		memset(xlive_users_info[i], 0, sizeof(XUSER_SIGNIN_INFO));
+		memset(xlive_users_username[i], 0, sizeof(xlive_users_username[i]));
+		xlive_users_info_changed[i] = FALSE;
+		xlive_users_auto_login[i] = FALSE;
+	}
+
+	HRESULT error_XllnConfig = InitXllnConfig(xlln_instance);
 
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)hModule, NULL, NULL);
@@ -761,6 +811,8 @@ INT InitXLLN(HMODULE hModule)
 
 INT UninitXLLN()
 {
+	HRESULT error_XllnConfig = UninitXllnConfig();
+
 	INT error_DebugLog = UninitDebugLog();
 
 	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);

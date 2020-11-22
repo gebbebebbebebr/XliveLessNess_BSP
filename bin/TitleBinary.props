@@ -4,7 +4,7 @@
   <PropertyGroup Label="UserMacros">
     <TitleBinary>halo2.exe</TitleBinary>
     <TitleBinaryPath></TitleBinaryPath>
-    <TitleBinaryArgs>-xllndebuglogblacklist=XLiveRender,XLiveInput,XLivePreTranslateMessage,XSocketRecvFrom,XSocketWSAGetLastError,XNotifyGetNext,XUserCheckPrivilege,XNetGetEthernetLinkStatus,XLivePBufferGetByte,XSocketHTONL,XSocketNTOHL,XSocketHTONS,XSocketNTOHS</TitleBinaryArgs>
+    <TitleBinaryArgs></TitleBinaryArgs>
   </PropertyGroup>
   <PropertyGroup />
   <ItemDefinitionGroup />
