@@ -1,3 +1,4 @@
+#include <winsock2.h>
 #include "windows.h"
 #include "xlln-modules.hpp"
 #include "../dllmain.hpp"
@@ -6,6 +7,7 @@
 #include "../utils/util-hook.hpp"
 #include <string>
 #include <vector>
+#include <stdint.h>
 
 typedef struct {
 	HINSTANCE hInstance;

@@ -1,8 +1,10 @@
+#include <winsock2.h>
 #include "../xlive/xdefs.hpp"
 #include "debug-text.hpp"
 #include "../utils/utils.hpp"
 #include "../xlln/xlln.hpp"
 #include <string>
+#include <stdint.h>
 
 static bool initialised_debug_log = false;
 CRITICAL_SECTION xlln_critsec_debug_log;

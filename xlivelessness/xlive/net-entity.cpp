@@ -2,26 +2,31 @@
 #include "xdefs.hpp"
 #include "net-entity.hpp"
 #include "../xlln/xlln.hpp"
+#include "../utils/utils.hpp"
 #include <vector>
 #include <set>
+#include <WS2tcpip.h>
 
 CRITICAL_SECTION xlln_critsec_net_entity;
 std::map<uint32_t, NET_ENTITY*> xlln_net_entity_instanceid_to_netentity;
-std::map<IP_PORT, NET_ENTITY*> xlln_net_entity_external_addr_to_netentity;
+std::map<SOCKADDR_STORAGE*, NET_ENTITY*> xlln_net_entity_external_addr_to_netentity;
 
 uint32_t NetterEntityClearPortMappings_(NET_ENTITY *netter)
 {
-	for (auto const &mapping : netter->external_addr_to_port_internal) {
-		xlln_net_entity_external_addr_to_netentity.erase(mapping.first);
+	// Delete shared pointer (acting as key).
+	for (auto const &externalAddrToPortInternal : netter->external_addr_to_port_internal) {
+		xlln_net_entity_external_addr_to_netentity.erase(externalAddrToPortInternal.first);
+		delete externalAddrToPortInternal.first;
 	}
 	netter->external_addr_to_port_internal.clear();
+
 	netter->port_internal_to_external_addr.clear();
 	netter->port_internal_offset_to_external_addr.clear();
 
 	return ERROR_SUCCESS;
 }
 
-uint32_t NetterEntityEnsureExists_(uint32_t instanceId, uint16_t portBaseHBO)
+uint32_t NetterEntityEnsureExists_(const uint32_t instanceId, const uint16_t portBaseHBO)
 {
 	if (!xlln_net_entity_instanceid_to_netentity.count(instanceId)) {
 		NET_ENTITY *netter = new NET_ENTITY;
@@ -45,7 +50,7 @@ uint32_t NetterEntityEnsureExists_(uint32_t instanceId, uint16_t portBaseHBO)
 	}
 	return ERROR_SUCCESS;
 }
-uint32_t NetterEntityEnsureExists(uint32_t instanceId, uint16_t portBaseHBO)
+uint32_t NetterEntityEnsureExists(const uint32_t instanceId, const uint16_t portBaseHBO)
 {
 	uint32_t result = ERROR_UNHANDLED_ERROR;
 	EnterCriticalSection(&xlln_critsec_net_entity);
@@ -54,7 +59,7 @@ uint32_t NetterEntityEnsureExists(uint32_t instanceId, uint16_t portBaseHBO)
 	return result;
 }
 
-uint32_t NetterEntityGetByInstanceId_(NET_ENTITY **netter, uint32_t instanceId)
+uint32_t NetterEntityGetByInstanceId_(NET_ENTITY **netter, const uint32_t instanceId)
 {
 	if (xlln_net_entity_instanceid_to_netentity.count(instanceId)) {
 		*netter = xlln_net_entity_instanceid_to_netentity[instanceId];
@@ -64,11 +69,8 @@ uint32_t NetterEntityGetByInstanceId_(NET_ENTITY **netter, uint32_t instanceId)
 	return ERROR_NOT_FOUND;
 }
 
-uint32_t NetterEntityGetAddrByInstanceIdPort_(uint32_t *ipv4XliveHBO, uint16_t *portXliveHBO, uint32_t instanceId, uint16_t portHBO)
+uint32_t NetterEntityGetAddrByInstanceIdPort_(SOCKADDR_STORAGE *externalAddr, const uint32_t instanceId, const uint16_t portHBO)
 {
-	*ipv4XliveHBO = 0;
-	*portXliveHBO = 0;
-
 	NET_ENTITY *netter = 0;
 	uint32_t resultGetInstanceId = NetterEntityGetByInstanceId_(&netter, instanceId);
 	if (resultGetInstanceId) {
@@ -79,42 +81,72 @@ uint32_t NetterEntityGetAddrByInstanceIdPort_(uint32_t *ipv4XliveHBO, uint16_t *
 	}
 
 	if (!netter->port_internal_to_external_addr.count(portHBO)) {
-		for (auto const &externalAddr : netter->port_internal_to_external_addr)
-		{
-			*ipv4XliveHBO = externalAddr.second.first;
-			*portXliveHBO = externalAddr.second.second - (externalAddr.second.second % 100) + (portHBO % 100);
+		for (auto const &externalAddrFromPort : netter->port_internal_to_external_addr) {
+			externalAddr->ss_family = externalAddrFromPort.second->ss_family;
+			switch (externalAddrFromPort.second->ss_family) {
+			case AF_INET: {
+				(*(sockaddr_in*)externalAddr).sin_addr = ((sockaddr_in*)externalAddrFromPort.second)->sin_addr;
+				const uint16_t portOtherHBO = ntohs(((sockaddr_in*)externalAddrFromPort.second)->sin_port);
+				const uint16_t portXliveHBO = portOtherHBO - (portOtherHBO % 100) + (portHBO % 100);
+				(*(sockaddr_in*)externalAddr).sin_port = htons(portXliveHBO);
+				break;
+			}
+			case AF_INET6: {
+				memcpy(((sockaddr_in6*)externalAddr)->sin6_addr.s6_addr, ((sockaddr_in6*)externalAddrFromPort.second)->sin6_addr.s6_addr, sizeof(IN6_ADDR));
+				const uint16_t portOtherHBO = ntohs(((sockaddr_in6*)externalAddrFromPort.second)->sin6_port);
+				const uint16_t portXliveHBO = portOtherHBO - (portOtherHBO % 100) + (portHBO % 100);
+				(*(sockaddr_in6*)externalAddr).sin6_port = htons(portXliveHBO);
+				break;
+			}
+			default:
+				continue;
+			}
 
 			return ERROR_PORT_NOT_SET;
 		}
 		return ERROR_PORT_UNREACHABLE;
 	}
 
-	*ipv4XliveHBO = netter->port_internal_to_external_addr[portHBO].first;
-	*portXliveHBO = netter->port_internal_to_external_addr[portHBO].second;
+	externalAddr->ss_family = netter->port_internal_to_external_addr[portHBO]->ss_family;
+	switch (netter->port_internal_to_external_addr[portHBO]->ss_family) {
+	case AF_INET: {
+		(*(sockaddr_in*)externalAddr).sin_addr.s_addr = ((sockaddr_in*)netter->port_internal_to_external_addr[portHBO])->sin_addr.s_addr;
+		(*(sockaddr_in*)externalAddr).sin_port = ((sockaddr_in*)netter->port_internal_to_external_addr[portHBO])->sin_port;
+		break;
+	}
+	case AF_INET6: {
+		memcpy(((sockaddr_in6*)externalAddr)->sin6_addr.s6_addr, ((sockaddr_in6*)netter->port_internal_to_external_addr[portHBO])->sin6_addr.s6_addr, sizeof(IN6_ADDR));
+		(*(sockaddr_in6*)externalAddr).sin6_port = ((sockaddr_in6*)netter->port_internal_to_external_addr[portHBO])->sin6_port;
+		break;
+	}
+	default:
+		memcpy(&externalAddr, &netter->port_internal_to_external_addr[portHBO], sizeof(SOCKADDR_STORAGE));
+	}
 
 	return ERROR_SUCCESS;
 }
-uint32_t NetterEntityGetAddrByInstanceIdPort(uint32_t *ipv4XliveHBO, uint16_t *portXliveHBO, uint32_t instanceId, uint16_t portHBO)
+uint32_t NetterEntityGetAddrByInstanceIdPort(SOCKADDR_STORAGE *externalAddr, const uint32_t instanceId, const uint16_t portHBO)
 {
 	uint32_t result = ERROR_UNHANDLED_ERROR;
 	EnterCriticalSection(&xlln_critsec_net_entity);
-	result = NetterEntityGetAddrByInstanceIdPort_(ipv4XliveHBO, portXliveHBO, instanceId, portHBO);
+	result = NetterEntityGetAddrByInstanceIdPort_(externalAddr, instanceId, portHBO);
 	LeaveCriticalSection(&xlln_critsec_net_entity);
 	return result;
 }
 
-uint32_t NetterEntityGetByExternalAddr_(NET_ENTITY **netter, uint32_t ipv4XliveHBO, uint16_t portXliveHBO)
+uint32_t NetterEntityGetByExternalAddr_(NET_ENTITY **netter, const SOCKADDR_STORAGE *externalAddr)
 {
-	IP_PORT externalAddr = std::make_pair(ipv4XliveHBO, portXliveHBO);
-	if (xlln_net_entity_external_addr_to_netentity.count(externalAddr)) {
-		*netter = xlln_net_entity_external_addr_to_netentity[externalAddr];
-		return ERROR_SUCCESS;
+	for (auto const &externalAddrToNetter: xlln_net_entity_external_addr_to_netentity) {
+		if (SockAddrsMatch(externalAddr, externalAddrToNetter.first)) {
+			*netter = externalAddrToNetter.second;
+			return ERROR_SUCCESS;
+		}
 	}
 	*netter = 0;
 	return ERROR_NOT_FOUND;
 }
 
-uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint16_t *portHBO, uint32_t ipv4XliveHBO, uint16_t portXliveHBO)
+uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint16_t *portHBO, const SOCKADDR_STORAGE *externalAddr)
 {
 	uint32_t result = ERROR_UNHANDLED_ERROR;
 	*instanceId = 0;
@@ -122,15 +154,16 @@ uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint1
 	{
 		EnterCriticalSection(&xlln_critsec_net_entity);
 		NET_ENTITY *netter = 0;
-		result = NetterEntityGetByExternalAddr_(&netter, ipv4XliveHBO, portXliveHBO);
+		result = NetterEntityGetByExternalAddr_(&netter, externalAddr);
 		if (!result) {
 			*instanceId = netter->instanceId;
-			IP_PORT externalAddr = std::make_pair(ipv4XliveHBO, portXliveHBO);
-			if (netter->external_addr_to_port_internal.count(externalAddr)) {
-				*portHBO = netter->external_addr_to_port_internal[externalAddr].first;
-				result = ERROR_SUCCESS;
+			for (auto const &externalAddrToPortInternal : netter->external_addr_to_port_internal) {
+				if (SockAddrsMatch(externalAddr, externalAddrToPortInternal.first)) {
+					*portHBO = externalAddrToPortInternal.second.first;
+					result = ERROR_SUCCESS;
+				}
 			}
-			else {
+			if (*portHBO == 0) {
 				result = ERROR_PORT_NOT_SET;
 			}
 		}
@@ -139,7 +172,7 @@ uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint1
 	return result;
 }
 
-uint32_t NetterEntityGetXnaddrByInstanceId_(XNADDR *xnaddr, XNKID *xnkid, uint32_t instanceId)
+uint32_t NetterEntityGetXnaddrByInstanceId_(XNADDR *xnaddr, XNKID *xnkid, const uint32_t instanceId)
 {
 	if (!xnaddr && !xnkid) {
 		return ERROR_INVALID_PARAMETER;
@@ -184,7 +217,7 @@ uint32_t NetterEntityGetXnaddrByInstanceId_(XNADDR *xnaddr, XNKID *xnkid, uint32
 
 	return ERROR_SUCCESS;
 }
-uint32_t NetterEntityGetXnaddrByInstanceId(XNADDR *xnaddr, XNKID *xnkid, uint32_t instanceId)
+uint32_t NetterEntityGetXnaddrByInstanceId(XNADDR *xnaddr, XNKID *xnkid, const uint32_t instanceId)
 {
 	uint32_t result = ERROR_UNHANDLED_ERROR;
 	EnterCriticalSection(&xlln_critsec_net_entity);
@@ -193,7 +226,7 @@ uint32_t NetterEntityGetXnaddrByInstanceId(XNADDR *xnaddr, XNKID *xnkid, uint32_
 	return result;
 }
 
-uint32_t NetterEntityAddAddrByInstanceId_(uint32_t instanceId, uint16_t portInternalHBO, int16_t portInternalOffsetHBO, uint32_t addrExternalHBO, uint16_t portExternalHBO)
+uint32_t NetterEntityAddAddrByInstanceId_(const uint32_t instanceId, const uint16_t portInternalHBO, const int16_t portInternalOffsetHBO, const SOCKADDR_STORAGE *externalAddr)
 {
 	NET_ENTITY *netter = 0;
 	uint32_t resultGetInstanceId = NetterEntityGetByInstanceId_(&netter, instanceId);
@@ -204,29 +237,62 @@ uint32_t NetterEntityAddAddrByInstanceId_(uint32_t instanceId, uint16_t portInte
 		return ERROR_NOT_FOUND;
 	}
 
-	// Erace existing mapping if one does exist.
+	SOCKADDR_STORAGE *sockAddrExternal = new SOCKADDR_STORAGE;
+	memcpy(sockAddrExternal, externalAddr, sizeof(SOCKADDR_STORAGE));
+
+	// Erace existing mapping if one does exist in port_internal_to_external_addr.
 	if (netter->port_internal_to_external_addr.count(portInternalHBO)) {
-		IP_PORT addrPortOld = netter->port_internal_to_external_addr[portInternalHBO];
-		netter->external_addr_to_port_internal.erase(addrPortOld);
-		xlln_net_entity_external_addr_to_netentity.erase(addrPortOld);
+		SOCKADDR_STORAGE *sockAddrPortOld = netter->port_internal_to_external_addr[portInternalHBO];
+		netter->external_addr_to_port_internal.erase(sockAddrPortOld);
+		xlln_net_entity_external_addr_to_netentity.erase(sockAddrPortOld);
+
+		// Delete key-value pairs that have matching values.
+		for (auto portInternalToExternalAddr = netter->port_internal_offset_to_external_addr.begin(); portInternalToExternalAddr != netter->port_internal_offset_to_external_addr.end(); ) {
+			if (portInternalToExternalAddr->second == sockAddrPortOld) {
+				netter->port_internal_offset_to_external_addr.erase(portInternalToExternalAddr++);
+			}
+			else {
+				++portInternalToExternalAddr;
+			}
+		}
+
+		delete sockAddrPortOld;
+	}
+
+	// Erace existing mapping if one does exist in port_internal_offset_to_external_addr.
+	if (netter->port_internal_offset_to_external_addr.count(portInternalOffsetHBO)) {
+		SOCKADDR_STORAGE *sockAddrPortOld = netter->port_internal_offset_to_external_addr[portInternalOffsetHBO];
+		netter->external_addr_to_port_internal.erase(sockAddrPortOld);
+		xlln_net_entity_external_addr_to_netentity.erase(sockAddrPortOld);
+
+		// Delete key-value pairs that have matching values.
+		for (auto portInternalToExternalAddr = netter->port_internal_to_external_addr.begin(); portInternalToExternalAddr != netter->port_internal_to_external_addr.end(); ) {
+			if (portInternalToExternalAddr->second == sockAddrPortOld) {
+				netter->port_internal_to_external_addr.erase(portInternalToExternalAddr++);
+			}
+			else {
+				++portInternalToExternalAddr;
+			}
+		}
+
+		delete sockAddrPortOld;
 	}
 
 	PORT_INTERNAL internalPort = std::make_pair(portInternalHBO, portInternalOffsetHBO);
-	IP_PORT addrPort = std::make_pair(addrExternalHBO, portExternalHBO);
 
-	netter->port_internal_to_external_addr[portInternalHBO] = addrPort;
-	netter->port_internal_offset_to_external_addr[portInternalOffsetHBO] = addrPort;
-	netter->external_addr_to_port_internal[addrPort] = internalPort;
+	netter->port_internal_to_external_addr[portInternalHBO] = sockAddrExternal;
+	netter->port_internal_offset_to_external_addr[portInternalOffsetHBO] = sockAddrExternal;
+	netter->external_addr_to_port_internal[sockAddrExternal] = internalPort;
 
-	xlln_net_entity_external_addr_to_netentity[addrPort] = netter;
+	xlln_net_entity_external_addr_to_netentity[sockAddrExternal] = netter;
 
 	return ERROR_SUCCESS;
 }
-uint32_t NetterEntityAddAddrByInstanceId(uint32_t instanceId, uint16_t portInternalHBO, int16_t portInternalOffsetHBO, uint32_t addrExternalHBO, uint16_t portExternalHBO)
+uint32_t NetterEntityAddAddrByInstanceId(const uint32_t instanceId, const uint16_t portInternalHBO, const int16_t portInternalOffsetHBO, const SOCKADDR_STORAGE *externalAddr)
 {
 	uint32_t result = ERROR_UNHANDLED_ERROR;
 	EnterCriticalSection(&xlln_critsec_net_entity);
-	result = NetterEntityAddAddrByInstanceId_(instanceId, portInternalHBO, portInternalOffsetHBO, addrExternalHBO, portExternalHBO);
+	result = NetterEntityAddAddrByInstanceId_(instanceId, portInternalHBO, portInternalOffsetHBO, externalAddr);
 	LeaveCriticalSection(&xlln_critsec_net_entity);
 	return result;
 }

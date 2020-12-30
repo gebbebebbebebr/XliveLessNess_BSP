@@ -48,4 +48,4 @@ VOID LiveOverLanAbort();
 VOID LiveOverLanClone(XLOCATOR_SEARCHRESULT **dst, XLOCATOR_SEARCHRESULT *src);
 VOID LiveOverLanDelete(XLOCATOR_SEARCHRESULT *xlocator_result);
 BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWORD buflen);
-VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t ipv4XliveHBO, const uint16_t portXliveHBO, const LIVE_SERVER_DETAILS *session_details, INT &len);
+VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, const LIVE_SERVER_DETAILS *session_details, INT &len);

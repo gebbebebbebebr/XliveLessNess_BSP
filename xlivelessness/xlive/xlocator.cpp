@@ -5,6 +5,7 @@
 #include "xsocket.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../xlln/xlln.hpp"
+#include "../utils/utils.hpp"
 #include "xnet.hpp"
 #include "xlive.hpp"
 #include "net-entity.hpp"
@@ -500,35 +501,44 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	local_session_details = new_local_sd;
 	LeaveCriticalSection(&liveoverlan_broadcast_lock);
 }
-VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t ipv4XliveHBO, const uint16_t portXliveHBO, const LIVE_SERVER_DETAILS *session_details, INT &len)
+VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, const LIVE_SERVER_DETAILS *session_details, INT &len)
 {
 	if (session_details->HEAD.bCustomPacketType == XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE) {
 		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "LiveOverLAN Received INVALID Broadcast Unadvertise from 0x%08x:0x%04x."
-				, ipv4XliveHBO
-				, portXliveHBO
+				, "LiveOverLAN Received INVALID Broadcast Unadvertise on socket 0x%08x from %s."
+				, socket
+				, sockAddrInfo ? sockAddrInfo : ""
 			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 			return;
 		}
 		const XUID &unregisterXuid = session_details->UNADV.xuid;// Unused.
+		char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
+
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-			, "LiveOverLAN Received Broadcast Unadvertise from 0x%08x:0x%04x."
-			, ipv4XliveHBO
-			, portXliveHBO
+			, "LiveOverLAN Received Broadcast Unadvertise on socket 0x%08x from %s."
+			, socket
+			, sockAddrInfo ? sockAddrInfo : ""
 		);
 
 		uint32_t instanceId = 0;
 		uint16_t portHBO = 0;
-		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
+		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
 		if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hu with error 0x%08x."
-				, ipv4XliveHBO
-				, portXliveHBO
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, sockAddrInfo ? sockAddrInfo : ""
 				, resultNetter
 			);
 			return;
+		}
+
+		if (sockAddrInfo) {
+			free(sockAddrInfo);
 		}
 
 		EnterCriticalSection(&liveoverlan_sessions_lock);
@@ -538,26 +548,33 @@ VOID LiveOverLanRecieve(SOCKET socket, sockaddr *to, int tolen, const uint32_t i
 	else {
 		// It can be larger than this.
 		if (len < sizeof(*session_details)) {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "LiveOverLAN Received INVALID Broadcast Advertise from 0x%08x:0x%04x."
-				, ipv4XliveHBO
-				, portXliveHBO
+				, "LiveOverLAN Received INVALID Broadcast Advertise on socket 0x08x from %s."
+				, socket
+				, sockAddrInfo ? sockAddrInfo : ""
 			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 			return;
 		}
 
 		uint32_t instanceId = 0;
 		uint16_t portHBO = 0;
-		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
+		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
 		if (resultNetter) {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hu with error 0x%08x."
-				, ipv4XliveHBO
-				, portXliveHBO
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, sockAddrInfo ? sockAddrInfo : ""
 				, resultNetter
 			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 
-			SendUnknownUserAskRequest(socket, (char*)session_details, len, to, tolen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
+			SendUnknownUserAskRequest(socket, (char*)session_details, len, sockAddrExternal, sockAddrExternalLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
 			return;
 		}
 

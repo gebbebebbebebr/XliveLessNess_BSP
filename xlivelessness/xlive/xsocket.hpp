@@ -46,7 +46,7 @@ namespace XLLNNetPacketType {
 	} TYPE;
 #pragma pack(push, 1) // Save then set byte alignment setting.
 
-	typedef sockaddr_storage PACKET_FORWARDED;
+	typedef SOCKADDR_STORAGE PACKET_FORWARDED;
 
 	typedef struct {
 		char *Identifier;
@@ -67,6 +67,6 @@ namespace XLLNNetPacketType {
 BOOL InitXSocket();
 BOOL UninitXSocket();
 
-VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, sockaddr *to, int tolen, bool isAsking, uint32_t instanceIdConsumeRemaining);
+VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, bool isAsking, uint32_t instanceIdConsumeRemaining);
 
 INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr *to, int tolen);

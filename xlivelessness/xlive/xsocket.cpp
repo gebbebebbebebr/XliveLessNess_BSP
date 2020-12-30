@@ -7,7 +7,9 @@
 #include "xnet.hpp"
 #include "xlocator.hpp"
 #include "net-entity.hpp"
+#include "../utils/utils.hpp"
 #include <ctime>
+#include <WS2tcpip.h>
 
 #define IPPROTO_VDP 254
 
@@ -21,7 +23,7 @@ static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 CRITICAL_SECTION xlive_critsec_broadcast_addresses;
 std::vector<SOCKADDR_STORAGE> xlive_broadcast_addresses;
 
-VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, sockaddr *to, int tolen, bool isAsking, uint32_t instanceIdConsumeRemaining)
+VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, bool isAsking, uint32_t instanceIdConsumeRemaining)
 {
 	if (isAsking) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -56,11 +58,11 @@ VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, soc
 		memcpy_s(&packetBuffer[userAskRequestLen], dataLen, data, dataLen);
 	}
 
-	INT bytesSent = sendto(socket, (char*)packetBuffer, userAskPacketLen, 0, to, tolen);
+	INT bytesSent = sendto(socket, (char*)packetBuffer, userAskPacketLen, 0, (const sockaddr*)sockAddrExternal, sockAddrExternalLen);
 
 	if (bytesSent <= 0 && userAskPacketLen != userAskRequestLen) {
 		// Send only UNKNOWN_USER_<?>.
-		bytesSent = sendto(socket, (char*)packetBuffer, userAskRequestLen, 0, to, tolen);
+		bytesSent = sendto(socket, (char*)packetBuffer, userAskRequestLen, 0, (const sockaddr*)sockAddrExternal, sockAddrExternalLen);
 	}
 
 	delete[] packetBuffer;
@@ -290,31 +292,51 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 {
 	TRACE_FX();
 
-	const uint16_t portNBO = ((struct sockaddr_in*)name)->sin_port;
-	const uint16_t portHBO = ntohs(portNBO);
+	SOCKADDR_STORAGE sockAddrExternal;
+	int sockAddrExternalLen = sizeof(sockAddrExternal);
+	memcpy(&sockAddrExternal, name, sockAddrExternalLen < namelen ? sockAddrExternalLen : namelen);
+
+	const uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
+	if (!portHBO) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+			, "Socket 0x%08x bind. Unknown socket address family 0x%04x."
+			, s
+			, sockAddrExternal.ss_family
+		);
+
+		SOCKET result = bind(s, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
+
+		if (result != ERROR_SUCCESS) {
+			DWORD errorSocketBind = GetLastError();
+
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+				, "Socket 0x%08x with unknown socket address family 0x%04x had bind error: 0x%08x."
+				, s
+				, sockAddrExternal.ss_family
+				, errorSocketBind
+			);
+		}
+
+		return result;
+	}
 
 	const uint16_t portOffset = portHBO % 100;
 	const uint16_t portBase = portHBO - portOffset;
 
 	const uint16_t portShiftedHBO = xlive_base_port + portOffset;
-
 	if (portBase == 1000) {
-		((struct sockaddr_in*)name)->sin_port = htons(portShiftedHBO);
+		SetSockAddrPort(&sockAddrExternal, portShiftedHBO);
 	}
 
-	if (((struct sockaddr_in*)name)->sin_addr.s_addr == htonl(INADDR_ANY)) {
+	if (sockAddrExternal.ss_family == AF_INET && ((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr == htonl(INADDR_ANY)) {
 		EnterCriticalSection(&xlive_critsec_network_adapter);
 		if (xlive_preferred_network_adapter_name && xlive_network_adapter.unicastHAddr != INADDR_LOOPBACK) {
-			((struct sockaddr_in*)name)->sin_addr.s_addr = htonl(xlive_network_adapter.unicastHAddr);
+			((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter.unicastHAddr);
 		}
 		LeaveCriticalSection(&xlive_critsec_network_adapter);
 	}
 
-	SOCKET result = bind(s, name, namelen);
-
-	if (portBase == 1000) {
-		((struct sockaddr_in*)name)->sin_port = portNBO;
-	}
+	SOCKET result = bind(s, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 
 	if (result == ERROR_SUCCESS) {
 		int protocol;
@@ -385,58 +407,79 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 {
 	TRACE_FX();
 
-	const uint32_t ipv4NBO = ((struct sockaddr_in*)name)->sin_addr.s_addr;
-	// This address may (hopefully) be an instanceId.
-	const uint32_t ipv4HBO = ntohl(ipv4NBO);
-	const uint16_t portNBO = ((struct sockaddr_in*)name)->sin_port;
-	const uint16_t portHBO = ntohs(portNBO);
+	SOCKADDR_STORAGE sockAddrExternal;
+	int sockAddrExternalLen = sizeof(sockAddrExternal);
+	memcpy(&sockAddrExternal, name, sockAddrExternalLen < namelen ? sockAddrExternalLen : namelen);
 
-	uint32_t ipv4XliveHBO = 0;
-	uint16_t portXliveHBO = 0;
-	uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
-	if (resultNetter == ERROR_PORT_NOT_SET) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort ERROR_PORT_NOT_SET address/instanceId 0x%08x:%hu as 0x%08x:%hu."
-			, ipv4HBO
-			, portHBO
-			, ipv4XliveHBO
-			, portXliveHBO
-		);
-	}
-	else if (resultNetter) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
-			, ipv4HBO
-			, portHBO
-			, resultNetter
-		);
-		ipv4XliveHBO = 0;
-		portXliveHBO = 0;
+	if (sockAddrExternal.ss_family == AF_INET) {
+		const uint32_t ipv4NBO = ((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr;
+		// This address may (hopefully) be an instanceId.
+		const uint32_t ipv4HBO = ntohl(ipv4NBO);
+		const uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
+
+		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&sockAddrExternal, ipv4HBO, portHBO);
+		if (resultNetter == ERROR_PORT_NOT_SET) {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "XSocketConnect on socket 0x%08x NetterEntityGetAddrByInstanceIdPort ERROR_PORT_NOT_SET address/instanceId 0x%08x:%hu assuming %s."
+				, s
+				, ipv4HBO
+				, portHBO
+				, sockAddrInfo ? sockAddrInfo : ""
+			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
+		}
+		else if (resultNetter) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "XSocketConnect on socket 0x%08x NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
+				, s
+				, ipv4HBO
+				, portHBO
+				, resultNetter
+			);
+		}
+		else {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "XSocketConnect on socket 0x%08x NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as %s."
+				, s
+				, ipv4HBO
+				, portHBO
+				, sockAddrInfo ? sockAddrInfo : ""
+			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
+		}
 	}
 	else {
+		char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "XSocketConnect NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as 0x%08x:%hu."
-			, ipv4HBO
-			, portHBO
-			, ipv4XliveHBO
-			, portXliveHBO
+			, "XSocketConnect on socket 0x%08x connecting to address %s."
+			, s
+			, sockAddrInfo ? sockAddrInfo : ""
 		);
+		if (sockAddrInfo) {
+			free(sockAddrInfo);
+		}
 	}
 
-	if (ipv4XliveHBO) {
-		((struct sockaddr_in*)name)->sin_addr.s_addr = htonl(ipv4XliveHBO);
-	}
-	if (portXliveHBO) {
-		((struct sockaddr_in*)name)->sin_port = htons(portXliveHBO);
-	}
+	INT result = connect(s, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 
-	INT result = connect(s, name, namelen);
-
-	if (ipv4XliveHBO) {
-		((struct sockaddr_in*)name)->sin_addr.s_addr = ipv4NBO;
-	}
-	if (portXliveHBO) {
-		((struct sockaddr_in*)name)->sin_port = portNBO;
+	if (result) {
+		INT errorSendTo = WSAGetLastError();
+		char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "XllnSocketSendTo on socket 0x%08x sendto() failed to send to address %s with error 0x%08x."
+			, s
+			, sockAddrInfo ? sockAddrInfo : ""
+			, errorSendTo
+		);
+		if (sockAddrInfo) {
+			free(sockAddrInfo);
+		}
 	}
 
 	return result;
@@ -474,14 +517,11 @@ INT WINAPI XSocketRecv(SOCKET s, char * buf, int len, int flags)
 	return result;
 }
 
-INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
+// TODO rewrite so it is not recursive.
+INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int flags, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, sockaddr *sockAddrXlive, int *sockAddrXliveLen)
 {
 	if (result > 0) {
 		TRACE_FX();
-		const uint32_t ipv4XliveNBO = ((struct sockaddr_in*)from)->sin_addr.s_addr;
-		const uint32_t ipv4XliveHBO = ntohl(ipv4XliveNBO);
-		const uint16_t portXliveNBO = ((struct sockaddr_in*)from)->sin_port;
-		const uint16_t portXliveHBO = ntohs(portXliveNBO);
 
 		bool allowedToRequestWhoDisInReaction = true;
 
@@ -514,14 +554,15 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				CustomMemCpy(buf, (void*)((uint32_t)buf + packetHeader), (result -= packetHeader), true);
 
 				// TODO We don't need to always send this.
-				SendUnknownUserAskRequest(s, 0, 0, (sockaddr*)&packetForwardSocketData, altFromLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
+				SendUnknownUserAskRequest(s, 0, 0, &packetForwardSocketData, altFromLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
 
-				result = XSocketRecvFromHelper(result, s, buf, len, flags, (sockaddr*)&packetForwardSocketData, &altFromLen);
-				memcpy(from, &packetForwardSocketData, *fromlen);
+				result = XSocketRecvFromHelper(result, s, buf, len, flags, &packetForwardSocketData, altFromLen, sockAddrXlive, sockAddrXliveLen);
 				return result;
 			}
 			case XLLNNetPacketType::tCUSTOM_OTHER: {
-				result = XSocketRecvFromCustomHelper(result, s, buf, len, flags, from, fromlen);
+				// TODO this probably needs reworking a little after this whole function gets refactored without recursion.
+				int sockAddrTempLen = sockAddrExternalLen;
+				result = XSocketRecvFromCustomHelper(result, s, buf, len, flags, (sockaddr*)sockAddrExternal, &sockAddrTempLen);
 				break;
 			}
 			case XLLNNetPacketType::tUNKNOWN_USER_ASK:
@@ -550,18 +591,21 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					return 0;
 				}
 
-				resultNetter = NetterEntityAddAddrByInstanceId(nea.instanceId, nea.socketInternalPortHBO, nea.socketInternalPortOffsetHBO, ipv4XliveHBO, portXliveHBO);
+				resultNetter = NetterEntityAddAddrByInstanceId(nea.instanceId, nea.socketInternalPortHBO, nea.socketInternalPortOffsetHBO, sockAddrExternal);
 				if (resultNetter) {
+					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "XSocketRecvFromHelper UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hu 0x%08x:%hu) to Net Entity 0x%08x:%hu with error 0x%08x."
+						, "XSocketRecvFromHelper UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hu %s) to Net Entity 0x%08x:%hu with error 0x%08x."
 						, nea.socketInternalPortHBO
 						, nea.socketInternalPortOffsetHBO
-						, ipv4XliveHBO
-						, portXliveHBO
+						, sockAddrInfo ? sockAddrInfo : ""
 						, nea.instanceId
 						, nea.portBaseHBO
 						, resultNetter
 					);
+					if (sockAddrInfo) {
+						free(sockAddrInfo);
+					}
 					return 0;
 				}
 
@@ -591,7 +635,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 						, sendBufLen == result ? " with extra payload" : ""
 					);
 
-					int32_t bytesSent = sendto(s, buf, sendBufLen, 0, from, *fromlen);
+					int32_t bytesSent = sendto(s, buf, sendBufLen, 0, (const sockaddr*)sockAddrExternal, sockAddrExternalLen);
 				}
 
 				if (nea.instanceIdConsumeRemaining == 0 || nea.instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
@@ -609,14 +653,14 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 							, "UNKNOWN_USER_<?> passing data back into recvfrom helper."
 						);
 
-						return XSocketRecvFromHelper(result, s, buf, len, flags, from, fromlen);
+						return XSocketRecvFromHelper(result, s, buf, len, flags, sockAddrExternal, sockAddrExternalLen, sockAddrXlive, sockAddrXliveLen);
 					}
 				}
 				return 0;
 			}
 			case XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE:
 			case XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE: {
-				LiveOverLanRecieve(s, from, *fromlen, ipv4XliveHBO, portXliveHBO, (const LIVE_SERVER_DETAILS*)buf, result);
+				LiveOverLanRecieve(s, sockAddrExternal, sockAddrExternalLen, (const LIVE_SERVER_DETAILS*)buf, result);
 				return 0;
 			}
 			default: {
@@ -640,14 +684,17 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 
 		uint32_t instanceId = 0;
 		uint16_t portHBO = 0;
-		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, ipv4XliveHBO, portXliveHBO);
+		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
 		if (resultNetter) {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr 0x%08x:%hu with error 0x%08x."
-				, ipv4XliveHBO
-				, portXliveHBO
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, sockAddrInfo ? sockAddrInfo : ""
 				, resultNetter
 			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 
 			if (allowedToRequestWhoDisInReaction) {
 				const int altBufHeaderLen = sizeof(XLLNNetPacketType::TYPE);
@@ -655,14 +702,18 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				memcpy(altBuf + altBufHeaderLen, buf, result);
 				altBuf[0] = XLLNNetPacketType::tTITLE_PACKET;
 
-				SendUnknownUserAskRequest(s, (char*)altBuf, altBufHeaderLen + result, from, *fromlen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
+				SendUnknownUserAskRequest(s, (char*)altBuf, altBufHeaderLen + result, sockAddrExternal, sockAddrExternalLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
 
 				delete[] altBuf;
 			}
 
 			if (packetTypeLatest == XLLNNetPacketType::tTITLE_BROADCAST_PACKET) {
 				// TODO fix broadcast reply so it tells other instances this instance info.
-				((struct sockaddr_in*)from)->sin_addr.s_addr = htonl(0x00FFFF00);
+				sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
+				sockAddrIpv4Xlive->sin_family = AF_INET;
+				sockAddrIpv4Xlive->sin_addr.s_addr = htonl(0x00FFFF00);
+				sockAddrIpv4Xlive->sin_port = htons(GetSockAddrPort(sockAddrExternal));
+				*sockAddrXliveLen = sizeof(sockaddr_in);
 			}
 			else {
 				// We don't want whatever this was being passed to the Title.
@@ -670,20 +721,22 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 			}
 		}
 		else {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr 0x%08x:%hu as instanceId:0x%08x port:%hu."
-				, ipv4XliveHBO
-				, portXliveHBO
+				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr %s as instanceId:0x%08x port:%hu."
+				, sockAddrInfo ? sockAddrInfo : ""
 				, instanceId
 				, portHBO
 			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 
-			if (instanceId) {
-				((struct sockaddr_in*)from)->sin_addr.s_addr = htonl(instanceId);
-			}
-			if (portHBO) {
-				((struct sockaddr_in*)from)->sin_port = htons(portHBO);
-			}
+			sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
+			sockAddrIpv4Xlive->sin_family = AF_INET;
+			sockAddrIpv4Xlive->sin_addr.s_addr = htonl(instanceId);
+			sockAddrIpv4Xlive->sin_port = htons(portHBO);
+			*sockAddrXliveLen = sizeof(sockaddr_in);
 		}
 	}
 	return result;
@@ -693,8 +746,10 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 INT WINAPI XSocketRecvFrom(SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
 {
 	TRACE_FX();
-	INT result = recvfrom(s, buf, len, flags, from, fromlen);
-	result = XSocketRecvFromHelper(result, s, buf, len, flags, from, fromlen);
+	SOCKADDR_STORAGE sockAddrExternal;
+	int sockAddrExternalLen = sizeof(sockAddrExternal);
+	INT result = recvfrom(s, buf, len, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+	result = XSocketRecvFromHelper(result, s, buf, len, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
 	return result;
 }
 
@@ -711,23 +766,21 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 	TRACE_FX();
 	INT result = SOCKET_ERROR;
 
-	const uint32_t ipv4NBO = ((struct sockaddr_in*)to)->sin_addr.s_addr;
+	SOCKADDR_STORAGE sockAddrExternal;
+	int sockAddrExternalLen = sizeof(sockAddrExternal);
+	memcpy(&sockAddrExternal, to, sockAddrExternalLen < tolen ? sockAddrExternalLen : tolen);
+
+	const uint32_t ipv4NBO = ((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr;
 	// This address may (hopefully) be an instanceId.
 	const uint32_t ipv4HBO = ntohl(ipv4NBO);
-	const uint16_t portNBO = ((struct sockaddr_in*)to)->sin_port;
-	const uint16_t portHBO = ntohs(portNBO);
+	const uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
 
 	const uint16_t portOffset = portHBO % 100;
 	const uint16_t portBase = portHBO - portOffset;
 
-	//ADDRESS_FAMILY addrFam = ((struct sockaddr_in*)to)->sin_family;
-
-	uint32_t ipv4XliveHBO = 0;
-	uint16_t portXliveHBO = 0;
-
-	if (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY) {
+	if (sockAddrExternal.ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "XSocketSendTo Broadcasting packet."
+			, "XllnSocketSendTo Broadcasting packet."
 		);
 
 		bool broadcastOverriden = false;
@@ -736,8 +789,23 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 
 			if (xlive_broadcast_addresses.size()) {
 				broadcastOverriden = true;
-				for (const SOCKADDR_STORAGE &sockaddr : xlive_broadcast_addresses) {
-					result = sendto(s, buf, len, 0, (const struct sockaddr*)&sockaddr, sizeof(SOCKADDR_STORAGE));
+				for (const SOCKADDR_STORAGE &sockAddrExternalListItem : xlive_broadcast_addresses) {
+					memcpy(&sockAddrExternal, &sockAddrExternalListItem, sockAddrExternalLen);
+					if (sockAddrExternal.ss_family == AF_INET) {
+						if (ntohs(((sockaddr_in*)&sockAddrExternal)->sin_port) == 0) {
+							((sockaddr_in*)&sockAddrExternal)->sin_port = htons(portHBO);
+						}
+					}
+					else if (sockAddrExternal.ss_family == AF_INET6) {
+						if (ntohs(((sockaddr_in6*)&sockAddrExternal)->sin6_port) == 0) {
+							((sockaddr_in6*)&sockAddrExternal)->sin6_port = htons(portHBO);
+						}
+					}
+					else {
+						// If it's not IPv4 or IPv6 then do not sent it.
+						continue;
+					}
+					result = sendto(s, buf, len, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 				}
 			}
 
@@ -745,23 +813,24 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		}
 
 		if (!broadcastOverriden) {
+			sockAddrExternal.ss_family = AF_INET;
 			{
 				EnterCriticalSection(&xlive_critsec_network_adapter);
-				((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO = xlive_network_adapter.hBroadcast);
+				((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter.hBroadcast);
 				LeaveCriticalSection(&xlive_critsec_network_adapter);
 			}
 			for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
-				((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO = (portBaseInc + portOffset));
+				((struct sockaddr_in*)&sockAddrExternal)->sin_port = htons(portBaseInc + portOffset);
 
-				result = sendto(s, buf, len, 0, to, tolen);
+				result = sendto(s, buf, len, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 			}
 		}
 
 		result = len;
 	}
-	else {
+	else if (sockAddrExternal.ss_family == AF_INET) {
 
-		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&ipv4XliveHBO, &portXliveHBO, ipv4HBO, portHBO);
+		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&sockAddrExternal, ipv4HBO, portHBO);
 		if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
@@ -771,53 +840,43 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 			);
 
 			if (resultNetter == ERROR_PORT_NOT_SET) {
-				if (ipv4XliveHBO) {
-					((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO);
+				if (sockAddrExternal.ss_family == AF_INET || sockAddrExternal.ss_family == AF_INET6) {
+					SendUnknownUserAskRequest(s, buf, len, &sockAddrExternal, sockAddrExternalLen, true, ipv4HBO);
 				}
-				if (portXliveHBO) {
-					((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO);
-				}
-
-				SendUnknownUserAskRequest(s, buf, len, to, tolen, true, ipv4HBO);
 			}
 
 			result = len;
 		}
 		else {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as 0x%08x:%hu."
+				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as %s."
 				, ipv4HBO
 				, portHBO
-				, ipv4XliveHBO
-				, portXliveHBO
+				, sockAddrInfo ? sockAddrInfo : ""
 			);
 
-			if (ipv4XliveHBO) {
-				((struct sockaddr_in*)to)->sin_addr.s_addr = htonl(ipv4XliveHBO);
-			}
-			if (portXliveHBO) {
-				((struct sockaddr_in*)to)->sin_port = htons(portXliveHBO);
-			}
-
-			result = sendto(s, buf, len, flags, to, tolen);
+			result = sendto(s, buf, len, flags, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 
 			if (result == SOCKET_ERROR) {
 				INT errorSendTo = WSAGetLastError();
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-					, "XllnSocketSendTo sendto() failed to send to address 0x%08x:0x%hu with error 0x%08x."
-					, ipv4XliveHBO
-					, portXliveHBO
+					, "XllnSocketSendTo sendto() failed to send to address %s with error 0x%08x."
+					, sockAddrInfo ? sockAddrInfo : ""
 					, errorSendTo
 				);
 			}
+
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 		}
 	}
-
-	if (ipv4XliveHBO) {
-		((struct sockaddr_in*)to)->sin_addr.s_addr = ipv4NBO;
-	}
-	if (portXliveHBO) {
-		((struct sockaddr_in*)to)->sin_port = portNBO;
+	else {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "XllnSocketSendTo unsupported sendto socket family %hu."
+			, sockAddrExternal.ss_family
+		);
 	}
 
 	return result;
@@ -842,12 +901,16 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 	// This address may (hopefully) be an instanceId.
 	const uint32_t ipv4HBO = ntohl(ipv4NBO);
 
-	altBuf[0] = (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY) ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
+	altBuf[0] = (((SOCKADDR_STORAGE*)&to)->ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
 	memcpy_s(&altBuf[1], altBufLen-1, buf, len);
 
 	result = XllnSocketSendTo(s, altBuf, altBufLen, flags, to, tolen);
 
 	delete[] altBuf;
+
+	if (result - (altBufLen - len) >= 0) {
+		result -= (altBufLen - len);
+	}
 
 	return result;
 }

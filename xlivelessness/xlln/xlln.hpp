@@ -22,8 +22,10 @@
 
 #ifdef _DEBUG
 #define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
+#define GET_SOCKADDR_INFO(sockAddrStorage) GetSockAddrInfo(sockAddrStorage)
 #else
 #define XLLN_DEBUG_LOG(logLevel, format, ...)
+#define GET_SOCKADDR_INFO(sockAddrStorage) NULL
 #endif
 
 DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
