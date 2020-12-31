@@ -901,7 +901,7 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 	// This address may (hopefully) be an instanceId.
 	const uint32_t ipv4HBO = ntohl(ipv4NBO);
 
-	altBuf[0] = (((SOCKADDR_STORAGE*)&to)->ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
+	altBuf[0] = (((SOCKADDR_STORAGE*)to)->ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
 	memcpy_s(&altBuf[1], altBufLen-1, buf, len);
 
 	result = XllnSocketSendTo(s, altBuf, altBufLen, flags, to, tolen);
