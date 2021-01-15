@@ -3,6 +3,8 @@
 #include "xlln.hpp"
 #include "debug-text.hpp"
 #include "xlln-config.hpp"
+#include "wnd-sockets.hpp"
+#include "wnd-connections.hpp"
 #include "../utils/utils.hpp"
 #include "../xlive/xdefs.hpp"
 #include "../xlive/xlive.hpp"
@@ -15,10 +17,11 @@
 #include <ws2tcpip.h>
 #include <string>
 #include <time.h>
+#include <CommCtrl.h>
 
 static LRESULT CALLBACK DLLWindowProc(HWND, UINT, WPARAM, LPARAM);
 
-static HINSTANCE xlln_hModule = NULL;
+HINSTANCE xlln_hModule = NULL;
 HWND xlln_window_hwnd = NULL;
 static HMENU xlln_window_hMenu = NULL;
 static int xlln_instance = 0;
@@ -30,6 +33,42 @@ BOOL xlln_debug = FALSE;
 
 static CRITICAL_SECTION xlive_critsec_recvfrom_handler_funcs;
 static std::map<DWORD, char*> xlive_recvfrom_handler_funcs;
+
+int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth)
+{
+	LVCOLUMN lvc;
+
+	lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
+	lvc.fmt = LVCFMT_LEFT;
+	lvc.cx = iWidth;
+	lvc.pszText = (wchar_t*)text;
+	lvc.iSubItem = iCol;
+	return ListView_InsertColumn(hwndLV, iCol, &lvc);
+}
+
+int CreateItem(HWND hwndListView, int iItem)
+{
+	LV_ITEM item;
+	item.mask = LVIF_TEXT;
+	item.iItem = iItem;
+	item.iIndent = 0;
+	item.iSubItem = 0;
+	item.state = 0;
+	item.cColumns = 0;
+	item.pszText = (wchar_t*)L"";
+	return ListView_InsertItem(hwndListView, &item);
+	/*{
+		LV_ITEM item;
+		item.mask = LVIF_TEXT;
+		item.iItem = 0;
+		item.iIndent = 0;
+		item.iSubItem = 1;
+		item.state = 0;
+		item.cColumns = 0;
+		item.pszText = (wchar_t*)L"Toothbrush";
+		ListView_SetItem(hwndList, &item);
+	}*/
+}
 
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
 {
@@ -71,6 +110,11 @@ static HMENU CreateDLLWindowMenu(HINSTANCE hModule)
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_LOGIN3, TEXT("Login P3"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_LOGIN4, TEXT("Login P4"));
 	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Login"));
+
+	hMenuPopup = CreatePopupMenu();
+	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_DEBUG_SOCKETS, TEXT("Sockets"));
+	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_DEBUG_CONNECTIONS, TEXT("Connections"));
+	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Debug"));
 
 	hMenuPopup = CreatePopupMenu();
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_ALWAYSTOP, TEXT("Always on top"));
@@ -408,6 +452,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 		HDC hdc = BeginPaint(xlln_window_hwnd, &ps);
 		SetTextColor(hdc, RGB(0, 0, 0));
 		SetBkColor(hdc, 0x00C8C8C8);
+
 		{
 			char *textLabel = FormMallocString("Player %d username:", xlln_login_player + 1);
 			TextOutA(hdc, 140, 10, textLabel, strlen(textLabel));
@@ -471,6 +516,12 @@ Executable Launch Parameters:\n\
 		else if (wParam == MYMENU_LOGIN4) {
 			xlln_login_player = 3;
 			UpdateUserInputBoxes(xlln_login_player);
+		}
+		else if (wParam == MYMENU_DEBUG_SOCKETS) {
+			XllnWndSocketsShow(true);
+		}
+		else if (wParam == MYMENU_DEBUG_CONNECTIONS) {
+			XllnWndConnectionsShow(true);
 		}
 		else if (wParam == MYWINDOW_CHK_LIVEENABLE) {
 			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) != BST_CHECKED;
@@ -601,29 +652,29 @@ Executable Launch Parameters:\n\
 	}
 	else if (message == WM_CREATE) {
 
-		CreateWindowA("edit", "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+		CreateWindowA(WC_EDITA, "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
 			140, 28, 260, 22, hwnd, (HMENU)MYWINDOW_TBX_USERNAME, xlln_hModule, NULL);
 
-		CreateWindowA("button", "Live Enabled", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+		CreateWindowA(WC_BUTTONA, "Live Enabled", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 			140, 51, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_LIVEENABLE, xlln_hModule, NULL);
 
-		CreateWindowA("button", "Auto Login", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+		CreateWindowA(WC_BUTTONA, "Auto Login", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 			280, 51, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_AUTOLOGIN, xlln_hModule, NULL);
 
-		CreateWindowA("button", "Login", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+		CreateWindowA(WC_BUTTONA, "Login", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 			140, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGIN, xlln_hModule, NULL);
 
-		CreateWindowA("button", "Logout", WS_CHILD | WS_TABSTOP,
+		CreateWindowA(WC_BUTTONA, "Logout", WS_CHILD | WS_TABSTOP,
 			140, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGOUT, xlln_hModule, NULL);
 
-		CreateWindowA("edit", "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+		CreateWindowA(WC_EDITA, "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
 			5, 140, 475, 22, hwnd, (HMENU)MYWINDOW_TBX_BROADCAST, xlln_hModule, NULL);
 
-		CreateWindowA("edit", "", WS_CHILD | (xlln_debug ? WS_VISIBLE : 0) | WS_BORDER | ES_MULTILINE | WS_SIZEBOX | WS_TABSTOP | WS_HSCROLL,
+		CreateWindowA(WC_EDITA, "", WS_CHILD | (xlln_debug ? WS_VISIBLE : 0) | WS_BORDER | ES_MULTILINE | WS_SIZEBOX | WS_TABSTOP | WS_HSCROLL,
 			5, 170, 475, 460, hwnd, (HMENU)MYWINDOW_TBX_TEST, xlln_hModule, NULL);
 
 		if (xlln_debug) {
-			CreateWindowA("button", "Test", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+			CreateWindowA(WC_BUTTONA, "Test", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 				5, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_TEST, xlln_hModule, NULL);
 		}
 	}
@@ -779,9 +830,12 @@ INT InitXLLN(HMODULE hModule)
 				xlive_netsocket_abort = TRUE;
 			}
 			else if (wcsstr(lpwszArglist[i], L"-xliveportbase=") != NULL) {
-				WORD tempuint = 0;
-				if (swscanf_s(lpwszArglist[i], L"-xliveportbase=%hu", &tempuint) == 1) {
-					xlive_base_port = tempuint;
+				uint16_t tempuint16 = 0;
+				if (swscanf_s(lpwszArglist[i], L"-xliveportbase=%hu", &tempuint16) == 1) {
+					if (tempuint16 == 0) {
+						tempuint16 = 0xFFFF;
+					}
+					xlive_base_port = tempuint16;
 				}
 			}
 		}
@@ -799,7 +853,10 @@ INT InitXLLN(HMODULE hModule)
 	HRESULT error_XllnConfig = InitXllnConfig(xlln_instance);
 
 	xlln_hModule = hModule;
-	CreateThread(0, NULL, ThreadProc, (LPVOID)hModule, NULL, NULL);
+	CreateThread(0, NULL, ThreadProc, (LPVOID)xlln_hModule, NULL, NULL);
+
+	HRESULT error_XllnWndSockets = InitXllnWndSockets();
+	HRESULT error_XllnWndConnections = InitXllnWndConnections();
 
 	xlive_title_id = 0;
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
@@ -811,6 +868,9 @@ INT InitXLLN(HMODULE hModule)
 
 INT UninitXLLN()
 {
+	HRESULT error_XllnWndConnections = UninitXllnWndConnections();
+	HRESULT error_XllnWndSockets = UninitXllnWndSockets();
+
 	HRESULT error_XllnConfig = UninitXllnConfig();
 
 	INT error_DebugLog = UninitDebugLog();

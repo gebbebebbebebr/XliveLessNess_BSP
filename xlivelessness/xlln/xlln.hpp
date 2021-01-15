@@ -4,21 +4,26 @@
 #define XLLN_SHOW_HOME 1
 #define XLLN_SHOW_LOGIN 2
 
-#define MYMENU_EXIT				(WM_APP + 101)
-#define MYMENU_ABOUT			(WM_APP + 102)
-#define MYMENU_ALWAYSTOP		(WM_APP + 103)
-#define MYMENU_LOGIN1			(WM_APP + 110)
-#define MYMENU_LOGIN2			(WM_APP + 111)
-#define MYMENU_LOGIN3			(WM_APP + 112)
-#define MYMENU_LOGIN4			(WM_APP + 113)
-#define MYWINDOW_BTN_LOGIN		(WM_APP + 120)
-#define MYWINDOW_TBX_USERNAME	(WM_APP + 121)
-#define MYWINDOW_TBX_TEST		(WM_APP + 122)
-#define MYWINDOW_CHK_LIVEENABLE	(WM_APP + 123)
-#define MYWINDOW_CHK_AUTOLOGIN	(WM_APP + 124)
-#define MYWINDOW_BTN_LOGOUT		(WM_APP + 125)
-#define MYWINDOW_BTN_TEST		(WM_APP + 126)
-#define MYWINDOW_TBX_BROADCAST	(WM_APP + 127)
+#define MYMENU_EXIT					(WM_APP + 101)
+#define MYMENU_ABOUT				(WM_APP + 102)
+#define MYMENU_ALWAYSTOP			(WM_APP + 103)
+#define MYMENU_LOGIN1				(WM_APP + 110)
+#define MYMENU_LOGIN2				(WM_APP + 111)
+#define MYMENU_LOGIN3				(WM_APP + 112)
+#define MYMENU_LOGIN4				(WM_APP + 113)
+#define MYMENU_DEBUG_SOCKETS		(WM_APP + 114)
+#define MYMENU_DEBUG_CONNECTIONS	(WM_APP + 115)
+#define MYWINDOW_BTN_LOGIN			(WM_APP + 120)
+#define MYWINDOW_TBX_USERNAME		(WM_APP + 121)
+#define MYWINDOW_TBX_TEST			(WM_APP + 122)
+#define MYWINDOW_CHK_LIVEENABLE		(WM_APP + 123)
+#define MYWINDOW_CHK_AUTOLOGIN		(WM_APP + 124)
+#define MYWINDOW_BTN_LOGOUT			(WM_APP + 125)
+#define MYWINDOW_BTN_TEST			(WM_APP + 126)
+#define MYWINDOW_TBX_BROADCAST		(WM_APP + 127)
+#define MYWINDOW_LST_SOCKETS		(WM_APP + 130)
+#define MYWINDOW_TRE_CONNECTIONS	(WM_APP + 131)
+#define MYWINDOW_BTN_REFRESH_CONNS	(WM_APP + 132)
 
 #ifdef _DEBUG
 #define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
@@ -37,6 +42,10 @@ INT ShowXLLN(DWORD dwShowType);
 void UpdateUserInputBoxes(DWORD dwUserIndex);
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
 
+int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth);
+int CreateItem(HWND hwndListView, int iItem);
+
+extern HINSTANCE xlln_hModule;
 extern HWND xlln_window_hwnd;
 extern BOOL xlln_debug;
 

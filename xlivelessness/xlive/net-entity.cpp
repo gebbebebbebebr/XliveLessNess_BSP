@@ -260,7 +260,7 @@ uint32_t NetterEntityAddAddrByInstanceId_(const uint32_t instanceId, const uint1
 	}
 
 	// Erace existing mapping if one does exist in port_internal_offset_to_external_addr.
-	if (netter->port_internal_offset_to_external_addr.count(portInternalOffsetHBO)) {
+	if (portInternalOffsetHBO != -1 && netter->port_internal_offset_to_external_addr.count(portInternalOffsetHBO)) {
 		SOCKADDR_STORAGE *sockAddrPortOld = netter->port_internal_offset_to_external_addr[portInternalOffsetHBO];
 		netter->external_addr_to_port_internal.erase(sockAddrPortOld);
 		xlln_net_entity_external_addr_to_netentity.erase(sockAddrPortOld);

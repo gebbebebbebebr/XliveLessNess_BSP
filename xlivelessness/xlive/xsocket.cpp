@@ -4,6 +4,7 @@
 #include "xlive.hpp"
 #include "../xlln/xlln.hpp"
 #include "../xlln/debug-text.hpp"
+#include "../xlln/wnd-sockets.hpp"
 #include "xnet.hpp"
 #include "xlocator.hpp"
 #include "net-entity.hpp"
@@ -48,7 +49,7 @@ VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, con
 	{
 		EnterCriticalSection(&xlive_critsec_sockets);
 		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
-		nea.socketInternalPortHBO = socketMappingInfo->portHBO;
+		nea.socketInternalPortHBO = socketMappingInfo->portBindHBO;
 		nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
 		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
@@ -144,6 +145,7 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 
 		EnterCriticalSection(&xlive_critsec_sockets);
 		xlive_socket_info[result] = socketMappingInfo;
+		XllnWndSocketsInvalidateSockets();
 		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 
@@ -179,6 +181,7 @@ INT WINAPI XSocketClose(SOCKET s)
 				xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
 			}
 		}
+		XllnWndSocketsInvalidateSockets();
 		LeaveCriticalSection(&xlive_critsec_sockets);
 
 		if (socketMappingInfo) {
@@ -217,9 +220,9 @@ INT WINAPI XSocketShutdown(SOCKET s, int how)
 			if (socketMappingInfo->portOffsetHBO != -1) {
 				xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
 			}
-			socketMappingInfo->portHBO = 0;
-			socketMappingInfo->portOffsetHBO = -1;
+			socketMappingInfo->portBindHBO = 0;
 		}
+		XllnWndSocketsInvalidateSockets();
 		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 
@@ -247,6 +250,7 @@ INT WINAPI XSocketSetSockOpt(SOCKET s, int level, int optname, const char *optva
 		EnterCriticalSection(&xlive_critsec_sockets);
 		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
 		socketMappingInfo->broadcast = *optval > 0;
+		XllnWndSocketsInvalidateSockets();
 		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
 
@@ -296,8 +300,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 	int sockAddrExternalLen = sizeof(sockAddrExternal);
 	memcpy(&sockAddrExternal, name, sockAddrExternalLen < namelen ? sockAddrExternalLen : namelen);
 
-	const uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
-	if (!portHBO) {
+	if (sockAddrExternal.ss_family != AF_INET && sockAddrExternal.ss_family != AF_INET6) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
 			, "Socket 0x%08x bind. Unknown socket address family 0x%04x."
 			, s
@@ -310,7 +313,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 			DWORD errorSocketBind = GetLastError();
 
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "Socket 0x%08x with unknown socket address family 0x%04x had bind error: 0x%08x."
+				, "XSocketBind Socket 0x%08x with unknown socket address family 0x%04x had bind error: 0x%08x."
 				, s
 				, sockAddrExternal.ss_family
 				, errorSocketBind
@@ -320,11 +323,13 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 		return result;
 	}
 
+	uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
 	const uint16_t portOffset = portHBO % 100;
 	const uint16_t portBase = portHBO - portOffset;
+	uint16_t portShiftedHBO = 0;
 
-	const uint16_t portShiftedHBO = xlive_base_port + portOffset;
-	if (portBase == 1000) {
+	if (IsUsingBasePort(xlive_base_port) && portBase % 1000 == 0) {
+		portShiftedHBO = xlive_base_port + portOffset;
 		SetSockAddrPort(&sockAddrExternal, portShiftedHBO);
 	}
 
@@ -339,17 +344,43 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 	SOCKET result = bind(s, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 
 	if (result == ERROR_SUCCESS) {
+		uint16_t portBindHBO = portHBO;
+		INT result = getsockname(s, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+		if (result == ERROR_SUCCESS) {
+			portBindHBO = GetSockAddrPort(&sockAddrExternal);
+			if (portHBO != portBindHBO) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+					, "Socket 0x%08x bind port mapped from %hu to %hu."
+					, s
+					, portHBO
+					, portBindHBO
+				);
+			}
+		}
+		else {
+			INT error_getsockname = WSAGetLastError();
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
+				, "Socket 0x%08x bind port mapped from %hu to unknown address from getsockname with error 0x%08x."
+				, s
+				, portHBO
+				, error_getsockname
+			);
+		}
+
 		int protocol;
-		int isVdp;
-		if (portBase == 1000) {
+		bool isVdp;
+		if (portShiftedHBO) {
 			EnterCriticalSection(&xlive_critsec_sockets);
 
 			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-			socketMappingInfo->portHBO = portHBO;
+			socketMappingInfo->portBindHBO = portBindHBO;
+			socketMappingInfo->portOgHBO = portHBO;
 			socketMappingInfo->portOffsetHBO = portOffset;
 			protocol = socketMappingInfo->protocol;
 			isVdp = socketMappingInfo->isVdpProtocol;
 			xlive_port_offset_sockets[portOffset] = s;
+
+			XllnWndSocketsInvalidateSockets();
 
 			LeaveCriticalSection(&xlive_critsec_sockets);
 		}
@@ -357,10 +388,13 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 			EnterCriticalSection(&xlive_critsec_sockets);
 
 			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-			socketMappingInfo->portHBO = portHBO;
+			socketMappingInfo->portBindHBO = portBindHBO;
+			socketMappingInfo->portOgHBO = portHBO;
 			socketMappingInfo->portOffsetHBO = -1;
 			protocol = socketMappingInfo->protocol;
 			isVdp = socketMappingInfo->isVdpProtocol;
+
+			XllnWndSocketsInvalidateSockets();
 
 			LeaveCriticalSection(&xlive_critsec_sockets);
 		}
@@ -617,7 +651,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					{
 						EnterCriticalSection(&xlive_critsec_sockets);
 						SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-						nea.socketInternalPortHBO = socketMappingInfo->portHBO;
+						nea.socketInternalPortHBO = socketMappingInfo->portBindHBO;
 						nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
 						LeaveCriticalSection(&xlive_critsec_sockets);
 					}
@@ -628,12 +662,17 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 						sendBufLen = cpHeaderLen + sizeof(XLLNNetPacketType::NET_USER_PACKET);
 					}
 
+					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-						, "UNKNOWN_USER_ASK Sending REPLY to Net Entity 0x%08x:%hu%s."
+						, "UNKNOWN_USER_ASK Sending REPLY to Net Entity (0x%08x:%hu %s)%s."
 						, nea.instanceId
 						, nea.portBaseHBO
+						, sockAddrInfo ? sockAddrInfo : ""
 						, sendBufLen == result ? " with extra payload" : ""
 					);
+					if (sockAddrInfo) {
+						free(sockAddrInfo);
+					}
 
 					int32_t bytesSent = sendto(s, buf, sendBufLen, 0, (const sockaddr*)sockAddrExternal, sockAddrExternalLen);
 				}
@@ -714,6 +753,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				sockAddrIpv4Xlive->sin_addr.s_addr = htonl(0x00FFFF00);
 				sockAddrIpv4Xlive->sin_port = htons(GetSockAddrPort(sockAddrExternal));
 				*sockAddrXliveLen = sizeof(sockaddr_in);
+				result = 0;
 			}
 			else {
 				// We don't want whatever this was being passed to the Title.
@@ -748,8 +788,12 @@ INT WINAPI XSocketRecvFrom(SOCKET s, char *buf, int len, int flags, sockaddr *fr
 	TRACE_FX();
 	SOCKADDR_STORAGE sockAddrExternal;
 	int sockAddrExternalLen = sizeof(sockAddrExternal);
-	INT result = recvfrom(s, buf, len, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
-	result = XSocketRecvFromHelper(result, s, buf, len, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
+	INT result_recvfrom = recvfrom(s, buf, len, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+	INT result = XSocketRecvFromHelper(result_recvfrom, s, buf, len, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
+	if (result_recvfrom > 0 && result == 0) {
+		result = SOCKET_ERROR;
+		WSASetLastError(WSAEWOULDBLOCK);
+	}
 	return result;
 }
 
@@ -774,9 +818,6 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 	// This address may (hopefully) be an instanceId.
 	const uint32_t ipv4HBO = ntohl(ipv4NBO);
 	const uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
-
-	const uint16_t portOffset = portHBO % 100;
-	const uint16_t portBase = portHBO - portOffset;
 
 	if (sockAddrExternal.ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
@@ -819,9 +860,17 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 				((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter.hBroadcast);
 				LeaveCriticalSection(&xlive_critsec_network_adapter);
 			}
-			for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
-				((struct sockaddr_in*)&sockAddrExternal)->sin_port = htons(portBaseInc + portOffset);
+			if (IsUsingBasePort(xlive_base_port)) {
+				const uint16_t portOffset = portHBO % 100;
+				const uint16_t portBase = portHBO - portOffset;
 
+				for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
+					((struct sockaddr_in*)&sockAddrExternal)->sin_port = htons(portBaseInc + portOffset);
+
+					result = sendto(s, buf, len, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
+				}
+			}
+			else {
 				result = sendto(s, buf, len, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 			}
 		}

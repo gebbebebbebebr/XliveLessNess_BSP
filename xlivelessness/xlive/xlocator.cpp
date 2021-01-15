@@ -86,8 +86,20 @@ static bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
 				if (socketInfoSearch) {
 					if (socketInfoSearch->portOffsetHBO == -1) {
 						// Only use the socket if the port is smaller in value.
-						if (socketInfoPair.second->portOffsetHBO == -1 && socketInfoPair.second->portHBO > socketInfoSearch->portHBO) {
-							continue;
+						if (socketInfoPair.second->portOffsetHBO == -1) {
+							if (socketInfoPair.second->portOgHBO == 0 && socketInfoSearch->portOgHBO != 0) {
+								continue;
+							}
+							else if (socketInfoSearch->portOgHBO != 0 && socketInfoSearch->portOgHBO != 0) {
+								if (socketInfoPair.second->portOgHBO > socketInfoSearch->portOgHBO) {
+									continue;
+								}
+							}
+							else if (socketInfoSearch->portOgHBO == 0 && socketInfoSearch->portOgHBO == 0) {
+								if (socketInfoPair.second->portBindHBO > socketInfoSearch->portBindHBO) {
+									continue;
+								}
+							}
 						}
 					}
 					else {
@@ -143,7 +155,7 @@ static VOID LiveOverLanBroadcast()
 					);
 
 					SOCKADDR_IN SendStruct;
-					SendStruct.sin_port = htons(socketInfoLiveOverLan.portHBO);
+					SendStruct.sin_port = htons(socketInfoLiveOverLan.portBindHBO);
 					SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 					SendStruct.sin_family = AF_INET;
 
@@ -824,7 +836,7 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 			);
 
 			SOCKADDR_IN SendStruct;
-			SendStruct.sin_port = htons(socketInfoLiveOverLan.portHBO);
+			SendStruct.sin_port = htons(socketInfoLiveOverLan.portBindHBO);
 			SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 			SendStruct.sin_family = AF_INET;
 

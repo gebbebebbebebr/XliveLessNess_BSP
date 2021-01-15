@@ -87,6 +87,12 @@
     <ClCompile Include="xlln\xlln-config.cpp">
       <Filter>Source Files\xlln</Filter>
     </ClCompile>
+    <ClCompile Include="xlln\wnd-sockets.cpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClCompile>
+    <ClCompile Include="xlln\wnd-connections.cpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -153,6 +159,12 @@
       <Filter>Source Files\utils</Filter>
     </ClInclude>
     <ClInclude Include="xlln\xlln-config.hpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClInclude>
+    <ClInclude Include="xlln\wnd-sockets.hpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClInclude>
+    <ClInclude Include="xlln\wnd-connections.hpp">
       <Filter>Source Files\xlln</Filter>
     </ClInclude>
   </ItemGroup>

@@ -3,6 +3,7 @@
 #include <vector>
 #include <map>
 
+#define IsUsingBasePort(base_port) (base_port != 0 && base_port != 0xFFFF)
 extern WORD xlive_base_port;
 extern BOOL xlive_netsocket_abort;
 
@@ -11,7 +12,8 @@ struct SOCKET_MAPPING_INFO {
 	int32_t type = 0;
 	int32_t protocol = 0;
 	bool isVdpProtocol = false;
-	uint16_t portHBO = 0;
+	uint16_t portOgHBO = 0;
+	uint16_t portBindHBO = 0;
 	int16_t portOffsetHBO = -1;
 	bool broadcast = false;
 };

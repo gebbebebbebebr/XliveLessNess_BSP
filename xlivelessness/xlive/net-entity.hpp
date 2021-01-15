@@ -20,6 +20,7 @@ typedef struct {
 } NET_ENTITY;
 
 extern CRITICAL_SECTION xlln_critsec_net_entity;
+extern std::map<uint32_t, NET_ENTITY*> xlln_net_entity_instanceid_to_netentity;
 
 BOOL InitNetEntity();
 BOOL UninitNetEntity();

@@ -686,9 +686,20 @@ DWORD WINAPI XLiveLoadLibraryEx(LPCWSTR lpwszModuleFileName, HINSTANCE *phModule
 	if (!phModule)
 		return E_INVALIDARG;
 
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+		, "XLiveLoadLibraryEx \"%ls\"."
+		, lpwszModuleFileName
+	);
+
 	HINSTANCE hInstance = LoadLibraryExW(lpwszModuleFileName, NULL, dwFlags);
 	if (!hInstance)
 		return E_INVALIDARG;
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "XLiveLoadLibraryEx 0x%08x \"%ls\"."
+		, *phModule
+		, lpwszModuleFileName
+	);
 
 	*phModule = hInstance;
 	return S_OK;
@@ -700,6 +711,12 @@ HRESULT WINAPI XLiveFreeLibrary(HMODULE hModule)
 	TRACE_FX();
 	if (!hModule)
 		return E_INVALIDARG;
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+		, "XLiveFreeLibrary 0x%08x."
+		, hModule
+	);
+
 	if (!FreeLibrary(hModule)) {
 		signed int last_error = GetLastError();
 		if (last_error > 0) {
@@ -1102,29 +1119,31 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 
 	LeaveCriticalSection(&xlive_critsec_network_adapter);
 
-	wchar_t mutex_name[40];
-	DWORD mutex_last_error;
-	HANDLE mutex = NULL;
-	xlive_base_port -= 1000;
-	do {
-		if (mutex) {
-			mutex_last_error = CloseHandle(mutex);
-		}
-		xlive_base_port += 1000;
-		if (xlive_base_port > 65000) {
-			xlive_netsocket_abort = TRUE;
-			xlive_base_port = 1000;
-			break;
-		}
-		swprintf(mutex_name, 40, L"Global\\XLLNBasePort#%hu", xlive_base_port);
-		mutex = CreateMutexW(0, TRUE, mutex_name);
-		mutex_last_error = GetLastError();
-	} while (mutex_last_error != ERROR_SUCCESS);
+	if (IsUsingBasePort(xlive_base_port)) {
+		wchar_t mutex_name[40];
+		DWORD mutex_last_error;
+		HANDLE mutex = NULL;
+		xlive_base_port -= 1000;
+		do {
+			if (mutex) {
+				mutex_last_error = CloseHandle(mutex);
+			}
+			xlive_base_port += 1000;
+			if (xlive_base_port > 65000) {
+				xlive_netsocket_abort = TRUE;
+				xlive_base_port = 1000;
+				break;
+			}
+			swprintf(mutex_name, 40, L"Global\\XLLNBasePort#%hu", xlive_base_port);
+			mutex = CreateMutexW(0, TRUE, mutex_name);
+			mutex_last_error = GetLastError();
+		} while (mutex_last_error != ERROR_SUCCESS);
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
-		, "XLive Base Port %hu."
-		, xlive_base_port
-	);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+			, "XLive Base Port %hu."
+			, xlive_base_port
+		);
+	}
 
 	INT error_XSocket = InitXSocket();
 	CreateLocalUser();
