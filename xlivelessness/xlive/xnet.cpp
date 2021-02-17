@@ -21,12 +21,15 @@ void UnregisterSecureAddr(const IN_ADDR ina)
 INT WINAPI XNetStartup(const XNetStartupParams *pxnsp)
 {
 	TRACE_FX();
-	if (pxnsp && pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams))
+	if (pxnsp && pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams)) (%d != %d).", __func__, pxnsp->cfgSizeOfStruct, sizeof(XNetStartupParams));
 		return ERROR_INVALID_PARAMETER;
-	if (!xlive_netsocket_abort)
-		xlive_net_initialized = TRUE;
-	if (!xlive_net_initialized)
+	}
+	if (xlive_netsocket_abort) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive NetSocket is disabled.", __func__);
 		return ERROR_FUNCTION_FAILED;
+	}
+	xlive_net_initialized = TRUE;
 	return ERROR_SUCCESS;
 }
 
@@ -35,8 +38,10 @@ INT WINAPI XNetCleanup()
 {
 	TRACE_FX();
 	xlive_net_initialized = FALSE;
-	if (!xlive_online_initialized)
+	if (!xlive_online_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Online is not initialised.", __func__);
 		return WSANOTINITIALISED;
+	}
 	return ERROR_SUCCESS;
 }
 
@@ -44,10 +49,13 @@ INT WINAPI XNetCleanup()
 INT WINAPI XNetRandom(BYTE *pb, UINT cb)
 {
 	TRACE_FX();
-	if (cb) {
-		for (DWORD i = 0; i < cb; i++) {
-			pb[i] = static_cast<BYTE>(rand());
-		}
+	if (!pb) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pb is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+
+	for (DWORD i = 0; i < cb; i++) {
+		pb[i] = static_cast<BYTE>(rand());
 	}
 
 	return S_OK;
@@ -57,33 +65,49 @@ INT WINAPI XNetRandom(BYTE *pb, UINT cb)
 HRESULT WINAPI XNetCreateKey(XNKID *pxnkid, XNKEY *pxnkey)
 {
 	TRACE_FX();
-	if (!pxnkid)
-		return E_INVALIDARG;
-	if (!pxnkey)
-		return E_INVALIDARG;
+	if (!pxnkid) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid is NULL.", __func__);
+		return E_POINTER;
+	}
+	if (!pxnkey) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkey is NULL.", __func__);
+		return E_POINTER;
+	}
 
 	memset(pxnkid, 0x8B, sizeof(XNKID));
 	//memset(pxnkid, 0xAB, sizeof(XNKID));
 	memset(pxnkey, 0XAA, sizeof(XNKEY));
 
-	// These are un-necessary.
-	//pxnkid->ab[0] &= ~XNET_XNKID_MASK;
+	pxnkid->ab[0] &= ~XNET_XNKID_MASK;
 	//pxnkid->ab[0] |= XNET_XNKID_SYSTEM_LINK;
+	pxnkid->ab[0] |= XNET_XNKID_ONLINE_TITLESERVER;
 	
 	return S_OK;
 }
 
-// #55: need #51
+// #55
 INT WINAPI XNetRegisterKey(XNKID *pxnkid, XNKEY *pxnkey)
 {
 	TRACE_FX();
+	if (!xlive_net_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
+		return E_UNEXPECTED;
+	}
+	if (XNetXnKidFlag(pxnkid) != XNET_XNKID_ONLINE_TITLESERVER && XNetXnKidFlag(pxnkid) != XNET_XNKID_SYSTEM_LINK_XPLAT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNetXnKidFlag(pxnkid) (0x%02x) is not XNET_XNKID_ONLINE_TITLESERVER and not XNET_XNKID_SYSTEM_LINK_XPLAT.", __func__, XNetXnKidFlag(pxnkid));
+		return E_INVALIDARG;
+	}
 	return S_OK;
 }
 
-// #56: need #51
+// #56
 INT WINAPI XNetUnregisterKey(const XNKID* pxnkid)
 {
 	TRACE_FX();
+	if (!xlive_net_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
+		return E_UNEXPECTED;
+	}
 	return S_OK;
 }
 
@@ -184,12 +208,27 @@ INT WINAPI XNetUnregisterInAddr(const IN_ADDR ina)
 INT WINAPI XNetXnAddrToMachineId(const XNADDR *pxnaddr, ULONGLONG *pqwMachineId)
 {
 	TRACE_FX();
-	if (!pxnaddr)
+	if (!pxnaddr) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnaddr is NULL.", __func__);
 		return E_POINTER;
-	if (!pqwMachineId)
+	}
+	if (!pqwMachineId) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pqwMachineId is NULL.", __func__);
 		return E_POINTER;
+	}
 	//TODO  !CIpAddr::IsValidUnicast(pxnaddr->ina.s_addr) || !CIpAddr::IsValidUnicast(pxnaddr->inaOnline.s_addr) || 
-	if (pxnaddr->ina.s_addr == 0 || pxnaddr->inaOnline.s_addr == 0 || pxnaddr->wPortOnline == 0) {
+	if (pxnaddr->ina.s_addr == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnaddr->ina.s_addr is 0.", __func__);
+		*pqwMachineId = 0;
+		return E_INVALIDARG;
+	}
+	if (pxnaddr->inaOnline.s_addr == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnaddr->inaOnline.s_addr is 0.", __func__);
+		*pqwMachineId = 0;
+		return E_INVALIDARG;
+	}
+	if (pxnaddr->wPortOnline == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnaddr->wPortOnline is 0.", __func__);
 		*pqwMachineId = 0;
 		return E_INVALIDARG;
 	}
@@ -209,8 +248,10 @@ INT WINAPI XNetConnect(const IN_ADDR ina)
 INT WINAPI XNetGetConnectStatus(const IN_ADDR ina)
 {
 	TRACE_FX();
-	if (!xlive_net_initialized)
+	if (!xlive_net_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
 		return XNET_CONNECT_STATUS_PENDING;
+	}
 	return XNET_CONNECT_STATUS_CONNECTED;
 }
 
@@ -219,6 +260,7 @@ INT WINAPI XNetDnsLookup(const char *pszHost, WSAEVENT hEvent, XNDNS **ppxndns)
 {
 	TRACE_FX();
 	if (!ppxndns) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ppxndns is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
 	
@@ -250,11 +292,15 @@ INT WINAPI XNetDnsRelease(XNDNS *pxndns)
 DWORD WINAPI XNetGetTitleXnAddr(XNADDR *pAddr)
 {
 	TRACE_FX();
-	if (!xlive_net_initialized)
+	if (!xlive_net_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
 		return XNET_GET_XNADDR_PENDING;
-	if (pAddr) {
-		*pAddr = xlive_local_xnAddr; // same as memcpy.
 	}
+	if (!pAddr) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pAddr is NULL.", __func__);
+		return XNET_GET_XNADDR_PENDING;
+	}
+	*pAddr = xlive_local_xnAddr; // same as memcpy.
 	return XNET_GET_XNADDR_STATIC | XNET_GET_XNADDR_ETHERNET | XNET_GET_XNADDR_ONLINE;
 }
 
@@ -269,8 +315,10 @@ VOID XNetGetDebugXnAddr()
 DWORD WINAPI XNetGetEthernetLinkStatus()
 {
 	TRACE_FX();
-	if (!xlive_net_initialized)
+	if (!xlive_net_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
 		return XNET_ETHERNET_LINK_INACTIVE;
+	}
 	return XNET_ETHERNET_LINK_ACTIVE | XNET_ETHERNET_LINK_100MBPS | XNET_ETHERNET_LINK_FULL_DUPLEX;
 }
 
@@ -330,8 +378,10 @@ VOID XNetGetXnAddrPlatform()
 INT WINAPI XNetGetSystemLinkPort(WORD *pwSystemLinkPort)
 {
 	TRACE_FX();
-	if (!pwSystemLinkPort)
+	if (!pwSystemLinkPort) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pwSystemLinkPort is NULL.", __func__);
 		return E_POINTER;
+	}
 
 	*pwSystemLinkPort = htons(xlive_base_port);
 	//TODO XNetGetSystemLinkPort XEX_PRIVILEGE_CROSSPLATFORM_SYSTEM_LINK

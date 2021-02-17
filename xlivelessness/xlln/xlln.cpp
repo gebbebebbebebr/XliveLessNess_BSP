@@ -34,6 +34,10 @@ BOOL xlln_debug = FALSE;
 static CRITICAL_SECTION xlive_critsec_recvfrom_handler_funcs;
 static std::map<DWORD, char*> xlive_recvfrom_handler_funcs;
 
+static char *broadcastAddrInput = 0;
+
+uint32_t xlln_debuglog_level = XLLN_LOG_CONTEXT_MASK | XLLN_LOG_LEVEL_MASK;
+
 int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth)
 {
 	LVCOLUMN lvc;
@@ -134,13 +138,14 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 {
 	srand((unsigned int)time(NULL));
 
+	// HINSTANCE hModule = reinterpret_cast<HINSTANCE>(lpParam);
+
 	const wchar_t* windowclassname = L"XLLNDLLWindowClass";
-	HINSTANCE hModule = reinterpret_cast<HINSTANCE>(lpParam);
-	xlln_window_hMenu = CreateDLLWindowMenu(hModule);
+	xlln_window_hMenu = CreateDLLWindowMenu(xlln_hModule);
 
 	// Register the windows Class.
 	WNDCLASSEXW wc;
-	wc.hInstance = hModule;
+	wc.hInstance = xlln_hModule;
 	wc.lpszClassName = windowclassname;
 	wc.lpfnWndProc = DLLWindowProc;
 	wc.style = CS_DBLCLKS;
@@ -159,7 +164,7 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 	wchar_t *windowTitle = FormMallocString(L"XLLN v%d.%d.%d.%d", DLL_VERSION);
 
 	HWND hwdParent = NULL;// FindWindowW(L"Window Injected Into ClassName", L"Window Injected Into Caption");
-	xlln_window_hwnd = CreateWindowExW(0, windowclassname, windowTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 500, xlln_debug ? 700 : 225, hwdParent, xlln_window_hMenu, hModule, NULL);
+	xlln_window_hwnd = CreateWindowExW(0, windowclassname, windowTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 500, xlln_debug ? 700 : 225, hwdParent, xlln_window_hMenu, xlln_hModule, NULL);
 
 	free(windowTitle);
 
@@ -167,6 +172,17 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 		memcpy(xlive_users_info[iUser]->szUserName, xlive_users_username[iUser], XUSER_NAME_SIZE);
 		UpdateUserInputBoxes(iUser);
 	}
+
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLIVE, (xlln_debuglog_level & XLLN_LOG_CONTEXT_XLIVE) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN, (xlln_debuglog_level & XLLN_LOG_CONTEXT_XLIVELESSNESS) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN_MOD, (xlln_debuglog_level & XLLN_LOG_CONTEXT_XLLN_MODULE) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_OTHER, (xlln_debuglog_level & XLLN_LOG_CONTEXT_OTHER) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_TRACE, (xlln_debuglog_level & XLLN_LOG_LEVEL_TRACE) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_DEBUG, (xlln_debuglog_level & XLLN_LOG_LEVEL_DEBUG) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_INFO, (xlln_debuglog_level & XLLN_LOG_LEVEL_INFO) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_WARN, (xlln_debuglog_level & XLLN_LOG_LEVEL_WARN) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_ERROR, (xlln_debuglog_level & XLLN_LOG_LEVEL_ERROR) ? BST_CHECKED : BST_UNCHECKED);
+	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_FATAL, (xlln_debuglog_level & XLLN_LOG_LEVEL_FATAL) ? BST_CHECKED : BST_UNCHECKED);
 
 	ShowWindow(xlln_window_hwnd, xlln_debug ? SW_NORMAL : SW_HIDE);
 
@@ -231,8 +247,8 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 	//0x0009000000000000 - online xuid?
 	//0x0009000006F93463
 	//xlive_users_info[dwUserIndex]->xuid = 0xE000007300000000 + dwUserId;
-	xlive_users_info[dwUserIndex]->xuid = 0x0009000000000000 + dwUserId;
-	xlive_users_info[dwUserIndex]->dwInfoFlags;
+	xlive_users_info[dwUserIndex]->xuid = (bLiveEnabled ? 0x0009000000000000 : 0xE000000000000000) + dwUserId;
+	xlive_users_info[dwUserIndex]->dwInfoFlags = bLiveEnabled ? XUSER_INFO_FLAG_LIVE_ENABLED : 0;
 
 	xlive_users_info_changed[dwUserIndex] = TRUE;
 	xlive_users_auto_login[dwUserIndex] = FALSE;
@@ -257,10 +273,14 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 DWORD WINAPI XLLNLogout(DWORD dwUserIndex)
 {
 	TRACE_FX();
-	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
-	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
+	}
 
 	xlive_users_info[dwUserIndex]->UserSigninState = eXUserSigninState_NotSignedIn;
 	xlive_users_info_changed[dwUserIndex] = TRUE;
@@ -402,6 +422,10 @@ DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
 // #41144
 DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
 {
+	if (!(logLevel & xlln_debuglog_level & XLLN_LOG_CONTEXT_MASK) || !(logLevel & xlln_debuglog_level & XLLN_LOG_LEVEL_MASK)) {
+		return ERROR_SUCCESS;
+	}
+
 	auto temp = std::vector<char>{};
 	auto length = std::size_t{ 63 };
 	va_list args;
@@ -443,6 +467,92 @@ void UpdateUserInputBoxes(DWORD dwUserIndex)
 	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), loggedIn ? SW_SHOWNORMAL : SW_HIDE);
 
 	InvalidateRect(xlln_window_hwnd, NULL, FALSE);
+}
+
+/// Mutates the input buffer.
+static void ParseBroadcastAddrInput(char *jlbuffer)
+{
+	EnterCriticalSection(&xlive_critsec_broadcast_addresses);
+	xlive_broadcast_addresses.clear();
+	SOCKADDR_STORAGE temp_addr;
+	char *current = jlbuffer;
+	while (1) {
+		char *comma = strchr(current, ',');
+		if (comma) {
+			comma[0] = 0;
+		}
+
+		char *colon = strrchr(current, ':');
+		if (colon) {
+			colon[0] = 0;
+
+			if (current[0] == '[') {
+				current = &current[1];
+				if (colon[-1] == ']') {
+					colon[-1] = 0;
+				}
+			}
+
+			uint16_t portHBO = 0;
+			if (sscanf_s(&colon[1], "%hu", &portHBO) == 1) {
+				addrinfo hints;
+				memset(&hints, 0, sizeof(hints));
+
+				hints.ai_family = PF_UNSPEC;
+				hints.ai_socktype = SOCK_DGRAM;
+				hints.ai_protocol = IPPROTO_UDP;
+
+				struct in6_addr serveraddr;
+				int rc = inet_pton(AF_INET, current, &serveraddr);
+				if (rc == 1) {
+					hints.ai_family = AF_INET;
+					hints.ai_flags |= AI_NUMERICHOST;
+				}
+				else {
+					rc = inet_pton(AF_INET6, current, &serveraddr);
+					if (rc == 1) {
+						hints.ai_family = AF_INET6;
+						hints.ai_flags |= AI_NUMERICHOST;
+					}
+				}
+
+				addrinfo *res;
+				int error = getaddrinfo(current, NULL, &hints, &res);
+				if (!error) {
+					memset(&temp_addr, 0, sizeof(temp_addr));
+
+					addrinfo *nextRes = res;
+					while (nextRes) {
+						if (nextRes->ai_family == AF_INET) {
+							memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
+							(*(struct sockaddr_in*)&temp_addr).sin_port = htons(portHBO);
+							xlive_broadcast_addresses.push_back(temp_addr);
+							break;
+						}
+						else if (nextRes->ai_family == AF_INET6) {
+							memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
+							(*(struct sockaddr_in6*)&temp_addr).sin6_port = htons(portHBO);
+							xlive_broadcast_addresses.push_back(temp_addr);
+							break;
+						}
+						else {
+							nextRes = nextRes->ai_next;
+						}
+					}
+
+					freeaddrinfo(res);
+				}
+			}
+		}
+
+		if (comma) {
+			current = &comma[1];
+		}
+		else {
+			break;
+		}
+	}
+	LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
 }
 
 static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -498,7 +608,8 @@ Executable Launch Parameters:\n\
 -xllndebuglog ? Enable debug log.\n\
 -xlivedebug ? Sleep XLiveInitialize until debugger attach.\n\
 -xlivenetdisable ? Disable all network functionality.\n\
--xliveportbase=<ushort> ? Change the Base Port (default 2000)."
+-xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
+-xllnbroadcastaddr=<string> ? Set the broadcast address."
 				, "About", MB_OK);
 		}
 		else if (wParam == MYMENU_LOGIN1) {
@@ -557,90 +668,69 @@ Executable Launch Parameters:\n\
 			extern bool xlive_invite_to_game;
 			xlive_invite_to_game = true;
 		}
+		else if (wParam == MYWINDOW_CHK_DBG_CTX_XLIVE) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLIVE) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLIVE, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_XLIVE) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_XLIVE));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_CTX_XLLN) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_XLIVELESSNESS) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_XLIVELESSNESS));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_CTX_XLLN_MOD) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN_MOD) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN_MOD, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_XLLN_MODULE) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_XLLN_MODULE));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_CTX_OTHER) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_OTHER) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_OTHER, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_OTHER) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_OTHER));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_LVL_TRACE) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_TRACE) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_TRACE, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_TRACE) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_TRACE));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_LVL_DEBUG) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_DEBUG) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_DEBUG, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_DEBUG) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_DEBUG));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_LVL_INFO) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_INFO) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_INFO, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_INFO) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_INFO));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_LVL_WARN) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_WARN) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_WARN, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_WARN) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_WARN));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_LVL_ERROR) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_ERROR) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_ERROR, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_ERROR) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_ERROR));
+		}
+		else if (wParam == MYWINDOW_CHK_DBG_LVL_FATAL) {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_FATAL) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_FATAL, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_FATAL) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_FATAL));
+		}
 		else if (wParam == ((EN_CHANGE << 16) | MYWINDOW_TBX_BROADCAST)) {
-			char jlbuffer[500];
-			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, jlbuffer, 500);
-			EnterCriticalSection(&xlive_critsec_broadcast_addresses);
-			xlive_broadcast_addresses.clear();
-			SOCKADDR_STORAGE temp_addr;
-			char *current = jlbuffer;
-			while (1) {
-				char *comma = strchr(current, ',');
-				if (comma) {
-					comma[0] = 0;
-				}
-
-				char *colon = strrchr(current, ':');
-				if (colon) {
-					colon[0] = 0;
-
-					if (current[0] == '[') {
-						current = &current[1];
-						if (colon[-1] == ']') {
-							colon[-1] = 0;
-						}
-					}
-
-					uint16_t portHBO = 0;
-					if (sscanf_s(&colon[1], "%hu", &portHBO) == 1) {
-						addrinfo hints;
-						memset(&hints, 0, sizeof(hints));
-
-						hints.ai_family = PF_UNSPEC;
-						hints.ai_socktype = SOCK_DGRAM;
-						hints.ai_protocol = IPPROTO_UDP;
-
-						struct in6_addr serveraddr;
-						int rc = inet_pton(AF_INET, current, &serveraddr);
-						if (rc == 1) {
-							hints.ai_family = AF_INET;
-							hints.ai_flags |= AI_NUMERICHOST;
-						}
-						else {
-							rc = inet_pton(AF_INET6, current, &serveraddr);
-							if (rc == 1) {
-								hints.ai_family = AF_INET6;
-								hints.ai_flags |= AI_NUMERICHOST;
-							}
-						}
-
-						addrinfo *res;
-						int error = getaddrinfo(current, NULL, &hints, &res);
-						if (!error) {
-							memset(&temp_addr, 0, sizeof(temp_addr));
-
-							addrinfo *nextRes = res;
-							while (nextRes) {
-								if (nextRes->ai_family == AF_INET) {
-									memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
-									(*(struct sockaddr_in*)&temp_addr).sin_port = htons(portHBO);
-									xlive_broadcast_addresses.push_back(temp_addr);
-									break;
-								}
-								else if (nextRes->ai_family == AF_INET6) {
-									memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
-									(*(struct sockaddr_in6*)&temp_addr).sin6_port = htons(portHBO);
-									xlive_broadcast_addresses.push_back(temp_addr);
-									break;
-								}
-								else {
-									nextRes = nextRes->ai_next;
-								}
-							}
-
-							freeaddrinfo(res);
-						}
-					}
-				}
-
-				if (comma) {
-					current = &comma[1];
-				}
-				else {
-					break;
-				}
+			if (xlln_window_hwnd) {
+				char jlbuffer[500];
+				GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, jlbuffer, 500);
+				size_t buflen = strlen(jlbuffer) + 1;
+				delete[] broadcastAddrInput;
+				broadcastAddrInput = new char[buflen];
+				memcpy(broadcastAddrInput, jlbuffer, buflen);
+				broadcastAddrInput[buflen - 1] = 0;
+				char *temp = FormMallocString("%s", broadcastAddrInput);
+				ParseBroadcastAddrInput(temp);
+				free(temp);
 			}
-			LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
 		}
 		return 0;
 	}
@@ -667,13 +757,43 @@ Executable Launch Parameters:\n\
 		CreateWindowA(WC_BUTTONA, "Logout", WS_CHILD | WS_TABSTOP,
 			140, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGOUT, xlln_hModule, NULL);
 
-		CreateWindowA(WC_EDITA, "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
+		CreateWindowA(WC_EDITA, broadcastAddrInput, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
 			5, 140, 475, 22, hwnd, (HMENU)MYWINDOW_TBX_BROADCAST, xlln_hModule, NULL);
 
-		CreateWindowA(WC_EDITA, "", WS_CHILD | (xlln_debug ? WS_VISIBLE : 0) | WS_BORDER | ES_MULTILINE | WS_SIZEBOX | WS_TABSTOP | WS_HSCROLL,
-			5, 170, 475, 460, hwnd, (HMENU)MYWINDOW_TBX_TEST, xlln_hModule, NULL);
-
 		if (xlln_debug) {
+			CreateWindowA(WC_BUTTONA, "XLIVE", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				5, 170, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_CTX_XLIVE, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "XLIVELESSNESS", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				85, 170, 140, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_CTX_XLLN, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "XLLN MODULE", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				235, 170, 140, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_CTX_XLLN_MOD, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "OTHER", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				375, 170, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_CTX_OTHER, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "TRACE", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				5, 190, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_LVL_TRACE, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "DEBUG", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				85, 190, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_LVL_DEBUG, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "INFO", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				165, 190, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_LVL_INFO, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "WARN", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				245, 190, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_LVL_WARN, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "ERROR", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				325, 190, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_LVL_ERROR, xlln_hModule, NULL);
+
+			CreateWindowA(WC_BUTTONA, "FATAL", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+				405, 190, 70, 20, hwnd, (HMENU)MYWINDOW_CHK_DBG_LVL_FATAL, xlln_hModule, NULL);
+
+			CreateWindowA(WC_EDITA, "", WS_CHILD | (xlln_debug ? WS_VISIBLE : 0) | WS_BORDER | ES_MULTILINE | WS_SIZEBOX | WS_TABSTOP | WS_HSCROLL,
+				5, 210, 475, 420, hwnd, (HMENU)MYWINDOW_TBX_TEST, xlln_hModule, NULL);
+
 			CreateWindowA(WC_BUTTONA, "Test", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 				5, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_TEST, xlln_hModule, NULL);
 		}
@@ -838,6 +958,12 @@ INT InitXLLN(HMODULE hModule)
 					xlive_base_port = tempuint16;
 				}
 			}
+			else if (wcsstr(lpwszArglist[i], L"-xllnbroadcastaddr=") == lpwszArglist[i]) {
+				wchar_t *broadcastAddrInputTemp = &lpwszArglist[i][19];
+				size_t bufferLen = wcslen(broadcastAddrInputTemp) + 1;
+				broadcastAddrInput = new char[bufferLen];
+				wcstombs2(broadcastAddrInput, broadcastAddrInputTemp, bufferLen);
+			}
 		}
 	}
 	LocalFree(lpwszArglist);
@@ -850,13 +976,26 @@ INT InitXLLN(HMODULE hModule)
 		xlive_users_auto_login[i] = FALSE;
 	}
 
+	if (!broadcastAddrInput) {
+		broadcastAddrInput = new char[1]{""};
+	}
+
+	WSADATA wsaData;
+	INT result_wsaStartup = WSAStartup(2, &wsaData);
+
 	HRESULT error_XllnConfig = InitXllnConfig(xlln_instance);
 
 	xlln_hModule = hModule;
-	CreateThread(0, NULL, ThreadProc, (LPVOID)xlln_hModule, NULL, NULL);
+	CreateThread(0, NULL, ThreadProc, (LPVOID)NULL, NULL, NULL);
 
 	HRESULT error_XllnWndSockets = InitXllnWndSockets();
 	HRESULT error_XllnWndConnections = InitXllnWndConnections();
+
+	if (broadcastAddrInput) {
+		char *temp = FormMallocString("%s", broadcastAddrInput);
+		ParseBroadcastAddrInput(temp);
+		free(temp);
+	}
 
 	xlive_title_id = 0;
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
@@ -871,9 +1010,16 @@ INT UninitXLLN()
 	HRESULT error_XllnWndConnections = UninitXllnWndConnections();
 	HRESULT error_XllnWndSockets = UninitXllnWndSockets();
 
+	if (broadcastAddrInput) {
+		delete[] broadcastAddrInput;
+		broadcastAddrInput = 0;
+	}
+
 	HRESULT error_XllnConfig = UninitXllnConfig();
 
 	INT error_DebugLog = UninitDebugLog();
+
+	INT result_wsaStartup = WSACleanup();
 
 	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	DeleteCriticalSection(&xlive_critsec_network_adapter);

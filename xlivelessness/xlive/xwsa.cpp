@@ -2,13 +2,18 @@
 #include "xdefs.hpp"
 #include "xwsa.hpp"
 #include "../xlln/debug-text.hpp"
+#include "../xlln/xlln.hpp"
 
 // #1
 INT WINAPI XWSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData)
 {
 	TRACE_FX();
 	INT result = WSAStartup(wVersionRequested, lpWSAData);
-	return result;
+	if (result != ERROR_SUCCESS) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s %08x.", __func__, result);
+		return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #2
@@ -17,10 +22,12 @@ INT WINAPI XWSACleanup()
 	TRACE_FX();
 	INT result = WSACleanup();
 	if (result != ERROR_SUCCESS) {
-		//TODO Store error in XWSAGetLastError().
+		INT errorWSACleanup = WSAGetLastError();
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s SOCKET_ERROR %08x.", __func__, errorWSACleanup);
+		WSASetLastError(errorWSACleanup);
 		return SOCKET_ERROR;
 	}
-	return result;
+	return ERROR_SUCCESS;
 }
 
 // #16

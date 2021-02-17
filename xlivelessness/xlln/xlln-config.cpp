@@ -142,6 +142,17 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 						incorrect = true;
 					}
 				}
+				else if (SettingNameMatches("xlln_debuglog_level")) {
+					uint32_t tempuint32;
+					if (sscanf_s(value, "0x%x", &tempuint32) == 1) {
+						if (configContext.saveValuesRead) {
+							xlln_debuglog_level = tempuint32;
+						}
+					}
+					else {
+						incorrect = true;
+					}
+				}
 				else if (_strnicmp("xlive_username_p", settingName, 16) == 0) {
 					uint32_t iUser;
 					if (sscanf_s(&settingName[16], "%d", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
@@ -280,6 +291,10 @@ HRESULT SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT
 	WriteText("\n# Allows activating the XHV Engine which is used for voice chat.");
 	WriteText("\n");
 
+	WriteText("\n# xlln_debuglog_level:");
+	WriteText("\n# Saves the log level from last use.");
+	WriteText("\n");
+
 	WriteText("\n# xlive_username_p1...:");
 	WriteText("\n# Max username length is 15 characters.");
 	WriteText("\n# The username for each local profile to use.");
@@ -316,6 +331,7 @@ HRESULT SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT
 	WriteTextF("\nxlive_base_port = %hu", xlive_base_port == 0xFFFF ? 0 : xlive_base_port);
 	WriteTextF("\nxlive_net_disable = %u", xlive_netsocket_abort ? 1 : 0);
 	WriteTextF("\nxlive_xhv_engine_enabled = %u", xlive_xhv_engine_enabled ? 1 : 0);
+	WriteTextF("\nxlln_debuglog_level = 0x%08x", xlln_debuglog_level);
 	for (size_t iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
 		WriteTextF("\nxlive_username_p%d = %s", iUser + 1, xlive_users_username[iUser]);
 		WriteTextF("\nxlive_user_live_enabled_p%d = %u", iUser + 1, xlive_users_live_enabled[iUser] ? 1 : 0);

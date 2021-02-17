@@ -5,6 +5,7 @@
 char* FormMallocString(const char *const format, ...);
 wchar_t* FormMallocString(const wchar_t *const format, ...);
 char* CloneString(const char *str);
+wchar_t* CloneString(const wchar_t *str);
 size_t TrimRemoveConsecutiveSpaces(char* text);
 int FindLineStart(FILE* fp, int lineStrLen);
 bool GetFileLine(FILE* fp, char* &fileLine);
@@ -15,3 +16,6 @@ uint16_t GetSockAddrPort(const SOCKADDR_STORAGE *sockAddrStorage);
 bool SetSockAddrPort(SOCKADDR_STORAGE *sockAddrStorage, uint16_t portHBO);
 char* GetSockAddrInfo(const SOCKADDR_STORAGE *sockAddrStorage);
 bool SockAddrsMatch(const SOCKADDR_STORAGE *sockAddr1, const SOCKADDR_STORAGE *sockAddr2);
+void wcstombs2(char* buffer, const wchar_t* text, size_t buf_len);
+void ReplaceFilePathSensitiveChars(char *filename);
+void ReplaceFilePathSensitiveChars(wchar_t *filename);

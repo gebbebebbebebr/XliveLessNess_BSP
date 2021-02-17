@@ -325,6 +325,7 @@ typedef XNADDR TSADDR;
 #define XNET_XNKID_ONLINE_SERVER        0xC0    // Client to server online session
 #define XNET_XNKID_ONLINE_TITLESERVER   0xE0    // Client to title server online session
 
+#define XNetXnKidFlag(pxnkid)       ((pxnkid)->ab[0] & 0xE0)
 #define XNetXnKidIsSystemLinkXbox(pxnkid)       (((pxnkid)->ab[0] & 0xE0) == XNET_XNKID_SYSTEM_LINK)
 #define XNetXnKidIsSystemLinkXPlat(pxnkid)      (((pxnkid)->ab[0] & 0xE0) == XNET_XNKID_SYSTEM_LINK_XPLAT)
 #define XNetXnKidIsSystemLink(pxnkid)           (XNetXnKidIsSystemLinkXbox(pxnkid) || XNetXnKidIsSystemLinkXPlat(pxnkid))
@@ -572,8 +573,9 @@ typedef XUID *PXUID;
 #define XUSER_NAME_SIZE                 16
 #define XUSER_MAX_NAME_LENGTH           (XUSER_NAME_SIZE - 1)
 
-#define XUSER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY      0x00000002
 #define XUSER_GET_SIGNIN_INFO_OFFLINE_XUID_ONLY     0x00000001
+#define XUSER_GET_SIGNIN_INFO_ONLINE_XUID_ONLY      0x00000002
+#define XUSER_GET_SIGNIN_INFO_UNKNOWN_XUID_ONLY      0x00000004
 
 #define XUSER_INFO_FLAG_LIVE_ENABLED    0x00000001
 #define XUSER_INFO_FLAG_GUEST           0x00000002
@@ -926,6 +928,7 @@ typedef enum _XSTORAGE_FACILITY
 	XSTORAGE_FACILITY_PER_TITLE = 2,
 	XSTORAGE_FACILITY_PER_USER_TITLE = 3
 } XSTORAGE_FACILITY;
+#define XSTORAGE_FACILITY_INFO_GAME_CLIP DWORD
 
 
 typedef struct _XSTORAGE_DOWNLOAD_TO_MEMORY_RESULTS {
@@ -1174,6 +1177,8 @@ typedef enum _XSHOWMARKETPLACEDOWNLOADITEMSUI_ENTRYPOINTS {
 
 #define XMB_PASSCODEMODE 0x00010000
 #define XMB_VERIFYPASSCODEMODE 0x00020000
+
+#define XMB_MAXBUTTONS 3
 
 #define XMB_OK 1
 #define XMB_CANCEL 2

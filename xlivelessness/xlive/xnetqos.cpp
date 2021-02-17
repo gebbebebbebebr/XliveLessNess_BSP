@@ -1,6 +1,7 @@
 #include <winsock2.h>
 #include "xdefs.hpp"
 #include "../xlln/debug-text.hpp"
+#include "../xlln/xlln.hpp"
 
 // #69
 INT WINAPI XNetQosListen(XNKID *pxnkid, PBYTE pb, UINT cb, DWORD dwBitsPerSec, DWORD dwFlags)
@@ -89,13 +90,22 @@ DWORD WINAPI XNetQosLookup(UINT cxna, XNADDR * apxna[], XNKID * apxnkid[], XNKEY
 INT WINAPI XNetQosServiceLookup(DWORD dwFlags, WSAEVENT hEvent, XNQOS **ppxnqos)
 {
 	TRACE_FX();
-	if (dwFlags & ~(XNET_QOS_SERVICE_LOOKUP_RESERVED))
+	if (dwFlags & ~(XNET_QOS_SERVICE_LOOKUP_RESERVED)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s No dwFlags (0x%08x) are officially supported.", __func__, dwFlags);
 		return E_INVALIDARG;
-	if (!ppxnqos || !*ppxnqos)
+	}
+	if (!ppxnqos) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ppxnqos is NULL.", __func__);
 		return E_INVALIDARG;
+	}
+	if (!*ppxnqos) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s *ppxnqos is NULL.", __func__);
+		return E_INVALIDARG;
+	}
 
 	//TODO XNetQosServiceLookup
 	//(*ppxnqos)->axnqosinfo->bFlags;
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s UNIMPLEMENTED.", __func__);
 
 	return E_ABORT;
 	return S_OK;
@@ -105,6 +115,10 @@ INT WINAPI XNetQosServiceLookup(DWORD dwFlags, WSAEVENT hEvent, XNQOS **ppxnqos)
 INT WINAPI XNetQosRelease(XNQOS* pxnqos)
 {
 	TRACE_FX();
+	if (!pxnqos) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnqos is NULL.", __func__);
+		return E_INVALIDARG;
+	}
 	return S_OK;
 	//return ERROR_FUNCTION_FAILED;
 	for (unsigned int i = 0; i == pxnqos->cxnqos; i++)

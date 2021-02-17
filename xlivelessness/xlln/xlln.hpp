@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 #define XLLN_SHOW_HIDE 0
 #define XLLN_SHOW_HOME 1
@@ -15,7 +16,6 @@
 #define MYMENU_DEBUG_CONNECTIONS	(WM_APP + 115)
 #define MYWINDOW_BTN_LOGIN			(WM_APP + 120)
 #define MYWINDOW_TBX_USERNAME		(WM_APP + 121)
-#define MYWINDOW_TBX_TEST			(WM_APP + 122)
 #define MYWINDOW_CHK_LIVEENABLE		(WM_APP + 123)
 #define MYWINDOW_CHK_AUTOLOGIN		(WM_APP + 124)
 #define MYWINDOW_BTN_LOGOUT			(WM_APP + 125)
@@ -24,6 +24,17 @@
 #define MYWINDOW_LST_SOCKETS		(WM_APP + 130)
 #define MYWINDOW_TRE_CONNECTIONS	(WM_APP + 131)
 #define MYWINDOW_BTN_REFRESH_CONNS	(WM_APP + 132)
+#define MYWINDOW_TBX_TEST			(WM_APP + 150)
+#define MYWINDOW_CHK_DBG_CTX_XLIVE		(WM_APP + 151)
+#define MYWINDOW_CHK_DBG_CTX_XLLN		(WM_APP + 152)
+#define MYWINDOW_CHK_DBG_CTX_XLLN_MOD	(WM_APP + 153)
+#define MYWINDOW_CHK_DBG_CTX_OTHER		(WM_APP + 154)
+#define MYWINDOW_CHK_DBG_LVL_TRACE		(WM_APP + 155)
+#define MYWINDOW_CHK_DBG_LVL_DEBUG		(WM_APP + 156)
+#define MYWINDOW_CHK_DBG_LVL_INFO		(WM_APP + 157)
+#define MYWINDOW_CHK_DBG_LVL_WARN		(WM_APP + 158)
+#define MYWINDOW_CHK_DBG_LVL_ERROR		(WM_APP + 159)
+#define MYWINDOW_CHK_DBG_LVL_FATAL		(WM_APP + 160)
 
 #ifdef _DEBUG
 #define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
@@ -48,7 +59,9 @@ int CreateItem(HWND hwndListView, int iItem);
 extern HINSTANCE xlln_hModule;
 extern HWND xlln_window_hwnd;
 extern BOOL xlln_debug;
+extern uint32_t xlln_debuglog_level;
 
+#define XLLN_LOG_LEVEL_MASK		0b00111111
 // Function call tracing.
 #define XLLN_LOG_LEVEL_TRACE	0b00000001
 // Function, variable and operation logging.
@@ -62,6 +75,7 @@ extern BOOL xlln_debug;
 // Errors that will terminate the application.
 #define XLLN_LOG_LEVEL_FATAL	0b00100000
 
+#define XLLN_LOG_CONTEXT_MASK			(0b10000111 << 8)
 // Logs related to Xlive functionality.
 #define XLLN_LOG_CONTEXT_XLIVE			(0b00000001 << 8)
 // Logs related to XLiveLessNess functionality.

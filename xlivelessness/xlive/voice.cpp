@@ -10,53 +10,77 @@ bool xlive_xhv_engine_enabled = false;
 INT WINAPI XHVCreateEngine(PXHV_INIT_PARAMS pParams, PHANDLE phWorkerThread, IXHVEngine **ppEngine)
 {
 	TRACE_FX();
-	if (!pParams)
+	if (!pParams) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams is NULL.", __func__);
 		return E_INVALIDARG;
-	if (!ppEngine)
+	}
+	if (!ppEngine) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ppEngine is NULL.", __func__);
 		return E_INVALIDARG;
-	if (phWorkerThread)
+	}
+	if (phWorkerThread) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phWorkerThread is not officially supported.", __func__);
 		return E_INVALIDARG;
-	if (!pParams->dwMaxLocalTalkers)
+	}
+	if (!pParams->dwMaxLocalTalkers) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwMaxLocalTalkers is 0.", __func__);
 		return E_INVALIDARG;
-	if (pParams->dwMaxLocalTalkers > XHV_MAX_LOCAL_TALKERS)
+	}
+	if (pParams->dwMaxLocalTalkers > XHV_MAX_LOCAL_TALKERS) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwMaxLocalTalkers (%d) is greater than %d.", __func__, pParams->dwMaxLocalTalkers, XHV_MAX_LOCAL_TALKERS);
 		return E_INVALIDARG;
-	if (pParams->dwMaxRemoteTalkers > XHV_MAX_REMOTE_TALKERS)
+	}
+	if (pParams->dwMaxRemoteTalkers > XHV_MAX_REMOTE_TALKERS) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwMaxRemoteTalkers (%d) is greater than %d.", __func__, pParams->dwMaxRemoteTalkers, XHV_MAX_REMOTE_TALKERS);
 		return E_INVALIDARG;
-	if (pParams->dwNumLocalTalkerEnabledModes > XHV_MAX_PROCESSING_MODES)
+	}
+	if (pParams->dwNumLocalTalkerEnabledModes > XHV_MAX_PROCESSING_MODES) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwNumLocalTalkerEnabledModes (%d) is greater than %d.", __func__, pParams->dwNumLocalTalkerEnabledModes, XHV_MAX_PROCESSING_MODES);
 		return E_INVALIDARG;
-	if (pParams->dwNumRemoteTalkerEnabledModes > XHV_MAX_PROCESSING_MODES)
+	}
+	if (pParams->dwNumRemoteTalkerEnabledModes > XHV_MAX_PROCESSING_MODES) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwNumRemoteTalkerEnabledModes (%d) is greater than %d.", __func__, pParams->dwNumRemoteTalkerEnabledModes, XHV_MAX_PROCESSING_MODES);
 		return E_INVALIDARG;
-	if (!pParams->dwNumLocalTalkerEnabledModes)
+	}
+	if (!pParams->dwNumLocalTalkerEnabledModes) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwNumLocalTalkerEnabledModes is NULL.", __func__);
 		return E_INVALIDARG;
-	if (!pParams->dwMaxRemoteTalkers && pParams->dwNumRemoteTalkerEnabledModes)
+	}
+	if (!pParams->dwMaxRemoteTalkers && pParams->dwNumRemoteTalkerEnabledModes) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (!pParams->dwMaxRemoteTalkers && pParams->dwNumRemoteTalkerEnabledModes).", __func__);
 		return E_INVALIDARG;
-	if (pParams->dwMaxRemoteTalkers && !pParams->dwNumRemoteTalkerEnabledModes)
+	}
+	if (pParams->dwMaxRemoteTalkers && !pParams->dwNumRemoteTalkerEnabledModes) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pParams->dwMaxRemoteTalkers && !pParams->dwNumRemoteTalkerEnabledModes).", __func__);
 		return E_INVALIDARG;
-	if (pParams->dwNumLocalTalkerEnabledModes > 0 && !pParams->localTalkerEnabledModes)
+	}
+	if (pParams->dwNumLocalTalkerEnabledModes > 0 && !pParams->localTalkerEnabledModes) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pParams->dwNumLocalTalkerEnabledModes > 0 && !pParams->localTalkerEnabledModes).", __func__);
 		return E_INVALIDARG;
-	if (pParams->dwNumRemoteTalkerEnabledModes > 0 && !pParams->remoteTalkerEnabledModes)
+	}
+	if (pParams->dwNumRemoteTalkerEnabledModes > 0 && !pParams->remoteTalkerEnabledModes) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pParams->dwNumRemoteTalkerEnabledModes > 0 && !pParams->remoteTalkerEnabledModes).", __func__);
 		return E_INVALIDARG;
-	if (pParams->bCustomVADProvided && !pParams->pfnMicrophoneRawDataReady)
+	}
+	if (pParams->bCustomVADProvided && !pParams->pfnMicrophoneRawDataReady) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pParams->bCustomVADProvided && !pParams->pfnMicrophoneRawDataReady).", __func__);
 		return E_INVALIDARG;
-	if (!pParams->hwndFocus)
+	}
+	if (!pParams->hwndFocus) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->hwndFocus is NULL.", __func__);
 		return E_INVALIDARG;
+	}
 
 	if (!xlive_xhv_engine_enabled) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-			, "XHVCreateEngine XHV Engine is disabled."
-		);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s XHV Engine is disabled.", __func__);
 		return DSERR_NODRIVER;
 	}
 
 	if (pParams->bCustomVADProvided) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-			, "XHVCreateEngine A custom XHV Engine has been provided."
-		);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s A custom XHV Engine has been provided.", __func__);
 	}
 	else {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-			, "XHVCreateEngine Using XLLN XHV Engine."
-		);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s Using XLLN XHV Engine.", __func__);
 
 		*ppEngine = new XHVENGINE;
 	}

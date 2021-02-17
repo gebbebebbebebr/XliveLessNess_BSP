@@ -1,6 +1,7 @@
 #include "xdefs.hpp"
 #include "xrender.hpp"
 #include "../xlln/debug-text.hpp"
+#include "../xlln/xlln.hpp"
 #include <d3d9.h>
 #include <chrono>
 #include <thread>
@@ -19,6 +20,10 @@ static std::chrono::system_clock::duration desiredRenderTime;
 INT InitXRender(XLIVE_INITIALIZE_INFO* pPii)
 {
 	TRACE_FX();
+	if (!pPii) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pPii is NULL.", __func__);
+		return E_INVALIDARG;
+	}
 
 	pDevice = (LPDIRECT3DDEVICE9)pPii->pD3D;
 	pD3DPP = (D3DPRESENT_PARAMETERS*)pPii->pD3DPP;
@@ -32,6 +37,12 @@ INT InitXRender(XLIVE_INITIALIZE_INFO* pPii)
 INT UninitXRender()
 {
 	TRACE_FX();
+	if (!Initialised_XRender) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XRender is not initialised.", __func__);
+		return E_UNEXPECTED;
+	}
+
+	Initialised_XRender = FALSE;
 
 	return S_OK;
 }
@@ -60,10 +71,13 @@ void frameTimeManagement()
 INT WINAPI XLiveRender()
 {
 	TRACE_FX();
-	if (Initialised_XRender) {
-		if (xlive_fps_limit > 0) {
-			frameTimeManagement();
-		}
+	if (!Initialised_XRender) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XRender is not initialised.", __func__);
+		return E_UNEXPECTED;
+	}
+
+	if (xlive_fps_limit > 0) {
+		frameTimeManagement();
 	}
 	return S_OK;
 }

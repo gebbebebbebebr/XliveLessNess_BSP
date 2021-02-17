@@ -67,6 +67,15 @@ char* CloneString(const char *str)
 	return result;
 }
 
+// new'ly allocate a copy of this input string.
+wchar_t* CloneString(const wchar_t *str)
+{
+	size_t strWBufLen = wcslen(str) + 1;
+	wchar_t *result = new wchar_t[strWBufLen];
+	memcpy(result, str, strWBufLen * sizeof(wchar_t));
+	return result;
+}
+
 size_t TrimRemoveConsecutiveSpaces(char* text)
 {
 	size_t text_len = strlen(text);
@@ -344,4 +353,63 @@ bool SockAddrsMatch(const SOCKADDR_STORAGE *sockAddr1, const SOCKADDR_STORAGE *s
 	}
 
 	return true;
+}
+
+void wcstombs2(char* buffer, const wchar_t* text, size_t buf_len)
+{
+	if (buf_len == 0) {
+		return;
+	}
+	size_t loop_len = wcslen(text) + 1;
+	if (loop_len > buf_len) {
+		loop_len = buf_len;
+	}
+	loop_len--;
+	size_t buffer_i = 0;
+	for (size_t i = 0; i < loop_len; i++) {
+		if (text[i] >= 0 && text[i] <= 0xFF) {
+			buffer[buffer_i++] = (char)text[i];
+		}
+	}
+	buffer[buffer_i] = 0;
+}
+
+void ReplaceFilePathSensitiveChars(char *filename)
+{
+	size_t loopLen = strlen(filename);
+	for (size_t i = 0; i < loopLen; i++) {
+		if (
+			filename[i] == '\\'
+			|| filename[i] == '/'
+			|| filename[i] == ':'
+			|| filename[i] == '*'
+			|| filename[i] == '?'
+			|| filename[i] == '\"'
+			|| filename[i] == '<'
+			|| filename[i] == '>'
+			|| filename[i] == '|'
+			) {
+			filename[i] = '_';
+		}
+	}
+}
+
+void ReplaceFilePathSensitiveChars(wchar_t *filename)
+{
+	size_t loopLen = wcslen(filename);
+	for (size_t i = 0; i < loopLen; i++) {
+		if (
+			filename[i] == '\\'
+			|| filename[i] == '/'
+			|| filename[i] == ':'
+			|| filename[i] == '*'
+			|| filename[i] == '?'
+			|| filename[i] == '\"'
+			|| filename[i] == '<'
+			|| filename[i] == '>'
+			|| filename[i] == '|'
+		) {
+			filename[i] = '_';
+		}
+	}
 }

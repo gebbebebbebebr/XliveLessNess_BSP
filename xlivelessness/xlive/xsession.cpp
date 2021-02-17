@@ -2,14 +2,23 @@
 #include "xsession.hpp"
 #include "../xlln/debug-text.hpp"
 #include "xlive.hpp"
+#include "../xlln/xlln.hpp"
 
 XSESSION_LOCAL_DETAILS xlive_session_details;
+
+BOOL xlive_xsession_initialised = FALSE;
 
 INT InitXSession()
 {
 	TRACE_FX();
+	if (xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is already initialised.", __func__);
+		return E_UNEXPECTED;
+	}
 
 	memset(&xlive_session_details, 0, sizeof(XSESSION_LOCAL_DETAILS));
+
+	xlive_xsession_initialised = TRUE;
 
 	return S_OK;
 }
@@ -17,6 +26,13 @@ INT InitXSession()
 INT UninitXSession()
 {
 	TRACE_FX();
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return E_UNEXPECTED;
+	}
+
+	xlive_xsession_initialised = FALSE;
+
 	return S_OK;
 }
 
@@ -24,34 +40,62 @@ INT UninitXSession()
 DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicSlots, DWORD dwMaxPrivateSlots, ULONGLONG *pqwSessionNonce, PXSESSION_INFO pSessionInfo, PXOVERLAPPED pXOverlapped, PHANDLE phEnum)
 {
 	TRACE_FX();
-	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
-	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn)
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
-	if (!pqwSessionNonce)
+	}
+	if (!pqwSessionNonce) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pqwSessionNonce is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!pSessionInfo)
+	}
+	if (!pSessionInfo) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pSessionInfo is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!phEnum)
+	}
+	if (!phEnum) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phEnum is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (dwFlags & ~(XSESSION_CREATE_USES_MASK | XSESSION_CREATE_MODIFIERS_MASK | 0x1000))//FIXME unknown macro or their mistake?
+	}
+	//FIXME unknown macro or their mistake?
+	if (dwFlags & ~(XSESSION_CREATE_USES_MASK | XSESSION_CREATE_MODIFIERS_MASK | 0x1000)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s FIXME.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (dwFlags & XSESSION_CREATE_USES_MATCHMAKING && !(dwFlags & XSESSION_CREATE_USES_PEER_NETWORK))
+	}
+	if ((dwFlags & XSESSION_CREATE_USES_MATCHMAKING) && !(dwFlags & XSESSION_CREATE_USES_PEER_NETWORK)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((dwFlags & XSESSION_CREATE_USES_MATCHMAKING) && !(dwFlags & XSESSION_CREATE_USES_PEER_NETWORK)).", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (dwFlags & XSESSION_CREATE_USES_ARBITRATION && !(dwFlags & XSESSION_CREATE_USES_STATS))
+	}
+	if ((dwFlags & XSESSION_CREATE_USES_ARBITRATION) && !(dwFlags & XSESSION_CREATE_USES_STATS)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((dwFlags & XSESSION_CREATE_USES_ARBITRATION) && !(dwFlags & XSESSION_CREATE_USES_STATS)).", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (dwFlags & XSESSION_CREATE_USES_ARBITRATION && !(dwFlags & XSESSION_CREATE_USES_PEER_NETWORK))
+	}
+	if ((dwFlags & XSESSION_CREATE_USES_ARBITRATION) && !(dwFlags & XSESSION_CREATE_USES_PEER_NETWORK)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((dwFlags & XSESSION_CREATE_USES_ARBITRATION) && !(dwFlags & XSESSION_CREATE_USES_PEER_NETWORK)).", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (dwFlags & XSESSION_CREATE_HOST && !(dwFlags & (XSESSION_CREATE_USES_PEER_NETWORK | XSESSION_CREATE_USES_STATS | XSESSION_CREATE_USES_MATCHMAKING)))
+	}
+	if ((dwFlags & XSESSION_CREATE_HOST) && !(dwFlags & (XSESSION_CREATE_USES_PEER_NETWORK | XSESSION_CREATE_USES_STATS | XSESSION_CREATE_USES_MATCHMAKING))) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((dwFlags & XSESSION_CREATE_HOST) && !(dwFlags & (XSESSION_CREATE_USES_PEER_NETWORK | XSESSION_CREATE_USES_STATS | XSESSION_CREATE_USES_MATCHMAKING))).", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 	if (dwFlags & XSESSION_CREATE_MODIFIERS_MASK) {
 		if (!(dwFlags & (XSESSION_CREATE_USES_PRESENCE | XSESSION_CREATE_USES_MATCHMAKING))) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((dwFlags & XSESSION_CREATE_MODIFIERS_MASK) && !(dwFlags & (XSESSION_CREATE_USES_PRESENCE | XSESSION_CREATE_USES_MATCHMAKING))).", __func__);
 			return ERROR_INVALID_PARAMETER;
 		}
 		if (!(dwFlags & XSESSION_CREATE_USES_PRESENCE) && (dwFlags & XSESSION_CREATE_USES_MATCHMAKING) && (dwFlags & XSESSION_CREATE_MODIFIERS_MASK) != (dwFlags & XSESSION_CREATE_JOIN_IN_PROGRESS_DISABLED)) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((dwFlags & XSESSION_CREATE_MODIFIERS_MASK) && !(dwFlags & XSESSION_CREATE_USES_PRESENCE) && (dwFlags & XSESSION_CREATE_USES_MATCHMAKING) && (dwFlags & XSESSION_CREATE_MODIFIERS_MASK) != (dwFlags & XSESSION_CREATE_JOIN_IN_PROGRESS_DISABLED)).", __func__);
 			return ERROR_INVALID_PARAMETER;
 		}
 		if ((dwFlags & XSESSION_CREATE_JOIN_VIA_PRESENCE_DISABLED) && (dwFlags & XSESSION_CREATE_JOIN_VIA_PRESENCE_FRIENDS_ONLY)) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((dwFlags & XSESSION_CREATE_MODIFIERS_MASK) && (dwFlags & XSESSION_CREATE_JOIN_VIA_PRESENCE_DISABLED) && (dwFlags & XSESSION_CREATE_JOIN_VIA_PRESENCE_FRIENDS_ONLY)).", __func__);
 			return ERROR_INVALID_PARAMETER;
 		}
 	}
@@ -111,8 +155,14 @@ VOID XSessionWriteStats()
 DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, PXOVERLAPPED pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionStart
 	if (pXOverlapped) {
@@ -158,10 +208,22 @@ VOID XSessionSearch()
 DWORD WINAPI XSessionModify(HANDLE hSession, DWORD dwFlags, DWORD dwMaxPublicSlots, DWORD dwMaxPrivateSlots, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!(dwFlags && 0x200) || !(dwFlags && 0x800))
+	}
+	if (!(dwFlags && 0x200)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s !(dwFlags && 0x200).", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
+	if (!(dwFlags && 0x800)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s !(dwFlags && 0x800).", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionModify
 	if (pXOverlapped) {
@@ -193,12 +255,26 @@ VOID XSessionMigrateHost()
 DWORD WINAPI XSessionLeaveLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *pdwUserIndexes, PXOVERLAPPED pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!dwUserCount || dwUserCount > XLIVE_LOCAL_USER_COUNT)
+	}
+	if (dwUserCount == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount is 0.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!pdwUserIndexes)
+	}
+	if (dwUserCount > XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount (%d) is greater than XLIVE_LOCAL_USER_COUNT (%d).", __func__, dwUserCount, XLIVE_LOCAL_USER_COUNT);
 		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pdwUserIndexes) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdwUserIndexes is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionLeaveLocal
 	if (pXOverlapped) {
@@ -223,14 +299,26 @@ DWORD WINAPI XSessionLeaveLocal(HANDLE hSession, DWORD dwUserCount, const DWORD 
 DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *pXuids, const BOOL *pfPrivateSlots, PXOVERLAPPED pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!dwXuidCount)
+	}
+	if (dwXuidCount == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwXuidCount is 0.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!pXuids)
+	}
+	if (!pXuids) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pXuids is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!pfPrivateSlots)
+	}
+	if (!pfPrivateSlots) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pfPrivateSlots is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionJoinRemote
 	if (pXOverlapped) {
@@ -255,14 +343,30 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *pdwUserIndexes, const BOOL *pfPrivateSlots, PXOVERLAPPED pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!dwUserCount || dwUserCount > XLIVE_LOCAL_USER_COUNT)
+	}
+	if (dwUserCount == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount is 0.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!pdwUserIndexes)
+	}
+	if (dwUserCount > XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount (%d) is greater than XLIVE_LOCAL_USER_COUNT (%d).", __func__, dwUserCount, XLIVE_LOCAL_USER_COUNT);
 		return ERROR_INVALID_PARAMETER;
-	if (!pfPrivateSlots)
+	}
+	if (!pdwUserIndexes) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdwUserIndexes is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pfPrivateSlots) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pfPrivateSlots is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionJoinLocal
 	if (pXOverlapped) {
@@ -294,8 +398,14 @@ VOID XSessionGetDetails()
 DWORD WINAPI XSessionFlushStats(HANDLE hSession, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionFlushStats
 	if (pXOverlapped) {
@@ -320,8 +430,14 @@ DWORD WINAPI XSessionFlushStats(HANDLE hSession, XOVERLAPPED *pXOverlapped)
 DWORD WINAPI XSessionDelete(HANDLE hSession, PXOVERLAPPED pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionDelete
 	if (pXOverlapped) {
@@ -346,8 +462,14 @@ DWORD WINAPI XSessionDelete(HANDLE hSession, PXOVERLAPPED pXOverlapped)
 DWORD WINAPI XSessionEnd(HANDLE hSession, PXOVERLAPPED pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionEnd
 	if (pXOverlapped) {
@@ -379,12 +501,22 @@ VOID XSessionArbitrationRegister()
 DWORD WINAPI XSessionLeaveRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *pXuids, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!dwXuidCount)
+	}
+	if (dwXuidCount == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwXuidCount is 0.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!pXuids)
+	}
+	if (!pXuids) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pXuids is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionLeaveRemote
 	if (pXOverlapped) {
@@ -409,12 +541,22 @@ DWORD WINAPI XSessionLeaveRemote(HANDLE hSession, DWORD dwXuidCount, const XUID 
 DWORD WINAPI XSessionModifySkill(HANDLE hSession, DWORD dwXuidCount, const XUID *pXuids, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	if (!hSession)
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!dwXuidCount)
+	}
+	if (dwXuidCount == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwXuidCount is 0.", __func__);
 		return ERROR_INVALID_PARAMETER;
-	if (!pXuids)
+	}
+	if (!pXuids) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pXuids is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
+	}
 
 	//TODO XSessionModifySkill
 	if (pXOverlapped) {
