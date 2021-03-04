@@ -1,7 +1,13 @@
 #pragma once
+#include <map>
+#include <vector>
 
 extern BOOL xlive_debug_pause;
 
+// Official values.
+#define XUSER_MAX_COUNT 4
+#define XUSER_INDEX_NONE 0x000000FE
+// XLLN version.
 #define XLIVE_LOCAL_USER_COUNT 4
 #define XLIVE_LOCAL_USER_INVALID 0xFFFFFFFF
 
@@ -23,6 +29,9 @@ struct EligibleAdapter {
 };
 
 extern CRITICAL_SECTION xlive_critsec_xnotify;
+
+extern CRITICAL_SECTION xlive_xfriends_enumerators_lock;
+extern std::map<HANDLE, std::vector<uint32_t>> xlive_xfriends_enumerators;
 
 extern DWORD xlive_title_id;
 extern CRITICAL_SECTION xlive_critsec_network_adapter;

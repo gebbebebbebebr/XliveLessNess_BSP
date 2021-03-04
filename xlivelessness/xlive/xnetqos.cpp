@@ -7,6 +7,8 @@
 INT WINAPI XNetQosListen(XNKID *pxnkid, PBYTE pb, UINT cb, DWORD dwBitsPerSec, DWORD dwFlags)
 {
 	TRACE_FX();
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return ERROR_FUNCTION_FAILED;
 	//DO STUFF
 	return S_OK;
@@ -16,6 +18,7 @@ INT WINAPI XNetQosListen(XNKID *pxnkid, PBYTE pb, UINT cb, DWORD dwBitsPerSec, D
 DWORD WINAPI XNetQosLookup(UINT cxna, XNADDR * apxna[], XNKID * apxnkid[], XNKEY * apxnkey[], UINT cina, IN_ADDR aina[], DWORD adwServiceId[], UINT cProbes, DWORD dwBitsPerSec, DWORD dwFlags, WSAEVENT hEvent, XNQOS** pxnqos)
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	//return ERROR_FUNCTION_FAILED;
 	/*
 	//void ClientQoSLookUp(UINT cxna, XNADDR* apxna[],UINT cProbes,IN_ADDR  aina[], XNQOS** pxnqos,DWORD dwBitsPerSec)
@@ -103,9 +106,8 @@ INT WINAPI XNetQosServiceLookup(DWORD dwFlags, WSAEVENT hEvent, XNQOS **ppxnqos)
 		return E_INVALIDARG;
 	}
 
-	//TODO XNetQosServiceLookup
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	//(*ppxnqos)->axnqosinfo->bFlags;
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s UNIMPLEMENTED.", __func__);
 
 	return E_ABORT;
 	return S_OK;
@@ -119,6 +121,7 @@ INT WINAPI XNetQosRelease(XNQOS* pxnqos)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnqos is NULL.", __func__);
 		return E_INVALIDARG;
 	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
 	//return ERROR_FUNCTION_FAILED;
 	for (unsigned int i = 0; i == pxnqos->cxnqos; i++)

@@ -17,11 +17,14 @@
 static BOOL xlive_xlocator_initialized = FALSE;
 
 CRITICAL_SECTION xlive_xlocator_enumerators_lock;
+// Key: enumerator handle (id).
+// Value: Vector of InstanceIds that have already been returned for that enumerator.
 std::map<HANDLE, std::vector<uint32_t>> xlive_xlocator_enumerators;
 
 CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
 VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = 0;
 
+// Key: InstanceId.
 std::map<uint32_t, XLOCATOR_SESSION*> liveoverlan_sessions;
 CRITICAL_SECTION liveoverlan_sessions_lock;
 static std::condition_variable liveoverlan_cond_empty;
@@ -529,7 +532,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "LiveOverLAN Received INVALID Broadcast Unadvertise on socket 0x%08x from %s."
+				, "%s INVALID Broadcast Unadvertise on socket 0x%08x from %s."
+				, __func__
 				, socket
 				, sockAddrInfo ? sockAddrInfo : ""
 			);
@@ -542,7 +546,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-			, "LiveOverLAN Received Broadcast Unadvertise on socket 0x%08x from %s."
+			, "%s Broadcast Unadvertise on socket 0x%08x from %s."
+			, __func__
 			, socket
 			, sockAddrInfo ? sockAddrInfo : ""
 		);
@@ -552,7 +557,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
 		if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, __func__
 				, sockAddrInfo ? sockAddrInfo : ""
 				, resultNetter
 			);
@@ -572,7 +578,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		if (len < sizeof(*session_details)) {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "LiveOverLAN Received INVALID Broadcast Advertise on socket 0x08x from %s."
+				, "%s INVALID Broadcast Advertise on socket 0x08x from %s."
+				, __func__
 				, socket
 				, sockAddrInfo ? sockAddrInfo : ""
 			);
@@ -588,7 +595,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		if (resultNetter) {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, __func__
 				, sockAddrInfo ? sockAddrInfo : ""
 				, resultNetter
 			);
@@ -603,7 +611,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		XLOCATOR_SEARCHRESULT *searchresult = 0;
 		if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-				, "LiveOverLAN Received Broadcast Advertise from 0x%08x."
+				, "%s Broadcast Advertise from 0x%08x."
+				, __func__
 				, instanceId
 			);
 			EnterCriticalSection(&liveoverlan_sessions_lock);
@@ -618,7 +627,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 			uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(&searchresult->serverAddress, 0, instanceId);
 			if (resultNetter) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-					, "LiveOverLanRecieve NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
+					, "%s NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
+					, __func__
 					, instanceId
 					, resultNetter
 				);
@@ -634,7 +644,8 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		}
 		else {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "LiveOverLAN Unable to parse Broadcast Advertise from 0x%08x."
+				, "%s %s Unable to parse Broadcast Advertise from 0x%08x."
+				, __func__
 				, instanceId
 			);
 		}

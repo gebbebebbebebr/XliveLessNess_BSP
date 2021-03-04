@@ -352,7 +352,6 @@ DWORD WINAPI XShowSigninUI(DWORD cPanes, DWORD dwFlags)
 
 	ShowXLLN(XLLN_SHOW_LOGIN);
 
-	//TODO XShowSigninUI
 	return ERROR_SUCCESS;
 	// no users signed in with multiplayer privilege. if XSSUI_FLAGS_SHOWONLYONLINEENABLED is flagged?
 	return ERROR_FUNCTION_FAILED;

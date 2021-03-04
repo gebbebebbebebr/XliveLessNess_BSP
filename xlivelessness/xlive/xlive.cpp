@@ -10,6 +10,7 @@
 #include "xlocator.hpp"
 #include "xsession.hpp"
 #include "net-entity.hpp"
+#include "xuser.hpp"
 #include <time.h>
 #include <d3d9.h>
 #include <string>
@@ -37,6 +38,9 @@ bool xlive_invite_to_game = false;
 DWORD xlive_title_id = 0;
 
 CRITICAL_SECTION xlive_critsec_xnotify;
+
+CRITICAL_SECTION xlive_xfriends_enumerators_lock;
+std::map<HANDLE, std::vector<uint32_t>> xlive_xfriends_enumerators;
 
 CRITICAL_SECTION xlive_critsec_network_adapter;
 char* xlive_preferred_network_adapter_name = NULL;
@@ -290,6 +294,7 @@ void Check_Overlapped(PXOVERLAPPED pOverlapped)
 VOID WINAPI XCustomSetAction(DWORD dwActionIndex, LPCWSTR lpwszActionText, DWORD dwFlags)
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 }
 
 // #473
@@ -417,9 +422,11 @@ VOID WINAPI XNotifyPositionUI(DWORD dwPosition)
 {
 	TRACE_FX();
 	// Invalid dwPos--check XNOTIFYUI_POS_* bits.  Do not specify both TOP and BOTTOM or both LEFT and RIGHT.
-	if (dwPosition & 0xFFFFFFF0 || dwPosition & 1 && dwPosition & 2 || dwPosition & 8 && dwPosition & 4)
+	if (dwPosition & 0xFFFFFFF0 || dwPosition & 1 && dwPosition & 2 || dwPosition & 8 && dwPosition & 4) {
 		return;
-	// TODO XNotifyPositionUI
+	}
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 }
 
 // #653
@@ -517,7 +524,7 @@ HRESULT WINAPI XLiveOnCreateDevice(IUnknown *pD3D, VOID *pD3DPP)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pD3DPP is NULL.", __func__);
 		return E_POINTER;
 	}
-	//TODO XLiveOnCreateDevice
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
 }
 
@@ -525,6 +532,7 @@ HRESULT WINAPI XLiveOnCreateDevice(IUnknown *pD3D, VOID *pD3DPP)
 HRESULT WINAPI XLiveOnDestroyDevice()
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
 }
 
@@ -541,6 +549,7 @@ HRESULT WINAPI XLiveOnResetDevice(void *pD3DPP)
 HRESULT WINAPI XLiveRegisterDataSection(int a1, int a2, int a3)
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return ERROR_SUCCESS;
 	//if (XLivepGetTitleXLiveVersion() < 0x20000000)
 	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
@@ -550,6 +559,7 @@ HRESULT WINAPI XLiveRegisterDataSection(int a1, int a2, int a3)
 HRESULT WINAPI XLiveUnregisterDataSection(int a1)
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return ERROR_SUCCESS;
 	//if (XLivepGetTitleXLiveVersion() < 0x20000000)
 	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
@@ -671,6 +681,7 @@ HRESULT WINAPI XLiveGetUpdateInformation(PXLIVEUPDATE_INFORMATION pXLiveUpdateIn
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pXLiveUpdateInfo->cbSize != sizeof(XLIVEUPDATE_INFORMATION)) Invalid buffer.", __func__);
 		return HRESULT_FROM_WIN32(ERROR_INVALID_USER_BUFFER);//0x800706F8;
 	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	// No update?
 	return S_FALSE;
 }
@@ -679,6 +690,7 @@ HRESULT WINAPI XLiveGetUpdateInformation(PXLIVEUPDATE_INFORMATION pXLiveUpdateIn
 HRESULT WINAPI XLiveUpdateSystem(LPCWSTR lpwszRelaunchCmdLine)
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
 	// No update?
 	return S_FALSE;
@@ -703,6 +715,7 @@ HRESULT WINAPI XLiveSetSponsorToken(LPCWSTR lpwszToken, DWORD dwTitleId)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (wcsnlen_s(lpwszToken, 30) != 29) Invalid string length.", __func__);
 		return E_INVALIDARG;
 	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
 }
 
@@ -783,8 +796,8 @@ BOOL WINAPI XLivePreTranslateMessage(const LPMSG lpMsg)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s lpMsg is NULL.", __func__);
 		return FALSE;
 	}
-	return FALSE;
-	//return TRUE;
+	return FALSE; // The message was not consumed. Process in the title.
+	//return TRUE; // The message has been consumed.
 }
 
 // #5031
@@ -838,7 +851,7 @@ HRESULT WINAPI XLiveProtectData(BYTE *pabDataToProtect, DWORD dwSizeOfDataToProt
 		return E_HANDLE;
 	}
 
-	//TODO XLiveProtectData
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	for (DWORD i = 0; i < *pdwSizeOfProtectedData; i++) {
 		pabProtectedData[i] = 0;
 	}
@@ -932,11 +945,40 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
-	EnterCriticalSection(&xlive_xlocator_enumerators_lock);
-	if (xlive_xlocator_enumerators.count(hObject)) {
-		xlive_xlocator_enumerators.erase(hObject);
+
+	bool foundEnumerator = false;
+	
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_xlocator_enumerators_lock);
+		if (xlive_xlocator_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_xlocator_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
 	}
-	LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
+	
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+		if (xlive_xuser_achievement_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_xuser_achievement_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_xfriends_enumerators_lock);
+		if (xlive_xfriends_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_xfriends_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
+	}
+
+	if (!foundEnumerator) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown handle.", __func__);
+	}
+
 	if (!CloseHandle(hObject)) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Failed to close handle %08x.", __func__, hObject);
 		SetLastError(ERROR_INVALID_HANDLE);
@@ -953,7 +995,7 @@ DWORD WINAPI XCancelOverlapped(XOVERLAPPED *pXOverlapped)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pXOverlapped is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
-	//TODO XCancelOverlapped
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	SetLastError(ERROR_SUCCESS);
 	return ERROR_SUCCESS;
 }
@@ -990,57 +1032,122 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcI
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	EnterCriticalSection(&xlive_xlocator_enumerators_lock);
-	if (xlive_xlocator_enumerators.count(hEnum)) {
-		xlive_xlocator_enumerators[hEnum];
+	bool foundEnumerator = false;
 
-		DWORD max_result_len = cbBuffer / sizeof(XLOCATOR_SEARCHRESULT);
-		DWORD total_server_count = 0;
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_xlocator_enumerators_lock);
+		if (xlive_xlocator_enumerators.count(hEnum)) {
+			foundEnumerator = true;
 
-		EnterCriticalSection(&liveoverlan_sessions_lock);
-		for (auto const &session : liveoverlan_sessions) {
-			if (total_server_count >= max_result_len)
-				break;
-			if (std::find(xlive_xlocator_enumerators[hEnum].begin(), xlive_xlocator_enumerators[hEnum].end(), session.first) != xlive_xlocator_enumerators[hEnum].end())
-				continue;
-			XLOCATOR_SEARCHRESULT* server = &((XLOCATOR_SEARCHRESULT*)pvBuffer)[total_server_count++];
-			xlive_xlocator_enumerators[hEnum].push_back(session.first);
-			LiveOverLanClone(&server, session.second->searchresult);
-		}
-		LeaveCriticalSection(&liveoverlan_sessions_lock);
-		LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
+			DWORD max_result_len = cbBuffer / sizeof(XLOCATOR_SEARCHRESULT);
+			DWORD total_server_count = 0;
 
-		if (pXOverlapped) {
-			//pXOverlapped->InternalHigh = ERROR_IO_INCOMPLETE;
-			//pXOverlapped->InternalLow = ERROR_IO_INCOMPLETE;
-			//pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+			EnterCriticalSection(&liveoverlan_sessions_lock);
+			for (auto const &session : liveoverlan_sessions) {
+				if (total_server_count >= max_result_len) {
+					break;
+				}
+				if (std::find(xlive_xlocator_enumerators[hEnum].begin(), xlive_xlocator_enumerators[hEnum].end(), session.first) != xlive_xlocator_enumerators[hEnum].end()) {
+					continue;
+				}
+				XLOCATOR_SEARCHRESULT* server = &((XLOCATOR_SEARCHRESULT*)pvBuffer)[total_server_count++];
+				xlive_xlocator_enumerators[hEnum].push_back(session.first);
+				LiveOverLanClone(&server, session.second->searchresult);
+			}
+			LeaveCriticalSection(&liveoverlan_sessions_lock);
+			LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
 
-			if (total_server_count) {
-				pXOverlapped->InternalHigh = total_server_count;
-				pXOverlapped->InternalLow = ERROR_SUCCESS;
+			if (pXOverlapped) {
+				//pXOverlapped->InternalHigh = ERROR_IO_INCOMPLETE;
+				//pXOverlapped->InternalLow = ERROR_IO_INCOMPLETE;
+				//pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+				if (total_server_count) {
+					pXOverlapped->InternalHigh = total_server_count;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
 			}
 			else {
-				pXOverlapped->InternalHigh = ERROR_SUCCESS;
-				pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-				XCloseHandle(hEnum);
+				*pcItemsReturned = total_server_count;
+				return ERROR_SUCCESS;
 			}
-			Check_Overlapped(pXOverlapped);
-
-			return ERROR_IO_PENDING;
 		}
-		else {
-			*pcItemsReturned = total_server_count;
-			return ERROR_SUCCESS;
-		}
+		LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
 	}
-	else {
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+		if (xlive_xuser_achievement_enumerators.count(hEnum)) {
+			foundEnumerator = true;
+
+			LeaveCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+
+			if (pXOverlapped) {
+				if (true) {
+					pXOverlapped->InternalHigh = 0;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
+			}
+			else {
+				*pcItemsReturned = 0;
+				return ERROR_SUCCESS;
+			}
+		}
+		LeaveCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_xfriends_enumerators_lock);
+		if (xlive_xfriends_enumerators.count(hEnum)) {
+			foundEnumerator = true;
+
+			LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
+
+			if (pXOverlapped) {
+				if (true) {
+					pXOverlapped->InternalHigh = 0;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
+			}
+			else {
+				*pcItemsReturned = 0;
+				return ERROR_SUCCESS;
+			}
+		}
+		LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
+	}
+
+	if (!foundEnumerator) {
 		if (pcItemsReturned) {
 			*pcItemsReturned = 0;
 		}
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown enumerator handle.", __func__);
 	}
-	LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
 
-	//TODO XEnumerate
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -1090,7 +1197,7 @@ HRESULT WINAPI XLiveManageCredentials(LPCWSTR lpwszLiveIdName, LPCWSTR lpszLiveI
 		}
 	}
 
-	//TODO XLiveManageCredentials
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -1230,7 +1337,7 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	srand((unsigned int)time(NULL));
 
 	if (pPii->wLivePortOverride > 0) {
-		//TODO pPii->wLivePortOverride;
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO pPii->wLivePortOverride.", __func__);
 	}
 
 	EnterCriticalSection(&xlive_critsec_network_adapter);
@@ -1363,11 +1470,12 @@ DWORD WINAPI XOnlineStartup()
 DWORD WINAPI XOnlineCleanup()
 {
 	TRACE_FX();
-	if (xlive_online_initialized) {
-		return XWSACleanup();
+	if (!xlive_online_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s WSANOTINITIALISED.", __func__);
+		return WSANOTINITIALISED;
 	}
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s WSANOTINITIALISED.", __func__);
-	return WSANOTINITIALISED;
+
+	return XWSACleanup();
 }
 
 // #5312
@@ -1395,7 +1503,7 @@ DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, 
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (dwStartingIndex + dwFriendsToReturn >= XFRIENDS_MAX_C_RESULT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn >= XFRIENDS_MAX_C_RESULT) (%d + %d >= %d).", __func__, dwStartingIndex, dwFriendsToReturn, XFRIENDS_MAX_C_RESULT);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) (%d + %d > %d).", __func__, dwStartingIndex, dwFriendsToReturn, XFRIENDS_MAX_C_RESULT);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!pcbBuffer) {
@@ -1409,6 +1517,9 @@ DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, 
 
 	*pcbBuffer = dwFriendsToReturn * sizeof(XCONTENT_DATA);
 	*ph = CreateMutex(NULL, NULL, NULL);
+	EnterCriticalSection(&xlive_xfriends_enumerators_lock);
+	xlive_xfriends_enumerators[*ph];
+	LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
 
 	return ERROR_SUCCESS;
 }
@@ -1437,7 +1548,7 @@ DWORD WINAPI XInviteGetAcceptedInfo(DWORD dwUserIndex, XINVITE_INFO *pInfo)
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	//TODO XInviteGetAcceptedInfo
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (xlive_invite_to_game) {
 		xlive_invite_to_game = false;
 
@@ -1499,8 +1610,7 @@ DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees,
 		return E_INVALIDARG;
 	}
 
-
-	//TODO XInviteSend
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -1523,6 +1633,7 @@ DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees,
 XONLINE_NAT_TYPE WINAPI XOnlineGetNatType()
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return XONLINE_NAT_OPEN;
 }
 

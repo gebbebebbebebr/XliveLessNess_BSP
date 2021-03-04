@@ -3,6 +3,7 @@
 #include "net-entity.hpp"
 #include "../xlln/xlln.hpp"
 #include "../utils/utils.hpp"
+#include "xsocket.hpp"
 #include <vector>
 #include <set>
 #include <WS2tcpip.h>
@@ -86,16 +87,26 @@ uint32_t NetterEntityGetAddrByInstanceIdPort_(SOCKADDR_STORAGE *externalAddr, co
 			switch (externalAddrFromPort.second->ss_family) {
 			case AF_INET: {
 				(*(sockaddr_in*)externalAddr).sin_addr = ((sockaddr_in*)externalAddrFromPort.second)->sin_addr;
-				const uint16_t portOtherHBO = ntohs(((sockaddr_in*)externalAddrFromPort.second)->sin_port);
-				const uint16_t portXliveHBO = portOtherHBO - (portOtherHBO % 100) + (portHBO % 100);
-				(*(sockaddr_in*)externalAddr).sin_port = htons(portXliveHBO);
+				if (IsUsingBasePort(netter->portBaseHBO)) {
+					const uint16_t portOtherHBO = ntohs(((sockaddr_in*)externalAddrFromPort.second)->sin_port);
+					const uint16_t portXliveHBO = portOtherHBO - (portOtherHBO % 100) + (portHBO % 100);
+					(*(sockaddr_in*)externalAddr).sin_port = htons(portXliveHBO);
+				}
+				else {
+					(*(sockaddr_in*)externalAddr).sin_port = htons(portHBO);
+				}
 				break;
 			}
 			case AF_INET6: {
 				memcpy(((sockaddr_in6*)externalAddr)->sin6_addr.s6_addr, ((sockaddr_in6*)externalAddrFromPort.second)->sin6_addr.s6_addr, sizeof(IN6_ADDR));
-				const uint16_t portOtherHBO = ntohs(((sockaddr_in6*)externalAddrFromPort.second)->sin6_port);
-				const uint16_t portXliveHBO = portOtherHBO - (portOtherHBO % 100) + (portHBO % 100);
-				(*(sockaddr_in6*)externalAddr).sin6_port = htons(portXliveHBO);
+				if (IsUsingBasePort(netter->portBaseHBO)) {
+					const uint16_t portOtherHBO = ntohs(((sockaddr_in6*)externalAddrFromPort.second)->sin6_port);
+					const uint16_t portXliveHBO = portOtherHBO - (portOtherHBO % 100) + (portHBO % 100);
+					(*(sockaddr_in6*)externalAddr).sin6_port = htons(portXliveHBO);
+				}
+				else {
+					(*(sockaddr_in6*)externalAddr).sin6_port = htons(portHBO);
+				}
 				break;
 			}
 			default:

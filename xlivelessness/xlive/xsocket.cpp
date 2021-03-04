@@ -92,6 +92,11 @@ static VOID CustomMemCpy(void *dst, void *src, rsize_t len, bool directionAscend
 SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 {
 	TRACE_FX();
+	if (af != AF_INET) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s af (%d) must be AF_INET (%d).", __func__, af, AF_INET);
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
 	if (type == 0 && protocol == 0) {
 		type = SOCK_STREAM;
 		protocol = IPPROTO_TCP;
@@ -108,10 +113,15 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 		// We can't support VDP (Voice / Data Protocol) it's some encrypted crap which isn't standard.
 		protocol = IPPROTO_UDP;
 	}
+	if (type != SOCK_STREAM && type != SOCK_DGRAM) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s type (%d) must be either SOCK_STREAM (%d) or SOCK_DGRAM (%d).", __func__, type, SOCK_STREAM, SOCK_DGRAM);
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
 
 	SOCKET result = socket(af, type, protocol);
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
 		, "XSocketCreate: 0x%08x. AF: %d. Type: %d. Protocol: %d."
 		, result
 		, af
@@ -131,7 +141,7 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 	}
 	else {
 		if (vdp) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
 				, "VDP socket created: 0x%08x."
 				, result
 			);
@@ -158,7 +168,7 @@ INT WINAPI XSocketClose(SOCKET s)
 	TRACE_FX();
 	INT result = closesocket(s);
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
 		, "XSocketClose Socket: 0x%08x."
 		, s
 	);
@@ -198,7 +208,7 @@ INT WINAPI XSocketShutdown(SOCKET s, int how)
 	TRACE_FX();
 	INT result = shutdown(s, how);
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
 		, "XSocketShutdown Socket: 0x%08x. how: %d."
 		, s
 		, how
@@ -243,7 +253,7 @@ INT WINAPI XSocketSetSockOpt(SOCKET s, int level, int optname, const char *optva
 	TRACE_FX();
 
 	if (level == SOL_SOCKET && optname == SO_BROADCAST && optlen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
 			, "XSocketSetSockOpt SO_BROADCAST 0x%02hhx."
 			, *optval
 		);
@@ -257,7 +267,7 @@ INT WINAPI XSocketSetSockOpt(SOCKET s, int level, int optname, const char *optva
 	INT result = setsockopt(s, level, optname, optval, optlen);
 	if (result == SOCKET_ERROR) {
 		DWORD errorSocketOpt = GetLastError();
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 			, "XSocketSetSockOpt error 0x%08x on socket 0x%08x."
 			, s
 			, errorSocketOpt
@@ -301,7 +311,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 	memcpy(&sockAddrExternal, name, sockAddrExternalLen < namelen ? sockAddrExternalLen : namelen);
 
 	if (sockAddrExternal.ss_family != AF_INET && sockAddrExternal.ss_family != AF_INET6) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 			, "Socket 0x%08x bind. Unknown socket address family 0x%04x."
 			, s
 			, sockAddrExternal.ss_family
@@ -312,7 +322,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 		if (result != ERROR_SUCCESS) {
 			DWORD errorSocketBind = GetLastError();
 
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 				, "XSocketBind Socket 0x%08x with unknown socket address family 0x%04x had bind error: 0x%08x."
 				, s
 				, sockAddrExternal.ss_family
@@ -359,7 +369,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 		}
 		else {
 			INT error_getsockname = WSAGetLastError();
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 				, "Socket 0x%08x bind port mapped from %hu to unknown address from getsockname with error 0x%08x."
 				, s
 				, portHBO
@@ -399,7 +409,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 			LeaveCriticalSection(&xlive_critsec_sockets);
 		}
 
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
 			, "Socket 0x%08x bind. Protocol: %s%d%s. Port: %hu."
 			, s
 			, protocol == IPPROTO_UDP ? "UDP:" : (protocol == IPPROTO_TCP ? "TCP:" : "")
@@ -411,7 +421,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 	else {
 		DWORD errorSocketBind = GetLastError();
 		if (errorSocketBind == WSAEADDRINUSE) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 				, "Socket 0x%08x bind error, another program has taken port:\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
 				, s
 				, xlive_base_port
@@ -421,7 +431,7 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 			);
 		}
 		else {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 				, "Socket 0x%08x bind error: 0x%08x.\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
 				, s
 				, errorSocketBind
@@ -505,7 +515,7 @@ INT WINAPI XSocketConnect(SOCKET s, const struct sockaddr *name, int namelen)
 	if (result) {
 		INT errorSendTo = WSAGetLastError();
 		char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 			, "XllnSocketSendTo on socket 0x%08x sendto() failed to send to address %s with error 0x%08x."
 			, s
 			, sockAddrInfo ? sockAddrInfo : ""
@@ -547,7 +557,29 @@ INT WINAPI XSocketSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *ex
 INT WINAPI XSocketRecv(SOCKET s, char * buf, int len, int flags)
 {
 	TRACE_FX();
+	if (flags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s flags must be 0.", __func__);
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
 	INT result = recv(s, buf, len, flags);
+	if (result == SOCKET_ERROR) {
+		int errorRecv = WSAGetLastError();
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s socket (0x%08x) recv failed with error 0x%08x."
+			, __func__
+			, s
+			, errorRecv
+		);
+		WSASetLastError(errorRecv);
+	}
+	else {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "%s socket (0x%08x)."
+			, __func__
+			, s
+		);
+	}
 	return result;
 }
 
@@ -576,7 +608,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				const int packetHeader = cpHeaderLen + sizeof(XLLNNetPacketType::PACKET_FORWARDED);
 				if (result < packetHeader) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "XSocketRecvFromHelper INVALID PACKET_FORWARDED Recieved."
+						, "%s INVALID PACKET_FORWARDED Recieved."
+						, __func__
 					);
 					return 0;
 				}
@@ -605,19 +638,22 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				// Less than since there is likely another packet pushed onto the end of this one.
 				if (result < cpHeaderLen + sizeof(XLLNNetPacketType::NET_USER_PACKET)) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "XSocketRecvFromHelper INVALID UNKNOWN_USER_<?> Recieved."
+						, "%s INVALID UNKNOWN_USER_<?> Recieved."
+						, __func__
 					);
 					return 0;
 				}
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-					, "XSocketRecvFromHelper UNKNOWN_USER_<?> Recieved."
+					, "%s UNKNOWN_USER_<?> Recieved."
+					, __func__
 				);
 				
 				XLLNNetPacketType::NET_USER_PACKET &nea = *(XLLNNetPacketType::NET_USER_PACKET*)&buf[cpHeaderLen];
 				uint32_t resultNetter = NetterEntityEnsureExists(nea.instanceId, nea.portBaseHBO);
 				if (resultNetter) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "XSocketRecvFromHelper INVALID UNKNOWN_USER_<?> Recieved. Failed to create Net Entity: 0x%08x:%hu with error 0x%08x."
+						, "%s INVALID UNKNOWN_USER_<?> Recieved. Failed to create Net Entity: 0x%08x:%hu with error 0x%08x."
+						, __func__
 						, nea.instanceId
 						, nea.portBaseHBO
 						, resultNetter
@@ -629,7 +665,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				if (resultNetter) {
 					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "XSocketRecvFromHelper UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hu %s) to Net Entity 0x%08x:%hu with error 0x%08x."
+						, "%s UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hu %s) to Net Entity 0x%08x:%hu with error 0x%08x."
+						, __func__
 						, nea.socketInternalPortHBO
 						, nea.socketInternalPortOffsetHBO
 						, sockAddrInfo ? sockAddrInfo : ""
@@ -664,7 +701,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 
 					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-						, "UNKNOWN_USER_ASK Sending REPLY to Net Entity (0x%08x:%hu %s)%s."
+						, "%s UNKNOWN_USER_ASK Sending REPLY to Net Entity (0x%08x:%hu %s)%s."
+						, __func__
 						, nea.instanceId
 						, nea.portBaseHBO
 						, sockAddrInfo ? sockAddrInfo : ""
@@ -689,7 +727,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 						);
 
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-							, "UNKNOWN_USER_<?> passing data back into recvfrom helper."
+							, "%s UNKNOWN_USER_<?> passing data back into recvfrom helper."
+							, __func__
 						);
 
 						return XSocketRecvFromHelper(result, s, buf, len, flags, sockAddrExternal, sockAddrExternalLen, sockAddrXlive, sockAddrXliveLen);
@@ -703,8 +742,9 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				return 0;
 			}
 			default: {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_WARN
-					, "XSocketRecvFromHelper unknown custom packet type received 0x%02hhx."
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s unknown custom packet type received 0x%02hhx."
+					, __func__
 					, packetType
 				);
 				break;
@@ -714,7 +754,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		if (result <= 0) {
 			if (result < 0) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_FATAL
-					, "XSocketRecvFromHelper result became less than 0! It is 0x%08x."
+					, "%s result became less than 0! It is 0x%08x."
+					, __func__
 					, result
 				);
 			}
@@ -726,8 +767,9 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
 		if (resultNetter) {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, __func__
 				, sockAddrInfo ? sockAddrInfo : ""
 				, resultNetter
 			);
@@ -753,6 +795,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				sockAddrIpv4Xlive->sin_addr.s_addr = htonl(0x00FFFF00);
 				sockAddrIpv4Xlive->sin_port = htons(GetSockAddrPort(sockAddrExternal));
 				*sockAddrXliveLen = sizeof(sockaddr_in);
+
 				result = 0;
 			}
 			else {
@@ -763,7 +806,8 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 		else {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "XSocketRecvFromHelper NetterEntityGetInstanceIdPortByExternalAddr found external addr %s as instanceId:0x%08x port:%hu."
+				, "%s NetterEntityGetInstanceIdPortByExternalAddr found external addr %s as instanceId:0x%08x port:%hu."
+				, __func__
 				, sockAddrInfo ? sockAddrInfo : ""
 				, instanceId
 				, portHBO
@@ -786,10 +830,34 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 INT WINAPI XSocketRecvFrom(SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
 {
 	TRACE_FX();
+	if (flags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s flags must be 0.", __func__);
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
 	SOCKADDR_STORAGE sockAddrExternal;
 	int sockAddrExternalLen = sizeof(sockAddrExternal);
 	INT result_recvfrom = recvfrom(s, buf, len, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
 	INT result = XSocketRecvFromHelper(result_recvfrom, s, buf, len, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
+	if (result > 0)
+	{
+		char *sockAddrInfo1 = GET_SOCKADDR_INFO(&sockAddrExternal);
+		char *sockAddrInfo2 = GET_SOCKADDR_INFO((sockaddr_storage*)from);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "%s receiving on socket (0x%08x) from %s as (0x%08x) %s."
+			, __func__
+			, s
+			, sockAddrInfo1 ? sockAddrInfo1 : ""
+			, from->sa_family == AF_INET ? ntohl(((sockaddr_in*)from)->sin_addr.s_addr) : 0
+			, sockAddrInfo2 ? sockAddrInfo2 : ""
+		);
+		if (sockAddrInfo1) {
+			free(sockAddrInfo1);
+		}
+		if (sockAddrInfo2) {
+			free(sockAddrInfo2);
+		}
+	}
 	if (result_recvfrom > 0 && result == 0) {
 		result = SOCKET_ERROR;
 		WSASetLastError(WSAEWOULDBLOCK);
@@ -801,13 +869,40 @@ INT WINAPI XSocketRecvFrom(SOCKET s, char *buf, int len, int flags, sockaddr *fr
 INT WINAPI XSocketSend(SOCKET s, const char *buf, int len, int flags)
 {
 	TRACE_FX();
+	if (flags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s flags must be 0.", __func__);
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
 	INT result = send(s, buf, len, flags);
+	if (result == SOCKET_ERROR) {
+		int errorSend = WSAGetLastError();
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s socket (0x%08x) send failed with error 0x%08x."
+			, __func__
+			, s
+			, errorSend
+		);
+		WSASetLastError(errorSend);
+	}
+	else {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "%s socket (0x%08x)."
+			, __func__
+			, s
+		);
+	}
 	return result;
 }
 
 INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr *to, int tolen)
 {
 	TRACE_FX();
+	if (flags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s flags must be 0.", __func__);
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
 	INT result = SOCKET_ERROR;
 
 	SOCKADDR_STORAGE sockAddrExternal;
@@ -820,9 +915,18 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 	const uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
 
 	if (sockAddrExternal.ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "XllnSocketSendTo Broadcasting packet."
-		);
+		{
+			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "%s socket (0x%08x) broadcasting packet to %s."
+				, __func__
+				, s
+				, sockAddrInfo ? sockAddrInfo : ""
+			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
+		}
 
 		bool broadcastOverriden = false;
 		{
@@ -881,8 +985,10 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 
 		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&sockAddrExternal, ipv4HBO, portHBO);
 		if (resultNetter) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s socket (0x%08x) NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
+				, __func__
+				, s
 				, ipv4HBO
 				, portHBO
 				, resultNetter
@@ -899,7 +1005,9 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		else {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "XllnSocketSendTo NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as %s."
+				, "%s socket (0x%08x) NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as %s."
+				, __func__
+				, s
 				, ipv4HBO
 				, portHBO
 				, sockAddrInfo ? sockAddrInfo : ""
@@ -909,8 +1017,10 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 
 			if (result == SOCKET_ERROR) {
 				INT errorSendTo = WSAGetLastError();
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-					, "XllnSocketSendTo sendto() failed to send to address %s with error 0x%08x."
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s socket (0x%08x) sendto() failed to send to address %s with error 0x%08x."
+					, __func__
+					, s
 					, sockAddrInfo ? sockAddrInfo : ""
 					, errorSendTo
 				);
@@ -922,8 +1032,10 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		}
 	}
 	else {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-			, "XllnSocketSendTo unsupported sendto socket family %hu."
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s socket (0x%08x) unsupported sendto socket family %hu."
+			, __func__
+			, s
 			, sockAddrExternal.ss_family
 		);
 	}

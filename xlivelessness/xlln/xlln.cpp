@@ -12,6 +12,8 @@
 #include "../xlive/xrender.hpp"
 #include "../xlive/xsocket.hpp"
 #include "../xlive/net-entity.hpp"
+#include "../xlive/xuser.hpp"
+#include "../xlive/xsession.hpp"
 #include "rand-name.hpp"
 #include "../resource.h"
 #include <ws2tcpip.h>
@@ -746,10 +748,10 @@ Executable Launch Parameters:\n\
 			140, 28, 260, 22, hwnd, (HMENU)MYWINDOW_TBX_USERNAME, xlln_hModule, NULL);
 
 		CreateWindowA(WC_BUTTONA, "Live Enabled", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-			140, 51, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_LIVEENABLE, xlln_hModule, NULL);
+			140, 51, 110, 22, hwnd, (HMENU)MYWINDOW_CHK_LIVEENABLE, xlln_hModule, NULL);
 
 		CreateWindowA(WC_BUTTONA, "Auto Login", BS_CHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-			280, 51, 150, 22, hwnd, (HMENU)MYWINDOW_CHK_AUTOLOGIN, xlln_hModule, NULL);
+			280, 51, 100, 22, hwnd, (HMENU)MYWINDOW_CHK_AUTOLOGIN, xlln_hModule, NULL);
 
 		CreateWindowA(WC_BUTTONA, "Login", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 			140, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_LOGIN, xlln_hModule, NULL);
@@ -912,7 +914,10 @@ INT InitXLLN(HMODULE hModule)
 	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	InitializeCriticalSection(&xlln_critsec_net_entity);
 	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
+	InitializeCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+	InitializeCriticalSection(&xlive_xfriends_enumerators_lock);
 	InitializeCriticalSection(&xlive_critsec_xnotify);
+	InitializeCriticalSection(&xlive_critsec_xsession);
 	InitializeCriticalSection(&liveoverlan_broadcast_lock);
 	InitializeCriticalSection(&liveoverlan_sessions_lock);
 	InitializeCriticalSection(&xlive_critsec_fps_limit);
@@ -998,9 +1003,7 @@ INT InitXLLN(HMODULE hModule)
 	}
 
 	xlive_title_id = 0;
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
-		, "TODO title.cfg not found. Default Title ID set."
-	);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN, "TODO title.cfg not found. Default Title ID set.");
 
 	return 0;
 }
@@ -1026,7 +1029,10 @@ INT UninitXLLN()
 	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	DeleteCriticalSection(&xlln_critsec_net_entity);
 	DeleteCriticalSection(&xlive_xlocator_enumerators_lock);
+	DeleteCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+	DeleteCriticalSection(&xlive_xfriends_enumerators_lock);
 	DeleteCriticalSection(&xlive_critsec_xnotify);
+	DeleteCriticalSection(&xlive_critsec_xsession);
 	DeleteCriticalSection(&liveoverlan_broadcast_lock);
 	DeleteCriticalSection(&liveoverlan_sessions_lock);
 	DeleteCriticalSection(&xlive_critsec_fps_limit);

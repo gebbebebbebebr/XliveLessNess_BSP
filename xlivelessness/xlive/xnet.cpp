@@ -13,7 +13,7 @@ XNADDR xlive_local_xnAddr;
 
 void UnregisterSecureAddr(const IN_ADDR ina)
 {
-	//TODO
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 }
 
 
@@ -123,7 +123,8 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 	uint32_t resultNetter = NetterEntityEnsureExists(instanceId, portBaseHBO);
 	if (resultNetter) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-			, "XNetXnAddrToInAddr NetterEntityEnsureExists failed to create NetEntity 0x%08x:%hu with error 0x%08x."
+			, "%s NetterEntityEnsureExists failed to create NetEntity 0x%08x:%hu with error 0x%08x."
+			, __func__
 			, instanceId
 			, portBaseHBO
 			, resultNetter
@@ -133,7 +134,8 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 	}
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-		, "XNetXnAddrToInAddr NetterEntityEnsureExists created 0x%08x:%hu."
+		, "%s NetterEntityEnsureExists created 0x%08x:%hu."
+		, __func__
 		, instanceId
 		, portBaseHBO
 	);
@@ -241,6 +243,7 @@ INT WINAPI XNetXnAddrToMachineId(const XNADDR *pxnaddr, ULONGLONG *pqwMachineId)
 INT WINAPI XNetConnect(const IN_ADDR ina)
 {
 	TRACE_FX();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
 }
 
@@ -252,6 +255,7 @@ INT WINAPI XNetGetConnectStatus(const IN_ADDR ina)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
 		return XNET_CONNECT_STATUS_PENDING;
 	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return XNET_CONNECT_STATUS_CONNECTED;
 }
 
@@ -285,6 +289,7 @@ INT WINAPI XNetDnsRelease(XNDNS *pxndns)
 {
 	TRACE_FX();
 	INT result = ERROR_SUCCESS;
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return result;
 }
 

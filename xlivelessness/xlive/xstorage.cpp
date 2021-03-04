@@ -38,7 +38,7 @@ DWORD WINAPI XStorageUploadFromMemory(DWORD dwUserIndex, const WCHAR *wszServerP
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	//TODO XStorageUploadFromMemory
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -88,7 +88,7 @@ DWORD WINAPI XStorageDelete(DWORD dwUserIndex, const WCHAR *wszServerPath, XOVER
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	//TODO XStorageDelete
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -249,7 +249,7 @@ DWORD WINAPI XStorageDownloadToMemory(
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	//TODO XStorageDownloadToMemory
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 

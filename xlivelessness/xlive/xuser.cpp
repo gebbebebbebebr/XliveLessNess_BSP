@@ -6,6 +6,9 @@
 #include "../xlln/xlln.hpp"
 #include <stdio.h>
 
+CRITICAL_SECTION xlive_xuser_achievement_enumerators_lock;
+std::map<HANDLE, std::vector<uint32_t>> xlive_xuser_achievement_enumerators;
+
 //TODO move to a utils file.
 void EnsureDirectoryExists(wchar_t* path) {
 	int buflen = wcslen(path) + 1;
@@ -151,7 +154,7 @@ DWORD WINAPI XUserCheckPrivilege(DWORD dwUserIndex, XPRIVILEGE_TYPE PrivilegeTyp
 		return ERROR_NOT_LOGGED_ON;
 	}
 
-	//TODO XUserCheckPrivilege
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	*pfResult = TRUE;
 
 	return ERROR_SUCCESS;
@@ -191,13 +194,6 @@ DWORD WINAPI XUserGetSigninInfo(DWORD dwUserIndex, DWORD dwFlags, XUSER_SIGNIN_I
 	return ERROR_SUCCESS;
 }
 
-// #5273
-VOID XUserReadGamerPictureByKey()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
 // #5274
 VOID XUserAwardGamerPicture()
 {
@@ -228,7 +224,7 @@ DWORD WINAPI XUserWriteAchievements(DWORD dwNumAchievements, CONST XUSER_ACHIEVE
 		}
 	}
 
-	//TODO XUserWriteAchievements
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -306,10 +302,13 @@ DWORD WINAPI XUserCreateAchievementEnumerator(DWORD dwTitleId, DWORD dwUserIndex
 	for (DWORD i = dwStartingIndex; i < dwStartingIndex + cItem; i++) {
 		//?
 	}
-	//TODO XUserCreateAchievementEnumerator
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 
 	*pcbBuffer = cItem * sizeof(XACHIEVEMENT_DETAILS);
 	*phEnum = CreateMutex(NULL, NULL, NULL);
+	EnterCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+	xlive_xuser_achievement_enumerators[*phEnum];
+	LeaveCriticalSection(&xlive_xuser_achievement_enumerators_lock);
 
 	return ERROR_SUCCESS;
 }
@@ -387,7 +386,41 @@ DWORD WINAPI XUserReadStats(DWORD dwTitleId, DWORD dwNumXuids, CONST XUID *pXuid
 		return ERROR_INSUFFICIENT_BUFFER;
 	}
 
-	//TODO XUserReadStats
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
+}
+
+// #5273
+DWORD XUserReadGamerPictureByKey(CONST XUSER_DATA *pGamercardPictureKey, BOOL fSmall, BYTE *pbTextureBuffer, DWORD dwPitch, DWORD dwHeight, XOVERLAPPED *pXOverlapped)
+{
+	TRACE_FX();
+	if (!pGamercardPictureKey) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pGamercardPictureKey is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pbTextureBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pbTextureBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return ERROR_FUNCTION_FAILED;
+
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -407,10 +440,41 @@ DWORD WINAPI XUserReadStats(DWORD dwTitleId, DWORD dwNumXuids, CONST XUID *pXuid
 }
 
 // #5282
-VOID XUserReadGamerPicture()
+DWORD WINAPI XUserReadGamerPicture(DWORD dwUserIndex, BOOL fSmall, BYTE *pbTextureBuffer, DWORD dwPitch, DWORD dwHeight, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+	if (!pbTextureBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pbTextureBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return ERROR_FUNCTION_FAILED;
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5284
@@ -465,6 +529,7 @@ DWORD WINAPI XUserCreateStatsEnumeratorByRank(DWORD dwTitleId, DWORD dwRankStart
 	*pcbBuffer = v12;
 	*ph = CreateMutex(NULL, NULL, NULL);
 
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return ERROR_SUCCESS;
 }
 
@@ -527,6 +592,7 @@ DWORD WINAPI XUserCreateStatsEnumeratorByXuid(DWORD dwTitleId, XUID XuidPivot, D
 	*pcbBuffer = v12;
 	*ph = CreateMutex(NULL, NULL, NULL);
 
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return ERROR_SUCCESS;
 }
 
@@ -577,25 +643,51 @@ DWORD WINAPI XUserSetContextEx(DWORD dwUserIndex, DWORD dwContextId, DWORD dwCon
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
-	if (dwContextId != X_CONTEXT_PRESENCE
+	if ((dwContextId & X_PROPERTY_SCOPE_MASK)
+		&& dwContextId != X_CONTEXT_PRESENCE
 		&& dwContextId != X_CONTEXT_GAME_TYPE
 		&& dwContextId != X_CONTEXT_GAME_MODE
 		&& dwContextId != X_CONTEXT_SESSION_JOINABLE
 		&& dwContextId != X_CONTEXT_GAME_TYPE_RANKED
 		&& dwContextId != X_CONTEXT_GAME_TYPE_STANDARD
 	) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwContextId (0x%08x) is invalid.", __func__, dwContextId);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwContextId X_CONTEXT (0x%08x) is invalid.", __func__, dwContextId);
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	if (dwContextId == X_CONTEXT_GAME_TYPE) {
-		xlive_session_details.dwGameType = dwContextValue;
-	}
-	else if (dwContextId == X_CONTEXT_GAME_MODE) {
-		xlive_session_details.dwGameMode = dwContextValue;
+	{
+		EnterCriticalSection(&xlive_critsec_xsession);
+		for (auto const &xsession : xlive_xsessions) {
+			XSESSION_LOCAL_DETAILS *xsessionDetails = xsession.second;
+
+			uint32_t maxMembers = xsessionDetails->dwMaxPublicSlots > xsessionDetails->dwMaxPrivateSlots ? xsessionDetails->dwMaxPublicSlots : xsessionDetails->dwMaxPrivateSlots;
+			uint32_t iMember = 0;
+			for (; iMember < maxMembers; iMember++) {
+				if (dwUserIndex == xsessionDetails->pSessionMembers[iMember].dwUserIndex) {
+					break;
+				}
+			}
+			if (iMember == maxMembers) {
+				continue;
+			}
+
+			switch (dwContextId) {
+			case X_CONTEXT_GAME_MODE:
+				xsessionDetails->dwGameMode = dwContextValue;
+				break;
+			case X_CONTEXT_GAME_TYPE:
+				xsessionDetails->dwGameType = dwContextValue;
+				break;
+			default:
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO dwContextId (0x%08x).", __func__, dwContextId);
+				break;
+			}
+			break;
+		}
+		LeaveCriticalSection(&xlive_critsec_xsession);
+		// TODO if xsession not found should do something with it.
 	}
 
-	//TODO XUserSetContextEx
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -646,7 +738,7 @@ DWORD WINAPI XUserSetPropertyEx(DWORD dwUserIndex, DWORD dwPropertyId, DWORD cbV
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	//TODO XUserSetPropertyEx
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -1117,7 +1209,7 @@ DWORD WINAPI XUserReadProfileSettings(
 		return ERROR_NOT_FOUND;
 	}
 
-	//TODO XUserReadProfileSettings
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -1222,7 +1314,7 @@ DWORD WINAPI XUserWriteProfileSettings(DWORD dwUserIndex, DWORD dwNumSettings, c
 		fclose(save_file);
 	}
 
-	//TODO XUserWriteProfileSettings
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -1326,7 +1418,7 @@ DWORD WINAPI XUserReadProfileSettingsByXuid(
 		return ERROR_NOT_FOUND;
 	}
 
-	//TODO XUserReadProfileSettingsByXuid
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	if (pXOverlapped) {
 		//asynchronous
 
