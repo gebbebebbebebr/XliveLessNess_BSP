@@ -11,6 +11,8 @@
 #include "../xlive/voice.hpp"
 #include <stdio.h>
 #include <vector>
+// Link with iphlpapi.lib
+#include <iphlpapi.h>
 
 const char XllnConfigHeader[] = "XLLN-Config-Version";
 const char XllnConfigVersion[] = DLL_VERSION_STR;
@@ -147,6 +149,39 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 					if (sscanf_s(value, "0x%x", &tempuint32) == 1) {
 						if (configContext.saveValuesRead) {
 							xlln_debuglog_level = tempuint32;
+						}
+					}
+					else {
+						incorrect = true;
+					}
+				}
+				else if (SettingNameMatches("xlive_network_adapter")) {
+					size_t adapterNameLen = strlen(value);
+					if (adapterNameLen == 0) {
+						if (configContext.saveValuesRead) {
+							if (xlive_config_preferred_network_adapter_name) {
+								delete[] xlive_config_preferred_network_adapter_name;
+								xlive_config_preferred_network_adapter_name = NULL;
+							}
+						}
+					}
+					else if (adapterNameLen > 0 && adapterNameLen <= MAX_ADAPTER_NAME_LENGTH) {
+						if (configContext.saveValuesRead) {
+							if (xlive_config_preferred_network_adapter_name) {
+								delete[] xlive_config_preferred_network_adapter_name;
+							}
+							xlive_config_preferred_network_adapter_name = CloneString(value);
+						}
+					}
+					else {
+						incorrect = true;
+					}
+				}
+				else if (SettingNameMatches("xlive_ignore_title_network_adapter")) {
+					uint32_t tempuint32;
+					if (sscanf_s(value, "%u", &tempuint32) == 1) {
+						if (configContext.saveValuesRead) {
+							xlive_ignore_title_network_adapter = tempuint32 > 0;
 						}
 					}
 					else {
@@ -295,6 +330,18 @@ HRESULT SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT
 	WriteText("\n# Saves the log level from last use.");
 	WriteText("\n");
 
+	WriteText("\n# xlive_network_adapter:");
+	WriteText("\n# Example value: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}");
+	WriteText("\n# The network adapter to use if it is available. If it is not available or this setting is blank then it will be auto-selected.");
+	WriteText("\n");
+
+	WriteText("\n# xlive_ignore_title_network_adapter:");
+	WriteText("\n# Valid values:");
+	WriteText("\n#   0 - (DEFAULT) Factors in the Title's preference for available network adapters.");
+	WriteText("\n#   1 - Ignores the setting from the Title.");
+	WriteText("\n# On startup in XLiveInitialize(...) the title specifies its preferred network adapter to use (if any). This setting can ignore its preference.");
+	WriteText("\n");
+
 	WriteText("\n# xlive_username_p1...:");
 	WriteText("\n# Max username length is 15 characters.");
 	WriteText("\n# The username for each local profile to use.");
@@ -332,6 +379,8 @@ HRESULT SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT
 	WriteTextF("\nxlive_net_disable = %u", xlive_netsocket_abort ? 1 : 0);
 	WriteTextF("\nxlive_xhv_engine_enabled = %u", xlive_xhv_engine_enabled ? 1 : 0);
 	WriteTextF("\nxlln_debuglog_level = 0x%08x", xlln_debuglog_level);
+	WriteTextF("\nxlive_network_adapter = %s", xlive_config_preferred_network_adapter_name ? xlive_config_preferred_network_adapter_name : "");
+	WriteTextF("\nxlive_ignore_title_network_adapter = %u", xlive_ignore_title_network_adapter ? 1 : 0);
 	for (size_t iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
 		WriteTextF("\nxlive_username_p%d = %s", iUser + 1, xlive_users_username[iUser]);
 		WriteTextF("\nxlive_user_live_enabled_p%d = %u", iUser + 1, xlive_users_live_enabled[iUser] ? 1 : 0);

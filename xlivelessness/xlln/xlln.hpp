@@ -35,6 +35,11 @@
 #define MYWINDOW_CHK_DBG_LVL_WARN		(WM_APP + 158)
 #define MYWINDOW_CHK_DBG_LVL_ERROR		(WM_APP + 159)
 #define MYWINDOW_CHK_DBG_LVL_FATAL		(WM_APP + 160)
+#define MYMENU_NETWORK_ADAPTER_REFRESH			(WM_APP + 166)
+#define MYMENU_NETWORK_ADAPTER_AUTO_SELECT		(WM_APP + 167)
+#define MYMENU_NETWORK_ADAPTER_IGNORE_TITLE		(WM_APP + 168)
+#define MYMENU_NETWORK_ADAPTER_SEPARATOR		(WM_APP + 169)
+#define MYMENU_NETWORK_ADAPTERS					(WM_APP + 170)
 
 #ifdef _DEBUG
 #define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
@@ -58,6 +63,7 @@ int CreateItem(HWND hwndListView, int iItem);
 
 extern HINSTANCE xlln_hModule;
 extern HWND xlln_window_hwnd;
+extern HMENU hMenu_network_adapters;
 extern BOOL xlln_debug;
 extern uint32_t xlln_debuglog_level;
 

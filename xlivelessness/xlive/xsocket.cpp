@@ -345,8 +345,9 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 
 	if (sockAddrExternal.ss_family == AF_INET && ((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr == htonl(INADDR_ANY)) {
 		EnterCriticalSection(&xlive_critsec_network_adapter);
-		if (xlive_preferred_network_adapter_name && xlive_network_adapter.unicastHAddr != INADDR_LOOPBACK) {
-			((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter.unicastHAddr);
+		// TODO Should we perhaps not do this unless the user really wants to like if (xlive_init_preferred_network_adapter_name or config) is set?
+		if (xlive_network_adapter && xlive_network_adapter->unicastHAddr != INADDR_LOOPBACK) {
+			((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter->unicastHAddr);
 		}
 		LeaveCriticalSection(&xlive_critsec_network_adapter);
 	}
@@ -961,7 +962,9 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 			sockAddrExternal.ss_family = AF_INET;
 			{
 				EnterCriticalSection(&xlive_critsec_network_adapter);
-				((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter.hBroadcast);
+				if (xlive_network_adapter) {
+					((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter->hBroadcast);
+				}
 				LeaveCriticalSection(&xlive_critsec_network_adapter);
 			}
 			if (IsUsingBasePort(xlive_base_port)) {

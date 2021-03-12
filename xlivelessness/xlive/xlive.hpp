@@ -20,7 +20,10 @@ extern XUSER_SIGNIN_INFO* xlive_users_info[XLIVE_LOCAL_USER_COUNT];
 void Check_Overlapped(PXOVERLAPPED pOverlapped);
 
 struct EligibleAdapter {
+	// Can be null.
 	char* name;
+	// Can be null.
+	wchar_t* description;
 	ULONG unicastHAddr;
 	ULONG unicastHMask;
 	ULONG hBroadcast;
@@ -35,6 +38,11 @@ extern std::map<HANDLE, std::vector<uint32_t>> xlive_xfriends_enumerators;
 
 extern DWORD xlive_title_id;
 extern CRITICAL_SECTION xlive_critsec_network_adapter;
-extern char* xlive_preferred_network_adapter_name;
-extern EligibleAdapter xlive_network_adapter;
+extern char* xlive_init_preferred_network_adapter_name;
+extern char* xlive_config_preferred_network_adapter_name;
+extern bool xlive_ignore_title_network_adapter;
+extern EligibleAdapter *xlive_network_adapter;
+extern std::vector<EligibleAdapter*> xlive_eligible_network_adapters;
 extern BOOL xlive_online_initialized;
+
+INT RefreshNetworkAdapters();

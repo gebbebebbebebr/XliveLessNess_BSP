@@ -27,6 +27,7 @@ HINSTANCE xlln_hModule = NULL;
 HWND xlln_window_hwnd = NULL;
 static HMENU xlln_window_hMenu = NULL;
 static int xlln_instance = 0;
+HMENU hMenu_network_adapters = 0;
 
 static DWORD xlln_login_player = 0;
 static DWORD xlln_login_player_h[] = { MYMENU_LOGIN1, MYMENU_LOGIN2, MYMENU_LOGIN3, MYMENU_LOGIN4 };
@@ -107,25 +108,40 @@ static HMENU CreateDLLWindowMenu(HINSTANCE hModule)
 		return FALSE;
 
 	hMenuPopup = CreatePopupMenu();
-	AppendMenu(hMenuPopup, MF_STRING, MYMENU_EXIT, TEXT("Exit"));
 	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("File"));
+	AppendMenu(hMenuPopup, MF_STRING, MYMENU_EXIT, TEXT("Exit"));
 
 	hMenuPopup = CreatePopupMenu();
+	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Login"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_LOGIN1, TEXT("Login P1"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_LOGIN2, TEXT("Login P2"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_LOGIN3, TEXT("Login P3"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_LOGIN4, TEXT("Login P4"));
-	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Login"));
+
+	hMenu_network_adapters = hMenuPopup = CreatePopupMenu();
+	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Network Adapters"));
+	AppendMenu(hMenu_network_adapters, MF_UNCHECKED, MYMENU_NETWORK_ADAPTER_REFRESH, TEXT("Refresh"));
+	AppendMenu(hMenu_network_adapters
+		, xlive_config_preferred_network_adapter_name ? MF_UNCHECKED : MF_CHECKED
+		, MYMENU_NETWORK_ADAPTER_AUTO_SELECT
+		, TEXT("Auto Select Adapter")
+	);
+	AppendMenu(hMenu_network_adapters
+		, (xlive_ignore_title_network_adapter ? MF_CHECKED : MF_UNCHECKED) | (xlive_config_preferred_network_adapter_name ? MF_DISABLED : MF_ENABLED)
+		, MYMENU_NETWORK_ADAPTER_IGNORE_TITLE
+		, TEXT("Ignore Title Preferred Adapter")
+	);
+	AppendMenu(hMenu_network_adapters, MF_SEPARATOR, MYMENU_NETWORK_ADAPTER_SEPARATOR, NULL);
 
 	hMenuPopup = CreatePopupMenu();
+	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Debug"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_DEBUG_SOCKETS, TEXT("Sockets"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_DEBUG_CONNECTIONS, TEXT("Connections"));
-	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Debug"));
 
 	hMenuPopup = CreatePopupMenu();
+	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Help"));
 	AppendMenu(hMenuPopup, MF_UNCHECKED, MYMENU_ALWAYSTOP, TEXT("Always on top"));
 	AppendMenu(hMenuPopup, MF_STRING, MYMENU_ABOUT, TEXT("About"));
-	AppendMenu(hMenu, MF_POPUP, (UINT_PTR)hMenuPopup, TEXT("Help"));
 
 	CheckMenuItem(hMenu, xlln_login_player_h[0], MF_CHECKED);
 	//EnableMenuItem(hMenu, MYMENU_LOGIN2, MF_GRAYED);
@@ -559,7 +575,8 @@ static void ParseBroadcastAddrInput(char *jlbuffer)
 
 static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	if (message == WM_PAINT) {
+	switch (message) {
+	case WM_PAINT: {
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(xlln_window_hwnd, &ps);
 		SetTextColor(hdc, RGB(0, 0, 0));
@@ -576,173 +593,22 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 		}
 
 		EndPaint(xlln_window_hwnd, &ps);
+		break;
 	}
-	else if (message == WM_SYSCOMMAND) {
+	case WM_SYSCOMMAND: {
 		if (wParam == SC_CLOSE) {
 			ShowXLLN(XLLN_SHOW_HIDE);
 			return 0;
 		}
+		break;
 	}
-	else if (message == WM_COMMAND) {
-		if (wParam == MYMENU_EXIT) {
-			//SendMessage(hwnd, WM_CLOSE, 0, 0);
-			LiveOverLanAbort();
-			exit(EXIT_SUCCESS);
-		}
-		else if (wParam == MYMENU_ALWAYSTOP) {
-			BOOL checked = GetMenuState(xlln_window_hMenu, MYMENU_ALWAYSTOP, 0) != MF_CHECKED;
-			if (checked) {
-				SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-			}
-			else {
-				SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-			}
-			CheckMenuItem(xlln_window_hMenu, MYMENU_ALWAYSTOP, checked ? MF_CHECKED : MF_UNCHECKED);
-		}
-		else if (wParam == MYMENU_ABOUT) {
-			MessageBoxA(hwnd,
-"Created by Glitchy Scripts,\n\
-with thanks to PermaNulled.\n\
-\n\
-Executable Launch Parameters:\n\
--xlivefps=<uint> ? 0 to disable fps limiter (default 60).\n\
--xllndebug ? Sleep until debugger attach.\n\
--xllndebuglog ? Enable debug log.\n\
--xlivedebug ? Sleep XLiveInitialize until debugger attach.\n\
--xlivenetdisable ? Disable all network functionality.\n\
--xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
--xllnbroadcastaddr=<string> ? Set the broadcast address."
-				, "About", MB_OK);
-		}
-		else if (wParam == MYMENU_LOGIN1) {
-			xlln_login_player = 0;
-			UpdateUserInputBoxes(xlln_login_player);
-		}
-		else if (wParam == MYMENU_LOGIN2) {
-			xlln_login_player = 1;
-			UpdateUserInputBoxes(xlln_login_player);
-		}
-		else if (wParam == MYMENU_LOGIN3) {
-			xlln_login_player = 2;
-			UpdateUserInputBoxes(xlln_login_player);
-		}
-		else if (wParam == MYMENU_LOGIN4) {
-			xlln_login_player = 3;
-			UpdateUserInputBoxes(xlln_login_player);
-		}
-		else if (wParam == MYMENU_DEBUG_SOCKETS) {
-			XllnWndSocketsShow(true);
-		}
-		else if (wParam == MYMENU_DEBUG_CONNECTIONS) {
-			XllnWndConnectionsShow(true);
-		}
-		else if (wParam == MYWINDOW_CHK_LIVEENABLE) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlive_users_live_enabled[xlln_login_player] = checked;
-		}
-		else if (wParam == MYWINDOW_CHK_AUTOLOGIN) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlive_users_auto_login[xlln_login_player] = checked;
-		}
-		else if (wParam == MYWINDOW_BTN_LOGIN) {
-			char jlbuffer[32];
-			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer, 32);
-			TrimRemoveConsecutiveSpaces(jlbuffer);
-			jlbuffer[XUSER_NAME_SIZE - 1] = 0;
-			SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer);
-
-			BOOL liveEnabled = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) == BST_CHECKED;
-			BOOL autoLoginChecked = xlive_users_auto_login[xlln_login_player];
-			if (jlbuffer[0] != 0) {
-				memcpy(xlive_users_username[xlln_login_player], jlbuffer, XUSER_NAME_SIZE);
-			}
-			DWORD result_login = XLLNLogin(xlln_login_player, liveEnabled, NULL, jlbuffer[0] == 0 ? NULL : jlbuffer);
-			xlive_users_auto_login[xlln_login_player] = autoLoginChecked;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, autoLoginChecked ? BST_CHECKED : BST_UNCHECKED);
-		}
-		else if (wParam == MYWINDOW_BTN_LOGOUT) {
-			DWORD result_logout = XLLNLogout(xlln_login_player);
-		}
-		else if (wParam == MYWINDOW_BTN_TEST) {
-			// WIP.
-			extern bool xlive_invite_to_game;
-			xlive_invite_to_game = true;
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_CTX_XLIVE) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLIVE) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLIVE, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_XLIVE) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_XLIVE));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_CTX_XLLN) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_XLIVELESSNESS) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_XLIVELESSNESS));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_CTX_XLLN_MOD) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN_MOD) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_XLLN_MOD, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_XLLN_MODULE) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_XLLN_MODULE));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_CTX_OTHER) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_OTHER) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_CTX_OTHER, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_CONTEXT_OTHER) : (xlln_debuglog_level & ~(XLLN_LOG_CONTEXT_OTHER));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_LVL_TRACE) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_TRACE) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_TRACE, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_TRACE) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_TRACE));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_LVL_DEBUG) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_DEBUG) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_DEBUG, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_DEBUG) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_DEBUG));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_LVL_INFO) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_INFO) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_INFO, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_INFO) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_INFO));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_LVL_WARN) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_WARN) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_WARN, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_WARN) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_WARN));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_LVL_ERROR) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_ERROR) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_ERROR, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_ERROR) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_ERROR));
-		}
-		else if (wParam == MYWINDOW_CHK_DBG_LVL_FATAL) {
-			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_FATAL) != BST_CHECKED;
-			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_DBG_LVL_FATAL, checked ? BST_CHECKED : BST_UNCHECKED);
-			xlln_debuglog_level = checked ? (xlln_debuglog_level | XLLN_LOG_LEVEL_FATAL) : (xlln_debuglog_level & ~(XLLN_LOG_LEVEL_FATAL));
-		}
-		else if (wParam == ((EN_CHANGE << 16) | MYWINDOW_TBX_BROADCAST)) {
-			if (xlln_window_hwnd) {
-				char jlbuffer[500];
-				GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, jlbuffer, 500);
-				size_t buflen = strlen(jlbuffer) + 1;
-				delete[] broadcastAddrInput;
-				broadcastAddrInput = new char[buflen];
-				memcpy(broadcastAddrInput, jlbuffer, buflen);
-				broadcastAddrInput[buflen - 1] = 0;
-				char *temp = FormMallocString("%s", broadcastAddrInput);
-				ParseBroadcastAddrInput(temp);
-				free(temp);
-			}
-		}
-		return 0;
-	}
-	else if (message == WM_CTLCOLORSTATIC) {
+	case WM_CTLCOLORSTATIC: {
 		HDC hdc = reinterpret_cast<HDC>(wParam);
 		SetTextColor(hdc, RGB(0, 0, 0));
 		SetBkColor(hdc, 0x00C8C8C8);
 		return (INT_PTR)CreateSolidBrush(0x00C8C8C8);
 	}
-	else if (message == WM_CREATE) {
+	case WM_CREATE: {
 
 		CreateWindowA(WC_EDITA, "", WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL,
 			140, 28, 260, 22, hwnd, (HMENU)MYWINDOW_TBX_USERNAME, xlln_hModule, NULL);
@@ -799,16 +665,247 @@ Executable Launch Parameters:\n\
 			CreateWindowA(WC_BUTTONA, "Test", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 				5, 74, 75, 25, hwnd, (HMENU)MYWINDOW_BTN_TEST, xlln_hModule, NULL);
 		}
+
+		break;
 	}
-	else if (message == WM_DESTROY) {
+	case WM_DESTROY: {
 		PostQuitMessage(0);
 		return 0;
 	}
-	else if (message == WM_CLOSE) {
+	case WM_CLOSE: {
 		// Stupid textbox causes the window to close.
 		return 0;
 	}
-	
+	case WM_COMMAND: {
+		bool notHandled = false;
+
+		switch (wParam) {
+		case MYMENU_EXIT: {
+			// Kill any threads and kill the program.
+			LiveOverLanAbort();
+			exit(EXIT_SUCCESS);
+			break;
+		}
+		case MYMENU_ALWAYSTOP: {
+			BOOL checked = GetMenuState(xlln_window_hMenu, MYMENU_ALWAYSTOP, 0) != MF_CHECKED;
+			if (checked) {
+				SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+			}
+			else {
+				SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+			}
+			CheckMenuItem(xlln_window_hMenu, MYMENU_ALWAYSTOP, checked ? MF_CHECKED : MF_UNCHECKED);
+			break;
+		}
+		case MYMENU_ABOUT: {
+			MessageBoxA(hwnd,
+				"Created by Glitchy Scripts,\n\
+with thanks to PermaNulled.\n\
+\n\
+Executable Launch Parameters:\n\
+-xlivefps=<uint> ? 0 to disable fps limiter (default 60).\n\
+-xllndebug ? Sleep until debugger attach.\n\
+-xllndebuglog ? Enable debug log.\n\
+-xlivedebug ? Sleep XLiveInitialize until debugger attach.\n\
+-xlivenetdisable ? Disable all network functionality.\n\
+-xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
+-xllnbroadcastaddr=<string> ? Set the broadcast address."
+, "About", MB_OK);
+			break;
+		}
+		case MYMENU_LOGIN1: {
+			xlln_login_player = 0;
+			UpdateUserInputBoxes(xlln_login_player);
+			break;
+		}
+		case MYMENU_LOGIN2: {
+			xlln_login_player = 1;
+			UpdateUserInputBoxes(xlln_login_player);
+			break;
+		}
+		case MYMENU_LOGIN3: {
+			xlln_login_player = 2;
+			UpdateUserInputBoxes(xlln_login_player);
+			break;
+		}
+		case MYMENU_LOGIN4: {
+			xlln_login_player = 3;
+			UpdateUserInputBoxes(xlln_login_player);
+			break;
+		}
+		case MYMENU_NETWORK_ADAPTER_REFRESH: {
+			INT error_network_adapter = RefreshNetworkAdapters();
+			break;
+		}
+		case MYMENU_NETWORK_ADAPTER_AUTO_SELECT: {
+			bool checked = GetMenuState(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_AUTO_SELECT, 0) != MF_CHECKED;
+			CheckMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_AUTO_SELECT, checked ? MF_CHECKED : MF_UNCHECKED);
+			if (xlive_config_preferred_network_adapter_name) {
+				delete[] xlive_config_preferred_network_adapter_name;
+				xlive_config_preferred_network_adapter_name = NULL;
+			}
+			EnableMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_IGNORE_TITLE, checked ? MF_ENABLED : MF_DISABLED);
+			if (!checked) {
+				if (xlive_network_adapter && xlive_network_adapter->name) {
+					xlive_config_preferred_network_adapter_name = CloneString(xlive_network_adapter->name);
+				}
+			}
+			break;
+		}
+		case MYMENU_NETWORK_ADAPTER_IGNORE_TITLE: {
+			bool checked = GetMenuState(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_IGNORE_TITLE, 0) != MF_CHECKED;
+			CheckMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_IGNORE_TITLE, checked ? MF_CHECKED : MF_UNCHECKED);
+			xlive_ignore_title_network_adapter = checked;
+			break;
+		}
+		case MYMENU_DEBUG_SOCKETS: {
+			XllnWndSocketsShow(true);
+			break;
+		}
+		case MYMENU_DEBUG_CONNECTIONS: {
+			XllnWndConnectionsShow(true);
+			break;
+		}
+		case MYWINDOW_CHK_LIVEENABLE: {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlive_users_live_enabled[xlln_login_player] = checked;
+			break;
+		}
+		case MYWINDOW_CHK_AUTOLOGIN: {
+			bool checked = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN) != BST_CHECKED;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, checked ? BST_CHECKED : BST_UNCHECKED);
+			xlive_users_auto_login[xlln_login_player] = checked;
+			break;
+		}
+		case MYWINDOW_BTN_LOGIN: {
+			char jlbuffer[32];
+			GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer, 32);
+			TrimRemoveConsecutiveSpaces(jlbuffer);
+			jlbuffer[XUSER_NAME_SIZE - 1] = 0;
+			SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, jlbuffer);
+
+			BOOL liveEnabled = IsDlgButtonChecked(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE) == BST_CHECKED;
+			BOOL autoLoginChecked = xlive_users_auto_login[xlln_login_player];
+			if (jlbuffer[0] != 0) {
+				memcpy(xlive_users_username[xlln_login_player], jlbuffer, XUSER_NAME_SIZE);
+			}
+			DWORD result_login = XLLNLogin(xlln_login_player, liveEnabled, NULL, jlbuffer[0] == 0 ? NULL : jlbuffer);
+			xlive_users_auto_login[xlln_login_player] = autoLoginChecked;
+			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, autoLoginChecked ? BST_CHECKED : BST_UNCHECKED);
+			break;
+		}
+		case MYWINDOW_BTN_LOGOUT: {
+			DWORD result_logout = XLLNLogout(xlln_login_player);
+			break;
+		}
+#define XLLN_CHK_DBG_TOGGLE(checkbox_menu_btn_id, log_level_flag) {\
+bool checked = IsDlgButtonChecked(xlln_window_hwnd, checkbox_menu_btn_id) != BST_CHECKED;\
+CheckDlgButton(xlln_window_hwnd, checkbox_menu_btn_id, checked ? BST_CHECKED : BST_UNCHECKED);\
+xlln_debuglog_level = checked ? (xlln_debuglog_level | log_level_flag) : (xlln_debuglog_level & ~(log_level_flag));\
+}
+		case MYWINDOW_CHK_DBG_CTX_XLIVE: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_CTX_XLIVE, XLLN_LOG_CONTEXT_XLIVE);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_CTX_XLLN: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_CTX_XLLN, XLLN_LOG_CONTEXT_XLIVELESSNESS);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_CTX_XLLN_MOD: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_CTX_XLLN_MOD, XLLN_LOG_CONTEXT_XLLN_MODULE);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_CTX_OTHER: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_CTX_OTHER, XLLN_LOG_CONTEXT_OTHER);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_LVL_TRACE: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_LVL_TRACE, XLLN_LOG_LEVEL_TRACE);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_LVL_DEBUG: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_LVL_DEBUG, XLLN_LOG_LEVEL_DEBUG);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_LVL_INFO: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_LVL_INFO, XLLN_LOG_LEVEL_INFO);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_LVL_WARN: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_LVL_WARN, XLLN_LOG_LEVEL_WARN);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_LVL_ERROR: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_LVL_ERROR, XLLN_LOG_LEVEL_ERROR);
+			break;
+		}
+		case MYWINDOW_CHK_DBG_LVL_FATAL: {
+			XLLN_CHK_DBG_TOGGLE(MYWINDOW_CHK_DBG_LVL_FATAL, XLLN_LOG_LEVEL_FATAL);
+			break;
+		}
+		case MYWINDOW_BTN_TEST: {
+			// WIP.
+			extern bool xlive_invite_to_game;
+			xlive_invite_to_game = true;
+			break;
+		}
+		default: {
+			if (wParam == ((EN_CHANGE << 16) | MYWINDOW_TBX_BROADCAST)) {
+				if (xlln_window_hwnd) {
+					char jlbuffer[500];
+					GetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, jlbuffer, 500);
+					size_t buflen = strlen(jlbuffer) + 1;
+					delete[] broadcastAddrInput;
+					broadcastAddrInput = new char[buflen];
+					memcpy(broadcastAddrInput, jlbuffer, buflen);
+					broadcastAddrInput[buflen - 1] = 0;
+					char *temp = FormMallocString("%s", broadcastAddrInput);
+					ParseBroadcastAddrInput(temp);
+					free(temp);
+				}
+				break;
+			}
+
+			{
+				int numOfNetAdapterMenuItems = GetMenuItemCount(hMenu_network_adapters);
+				const uint32_t numOfItemsBefore = 4;
+				if (numOfNetAdapterMenuItems > numOfItemsBefore && wParam >= MYMENU_NETWORK_ADAPTERS && wParam < MYMENU_NETWORK_ADAPTERS + (uint32_t)numOfNetAdapterMenuItems - numOfItemsBefore) {
+					const uint32_t networkAdapterIndex = wParam - MYMENU_NETWORK_ADAPTERS;
+					{
+						EnterCriticalSection(&xlive_critsec_network_adapter);
+						if (networkAdapterIndex < xlive_eligible_network_adapters.size()) {
+							xlive_network_adapter = xlive_eligible_network_adapters[networkAdapterIndex];
+							if (xlive_config_preferred_network_adapter_name) {
+								delete[] xlive_config_preferred_network_adapter_name;
+							}
+							xlive_config_preferred_network_adapter_name = CloneString(xlive_network_adapter->name);
+							CheckMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_AUTO_SELECT, MF_UNCHECKED);
+							EnableMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_IGNORE_TITLE, MF_DISABLED);
+							for (size_t iEA = 0; iEA < xlive_eligible_network_adapters.size(); iEA++) {
+								EligibleAdapter* ea = xlive_eligible_network_adapters[iEA];
+								CheckMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTERS + iEA, ea == xlive_network_adapter ? MF_CHECKED : MF_UNCHECKED);
+							}
+						}
+						LeaveCriticalSection(&xlive_critsec_network_adapter);
+					}
+					break;
+				}
+			}
+
+			notHandled = true;
+			break;
+		}
+		}
+		if (!notHandled) {
+			return 0;
+		}
+	}
+	default: {
+		break;
+	}
+	}
+
 	return DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
