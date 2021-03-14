@@ -43,17 +43,24 @@ static LIVE_SERVER_DETAILS *local_session_details = 0;
 VOID LiveOverLanClone(XLOCATOR_SEARCHRESULT **dst, XLOCATOR_SEARCHRESULT *src)
 {
 	XLOCATOR_SEARCHRESULT *xlocator_result;
-	if (dst)
+	if (dst) {
 		xlocator_result = *dst;
-	else
+	}
+	else {
 		*dst = xlocator_result = new XLOCATOR_SEARCHRESULT;
+	}
 	memcpy_s(xlocator_result, sizeof(XLOCATOR_SEARCHRESULT), src, sizeof(XLOCATOR_SEARCHRESULT));
 	xlocator_result->pProperties = new XUSER_PROPERTY[xlocator_result->cProperties];
 	for (DWORD i = 0; i < xlocator_result->cProperties; i++) {
 		memcpy_s(&xlocator_result->pProperties[i], sizeof(XUSER_PROPERTY), &src->pProperties[i], sizeof(XUSER_PROPERTY));
 		if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_UNICODE) {
-			if (xlocator_result->pProperties[i].value.string.cbData % 2)
+			if (xlocator_result->pProperties[i].value.string.cbData % 2) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
+					, "%s Unicode string buflen is not a factor of 2."
+					, __func__
+				);
 				__debugbreak();
+			}
 			xlocator_result->pProperties[i].value.string.pwszData = new WCHAR[xlocator_result->pProperties[i].value.string.cbData/2];
 			memcpy_s(xlocator_result->pProperties[i].value.string.pwszData, xlocator_result->pProperties[i].value.string.cbData, src->pProperties[i].value.string.pwszData, src->pProperties[i].value.string.cbData);
 			xlocator_result->pProperties[i].value.string.pwszData[(xlocator_result->pProperties[i].value.string.cbData/2) - 1] = 0;
@@ -158,7 +165,7 @@ static VOID LiveOverLanBroadcast()
 					);
 
 					SOCKADDR_IN SendStruct;
-					SendStruct.sin_port = htons(socketInfoLiveOverLan.portBindHBO);
+					SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
 					SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 					SendStruct.sin_family = AF_INET;
 
@@ -231,38 +238,82 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		xlocator_result->pProperties[i].value.type = *propertiesBuf;
 		propertiesBuf += sizeof(BYTE); //value.type
 
-		if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_INT32) {
-			buflenread += sizeof(LONG);
-			propertiesBuf += sizeof(LONG);
-		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_INT64) {
+		switch (xlocator_result->pProperties[i].value.type) {
+		case XUSER_DATA_TYPE_INT64: {
 			buflenread += sizeof(LONGLONG);
 			propertiesBuf += sizeof(LONGLONG);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_DOUBLE) {
+		case XUSER_DATA_TYPE_DOUBLE: {
 			buflenread += sizeof(DOUBLE);
 			propertiesBuf += sizeof(DOUBLE);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_FLOAT) {
+		case XUSER_DATA_TYPE_FLOAT: {
 			buflenread += sizeof(FLOAT);
 			propertiesBuf += sizeof(FLOAT);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_UNICODE) {
+		case XUSER_DATA_TYPE_UNICODE: {
 			buflenread += sizeof(DWORD); //value.string.cbData
 			if (buflenread > buflen) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d (buflenread > buflen) (%d > %d)."
+					, __func__
+					, i + 1
+					, xlocator_result->cProperties
+					, buflenread
+					, buflen
+				);
 				break;
 			}
 			xlocator_result->pProperties[i].value.string.cbData = *((DWORD*)propertiesBuf);
 			propertiesBuf += sizeof(DWORD);
 			buflenread += xlocator_result->pProperties[i].value.string.cbData;
 			propertiesBuf += xlocator_result->pProperties[i].value.string.cbData;
-			if (buflenread > buflen || xlocator_result->pProperties[i].value.string.cbData % 2 || *(WCHAR*)(propertiesBuf - sizeof(WCHAR)) != 0) { // Must be null-terminated.
+			if (buflenread > buflen) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d (buflenread > buflen) (%d > %d)."
+					, __func__
+					, i + 1
+					, xlocator_result->cProperties
+					, buflenread
+					, buflen
+				);
 				break;
 			}
+			if (xlocator_result->pProperties[i].value.string.cbData % 2) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d buflen is not a factor of 2 (%d)."
+					, __func__
+					, i + 1
+					, xlocator_result->cProperties
+					, xlocator_result->pProperties[i].value.string.cbData
+				);
+				break;
+			}
+			if (*(WCHAR*)(propertiesBuf - sizeof(WCHAR)) != 0) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d is not null terminated."
+					, __func__
+					, i + 1
+					, xlocator_result->cProperties
+				);
+				break;
+			}
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_BINARY) {
+		case XUSER_DATA_TYPE_BINARY: {
 			buflenread += sizeof(DWORD); //value.binary.cbData
 			if (buflenread > buflen) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+					, "%s XUSER_DATA_TYPE_BINARY item %d/%d (buflenread > buflen) (%d > %d)."
+					, __func__
+					, i + 1
+					, xlocator_result->cProperties
+					, buflenread
+					, buflen
+				);
 				break;
 			}
 			xlocator_result->pProperties[i].value.binary.cbData = *((DWORD*)propertiesBuf);
@@ -270,21 +321,46 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 			buflenread += xlocator_result->pProperties[i].value.binary.cbData;
 			propertiesBuf += xlocator_result->pProperties[i].value.binary.cbData;
 			if (buflenread > buflen) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+					, "%s XUSER_DATA_TYPE_BINARY item %d/%d (buflenread > buflen) (%d > %d)."
+					, __func__
+					, i + 1
+					, xlocator_result->cProperties
+					, buflenread
+					, buflen
+				);
 				break;
 			}
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_DATETIME) {
+		case XUSER_DATA_TYPE_DATETIME: {
 			buflenread += sizeof(FILETIME);
 			propertiesBuf += sizeof(FILETIME);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_NULL) {
-			__debugbreak();
+		case XUSER_DATA_TYPE_NULL: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s XUSER_DATA_TYPE_NULL item %d/%d."
+				, __func__
+				, i + 1
+				, xlocator_result->cProperties
+			);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_CONTEXT) {
-			__debugbreak();
+		default: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s Unknown XUSER_DATA_TYPE item %d/%d."
+				, __func__
+				, i + 1
+				, xlocator_result->cProperties
+			);
 		}
-		else {
-			__debugbreak();
+		case XUSER_DATA_TYPE_CONTEXT:
+		case XUSER_DATA_TYPE_INT32: {
+			buflenread += sizeof(LONG);
+			propertiesBuf += sizeof(LONG);
+			break;
+		}
 		}
 	}
 
@@ -302,7 +378,10 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		return FALSE;
 	}
 	if (propertiesBuf - buf != buflenread) {
-		// Misaligned buffer!
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
+			, "%s Misaligned buffer!"
+			, __func__
+		);
 		__debugbreak();
 	}
 
@@ -312,51 +391,72 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		propertiesBuf += sizeof(DWORD); //dwPropertyId
 		propertiesBuf += sizeof(BYTE); //value.type
 
-		if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_INT32) {
-			xlocator_result->pProperties[i].value.nData = *((LONG*)propertiesBuf);
-			propertiesBuf += sizeof(LONG);
-		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_INT64) {
+		switch (xlocator_result->pProperties[i].value.type) {
+		case XUSER_DATA_TYPE_INT64: {
 			xlocator_result->pProperties[i].value.i64Data = *((LONGLONG*)propertiesBuf);
 			propertiesBuf += sizeof(LONGLONG);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_DOUBLE) {
+		case XUSER_DATA_TYPE_DOUBLE: {
 			xlocator_result->pProperties[i].value.dblData = *((DOUBLE*)propertiesBuf);
 			propertiesBuf += sizeof(DOUBLE);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_FLOAT) {
+		case XUSER_DATA_TYPE_FLOAT: {
 			xlocator_result->pProperties[i].value.fData = *((FLOAT*)propertiesBuf);
 			propertiesBuf += sizeof(FLOAT);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_UNICODE) {
+		case XUSER_DATA_TYPE_UNICODE: {
 			propertiesBuf += sizeof(DWORD); //value.string.cbData
 			xlocator_result->pProperties[i].value.string.pwszData = new WCHAR[xlocator_result->pProperties[i].value.string.cbData/2];
 			memcpy_s(xlocator_result->pProperties[i].value.string.pwszData, xlocator_result->pProperties[i].value.string.cbData, propertiesBuf, xlocator_result->pProperties[i].value.string.cbData);
 			propertiesBuf += xlocator_result->pProperties[i].value.string.cbData;
 			xlocator_result->pProperties[i].value.string.pwszData[(xlocator_result->pProperties[i].value.string.cbData/2) - 1] = 0;
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_BINARY) {
+		case XUSER_DATA_TYPE_BINARY: {
 			propertiesBuf += sizeof(DWORD); //value.binary.cbData
 			xlocator_result->pProperties[i].value.binary.pbData = new BYTE[xlocator_result->pProperties[i].value.binary.cbData];
 			memcpy_s(xlocator_result->pProperties[i].value.binary.pbData, xlocator_result->pProperties[i].value.binary.cbData, propertiesBuf, xlocator_result->pProperties[i].value.binary.cbData);
 			propertiesBuf += xlocator_result->pProperties[i].value.binary.cbData;
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_DATETIME) {
+		case XUSER_DATA_TYPE_DATETIME: {
 			xlocator_result->pProperties[i].value.ftData = *((FILETIME*)propertiesBuf);
 			propertiesBuf += sizeof(FILETIME);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_NULL) {
-			__debugbreak();
+		case XUSER_DATA_TYPE_NULL: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s XUSER_DATA_TYPE_NULL item %d/%d."
+				, __func__
+				, i + 1
+				, xlocator_result->cProperties
+			);
+			break;
 		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_CONTEXT) {
-			__debugbreak();
+		default: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s Unknown XUSER_DATA_TYPE item %d/%d."
+				, __func__
+				, i + 1
+				, xlocator_result->cProperties
+			);
 		}
-		else {
-			__debugbreak();
+		case XUSER_DATA_TYPE_CONTEXT:
+		case XUSER_DATA_TYPE_INT32: {
+			xlocator_result->pProperties[i].value.nData = *((LONG*)propertiesBuf);
+			propertiesBuf += sizeof(LONG);
+			break;
+		}
 		}
 	}
 	if (propertiesBuf - buf != buflenread) {
-		// Misaligned buffer!
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
+			, "%s Misaligned buffer!"
+			, __func__
+		);
 		__debugbreak();
 	}
 
@@ -379,13 +479,16 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	for (DWORD i = 0; i < cProperties; i++) {
 		local_session_properties[pProperties[i].dwPropertyId] = &pProperties[i];
 	}
-	if (local_session_properties.count(0)) {
-		// A null property id should not exist.
+	if (local_session_properties.count(0xFFFFFFFF)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
+			, "%s FIXME A 0xFFFFFFFF property id should not exist so we're using it for a special purpose of cleaning up the heap."
+			, __func__
+		);
 		__debugbreak();
 	}
 	if (!local_session_properties.count(XUSER_PROPERTY_SERVER_NAME) && xlive_users_info[0]->xuid == *xuid) {
 		XUSER_PROPERTY* prop = new XUSER_PROPERTY;
-		prop->dwPropertyId = 0;//so we know to delete this one later.
+		prop->dwPropertyId = 0xFFFFFFFF;// so we know to delete this heap entry later.
 		prop->value.type = XUSER_DATA_TYPE_UNICODE;
 		DWORD strlen = strnlen(xlive_users_info[0]->szUserName, XUSER_MAX_NAME_LENGTH) + 1;
 		prop->value.string.cbData = sizeof(WCHAR) * strlen;
@@ -399,41 +502,61 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	for (auto const &prop : local_session_properties) {
 		buflen += sizeof(DWORD); //dwPropertyId
 		buflen += sizeof(BYTE); //value.type
-		if (prop.second->value.type == XUSER_DATA_TYPE_INT32) {
-			buflen += sizeof(LONG);
-		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_INT64) {
+
+		switch (prop.second->value.type) {
+		case XUSER_DATA_TYPE_INT64: {
 			buflen += sizeof(LONGLONG);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_DOUBLE) {
+		case XUSER_DATA_TYPE_DOUBLE: {
 			buflen += sizeof(DOUBLE);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_FLOAT) {
+		case XUSER_DATA_TYPE_FLOAT: {
 			buflen += sizeof(FLOAT);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_UNICODE) {
+		case XUSER_DATA_TYPE_UNICODE: {
 			buflen += sizeof(DWORD); //value.string.cbData
-			if (prop.second->value.string.cbData % 2)
+			if (prop.second->value.string.cbData % 2) {
 				__debugbreak();
+			}
 			buflen += prop.second->value.string.cbData;
-			//if (prop.second->value.string.cbData == 2)
+			//if (prop.second->value.string.cbData == 2) {
 			//	buflen += 2;
+			//}
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_BINARY) {
+		case XUSER_DATA_TYPE_BINARY: {
 			buflen += sizeof(DWORD); //value.binary.cbData
 			buflen += prop.second->value.binary.cbData;
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_DATETIME) {
+		case XUSER_DATA_TYPE_DATETIME: {
 			buflen += sizeof(FILETIME);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_NULL) {
-			__debugbreak();
+		case XUSER_DATA_TYPE_NULL: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s XUSER_DATA_TYPE_NULL dwPropertyId 0x%08x."
+				, __func__
+				, prop.first
+			);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_CONTEXT) {
-			__debugbreak();
+		default: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s Unknown XUSER_DATA_TYPE (0x%02x) on dwPropertyId 0x%08x."
+				, __func__
+				, prop.second->value.type
+				, prop.first
+			);
 		}
-		else {
-			__debugbreak();
+		case XUSER_DATA_TYPE_INT32:
+		case XUSER_DATA_TYPE_CONTEXT: {
+			buflen += sizeof(LONG);
+			break;
+		}
 		}
 	}
 
@@ -456,26 +579,28 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 		propertiesBuf += sizeof(DWORD);
 		*propertiesBuf = prop.second->value.type;
 		propertiesBuf += sizeof(BYTE);
-		if (prop.second->value.type == XUSER_DATA_TYPE_INT32) {
-			*((LONG*)propertiesBuf) = prop.second->value.nData;
-			propertiesBuf += sizeof(LONG);
-		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_INT64) {
+
+		switch (prop.second->value.type) {
+		case XUSER_DATA_TYPE_INT64: {
 			*((LONGLONG*)propertiesBuf) = prop.second->value.i64Data;
 			propertiesBuf += sizeof(LONGLONG);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_DOUBLE) {
+		case XUSER_DATA_TYPE_DOUBLE: {
 			*((DOUBLE*)propertiesBuf) = prop.second->value.dblData;
 			propertiesBuf += sizeof(DOUBLE);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_FLOAT) {
+		case XUSER_DATA_TYPE_FLOAT: {
 			*((FLOAT*)propertiesBuf) = prop.second->value.fData;
 			propertiesBuf += sizeof(FLOAT);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_UNICODE) {
+		case XUSER_DATA_TYPE_UNICODE: {
 			*((DWORD*)propertiesBuf) = prop.second->value.string.cbData;
-			//if (prop.second->value.string.cbData == 2)
+			//if (prop.second->value.string.cbData == 2) {
 			//	*((DWORD*)propertiesBuf) = 4;
+			//}
 			propertiesBuf += sizeof(DWORD);
 			memcpy_s(propertiesBuf, prop.second->value.string.cbData, prop.second->value.string.pwszData, prop.second->value.string.cbData);
 			//if (prop.second->value.string.cbData == 2) {
@@ -484,30 +609,47 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 			//	propertiesBuf += 2;
 			//}
 			propertiesBuf += prop.second->value.string.cbData;
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_BINARY) {
+		case XUSER_DATA_TYPE_BINARY: {
 			*((DWORD*)propertiesBuf) = prop.second->value.binary.cbData;
 			propertiesBuf += sizeof(DWORD);
 			memcpy_s(propertiesBuf, prop.second->value.binary.cbData, prop.second->value.binary.pbData, prop.second->value.binary.cbData);
 			propertiesBuf += prop.second->value.binary.cbData;
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_DATETIME) {
+		case XUSER_DATA_TYPE_DATETIME: {
 			*((FILETIME*)propertiesBuf) = prop.second->value.ftData;
 			propertiesBuf += sizeof(FILETIME);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_NULL) {
-			__debugbreak();
+		case XUSER_DATA_TYPE_NULL: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s XUSER_DATA_TYPE_NULL dwPropertyId 0x%08x."
+				, __func__
+				, prop.first
+			);
+			break;
 		}
-		else if (prop.second->value.type == XUSER_DATA_TYPE_CONTEXT) {
-			__debugbreak();
+		default: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s Unknown XUSER_DATA_TYPE (0x%02x) on dwPropertyId 0x%08x."
+				, __func__
+				, prop.second->value.type
+				, prop.first
+			);
 		}
-		else {
-			__debugbreak();
+		case XUSER_DATA_TYPE_CONTEXT:
+		case XUSER_DATA_TYPE_INT32: {
+			*((LONG*)propertiesBuf) = prop.second->value.nData;
+			propertiesBuf += sizeof(LONG);
+			break;
+		}
 		}
 	}
 
 	for (auto const &prop : local_session_properties) {
-		if (!prop.second->dwPropertyId) {
+		if (prop.second->dwPropertyId == 0xFFFFFFFF) {
 			if (prop.second->value.type == XUSER_DATA_TYPE_UNICODE) {
 				delete[] prop.second->value.string.pwszData;
 			}
@@ -521,8 +663,9 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 	new_local_sd->HEAD.bCustomPacketType = XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE;
 
 	EnterCriticalSection(&liveoverlan_broadcast_lock);
-	if (local_session_details)
+	if (local_session_details) {
 		free(local_session_details);
+	}
 	local_session_details = new_local_sd;
 	LeaveCriticalSection(&liveoverlan_broadcast_lock);
 }
@@ -670,8 +813,9 @@ static VOID LiveOverLanStartBroadcast()
 static VOID LiveOverLanStopBroadcast()
 {
 	EnterCriticalSection(&liveoverlan_broadcast_lock);
-	if (local_session_details)
+	if (local_session_details) {
 		free(local_session_details);
+	}
 	local_session_details = 0;
 
 	if (liveoverlan_running) {
@@ -700,8 +844,9 @@ static VOID LiveOverLanEmpty()
 		time(&ltime);//seconds since epoch.
 		DWORD timetoremove = ((DWORD)ltime) - 15;
 		for (auto const &session : liveoverlan_sessions) {
-			if (session.second->broadcastTime > timetoremove)
+			if (session.second->broadcastTime > timetoremove) {
 				continue;
+			}
 			LiveOverLanDelete(session.second->searchresult);
 			delete session.second;
 			removesessions.push_back(session.first);
@@ -714,8 +859,9 @@ static VOID LiveOverLanEmpty()
 
 		std::unique_lock<std::mutex> lock(mymutex);
 		liveoverlan_cond_empty.wait_for(lock, std::chrono::seconds(10), []() { return liveoverlan_empty_exit == TRUE; });
-		if (liveoverlan_empty_exit)
+		if (liveoverlan_empty_exit) {
 			break;
+		}
 	}
 }
 static VOID LiveOverLanStartEmpty()
@@ -887,7 +1033,7 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 			);
 
 			SOCKADDR_IN SendStruct;
-			SendStruct.sin_port = htons(socketInfoLiveOverLan.portBindHBO);
+			SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
 			SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 			SendStruct.sin_family = AF_INET;
 
@@ -1185,5 +1331,9 @@ HRESULT WINAPI XLocatorCreateKey(XNKID *pxnkid, XNKEY *pxnkey)
 {
 	TRACE_FX();
 	HRESULT result = XNetCreateKey(pxnkid, pxnkey);
+	if (result == S_OK && pxnkid) {
+		pxnkid->ab[0] &= ~XNET_XNKID_MASK;
+		pxnkid->ab[0] |= XNET_XNKID_ONLINE_PEER;
+	}
 	return result;
 }

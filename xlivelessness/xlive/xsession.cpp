@@ -114,10 +114,12 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 		xsessionDetails->sessionInfo.hostAddress = xlive_local_xnAddr;
 
 		// TODO XNKEY
-		memset(&xsessionDetails->sessionInfo.keyExchangeKey, 0XAA, sizeof(XNKEY));
+		memset(&xsessionDetails->sessionInfo.keyExchangeKey, 0xAA, sizeof(XNKEY));
 
 		// TODO XNKID
 		memset(&xsessionDetails->sessionInfo.sessionID, 0x8B, sizeof(XNKID));
+		xsessionDetails->sessionInfo.sessionID.ab[0] &= ~XNET_XNKID_MASK;
+		xsessionDetails->sessionInfo.sessionID.ab[0] |= XNET_XNKID_ONLINE_PEER;
 
 		// Copy the struct.
 		*pSessionInfo = xsessionDetails->sessionInfo;

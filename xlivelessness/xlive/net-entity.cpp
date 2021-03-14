@@ -39,7 +39,9 @@ uint32_t NetterEntityEnsureExists_(const uint32_t instanceId, const uint16_t por
 	else {
 		if (xlln_net_entity_instanceid_to_netentity[instanceId]->portBaseHBO != portBaseHBO) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
-				, "Instance ID base port changed from 0x%04x:%hu to 0x%04x:%hu."
+				, "%s Instance ID (0x%08x) base port changed from 0x%04x:%hu to 0x%04x:%hu."
+				, __func__
+				, instanceId
 				, xlln_net_entity_instanceid_to_netentity[instanceId]->portBaseHBO
 				, xlln_net_entity_instanceid_to_netentity[instanceId]->portBaseHBO
 				, portBaseHBO
@@ -224,6 +226,8 @@ uint32_t NetterEntityGetXnaddrByInstanceId_(XNADDR *xnaddr, XNKID *xnkid, const 
 	if (xnkid) {
 		// TODO XNKID
 		memset(xnkid, 0x8B, sizeof(XNKID));
+		xnkid->ab[0] &= ~XNET_XNKID_MASK;
+		xnkid->ab[0] |= XNET_XNKID_ONLINE_PEER;
 	}
 
 	return ERROR_SUCCESS;

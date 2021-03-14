@@ -1512,7 +1512,7 @@ DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, 
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn < dwStartingIndex) (%d + %d >= %d).", __func__, dwStartingIndex, dwFriendsToReturn, dwStartingIndex);
 		return ERROR_INVALID_PARAMETER;
 	}
-	if (dwStartingIndex + dwFriendsToReturn >= XFRIENDS_MAX_C_RESULT) {
+	if (dwStartingIndex + dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) (%d + %d > %d).", __func__, dwStartingIndex, dwFriendsToReturn, XFRIENDS_MAX_C_RESULT);
 		return ERROR_INVALID_PARAMETER;
 	}

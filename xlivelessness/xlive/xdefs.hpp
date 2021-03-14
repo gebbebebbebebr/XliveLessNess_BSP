@@ -4,6 +4,7 @@
 #pragma comment(lib, "Ws2_32.lib")
 #include <windows.h>
 
+#pragma pack(push, 8) // Save then set byte alignment setting.
 
 #define LODWORD(ll) ((DWORD)(ll))
 #define HIDWORD(ll) ((DWORD)(((ULONGLONG)(ll) >> 32) & 0xFFFFFFFF))
@@ -1183,12 +1184,13 @@ typedef enum _XSTORAGE_FACILITY
 } XSTORAGE_FACILITY;
 #define XSTORAGE_FACILITY_INFO_GAME_CLIP DWORD
 
-
+#pragma pack(push, 1) // Save then set byte alignment setting.
 typedef struct _XSTORAGE_DOWNLOAD_TO_MEMORY_RESULTS {
 	DWORD dwBytesTotal;
 	XUID xuidOwner;
 	FILETIME ftCreated;
 } XSTORAGE_DOWNLOAD_TO_MEMORY_RESULTS;
+#pragma pack(pop) // Return to original alignment setting.
 
 
 typedef struct {
@@ -1231,12 +1233,12 @@ typedef struct _STRING_DATA {
 } STRING_DATA;
 
 
-#pragma pack( push,1 )
+#pragma pack(push, 1) // Save then set byte alignment setting.
 typedef struct _STRING_VERIFY_RESPONSE {
 	WORD wNumStrings;
 	HRESULT *pStringResult;
 } STRING_VERIFY_RESPONSE;
-#pragma pack( pop )
+#pragma pack(pop) // Return to original alignment setting.
 
 
 
@@ -1750,5 +1752,7 @@ typedef enum _XLIVE_DEBUG_LEVEL
 	XLIVE_DEBUG_LEVEL_DEFAULT // Default level of debug output, set as the current registry value.
 } XLIVE_DEBUG_LEVEL;
 
+
+#pragma pack(pop) // Return to original alignment setting.
 
 #endif

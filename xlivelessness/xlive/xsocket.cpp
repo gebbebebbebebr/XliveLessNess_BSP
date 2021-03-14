@@ -49,7 +49,7 @@ VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, con
 	{
 		EnterCriticalSection(&xlive_critsec_sockets);
 		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
-		nea.socketInternalPortHBO = socketMappingInfo->portBindHBO;
+		nea.socketInternalPortHBO = socketMappingInfo->portOgHBO;
 		nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
 		LeaveCriticalSection(&xlive_critsec_sockets);
 	}
@@ -689,7 +689,7 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 					{
 						EnterCriticalSection(&xlive_critsec_sockets);
 						SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-						nea.socketInternalPortHBO = socketMappingInfo->portBindHBO;
+						nea.socketInternalPortHBO = socketMappingInfo->portOgHBO;
 						nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
 						LeaveCriticalSection(&xlive_critsec_sockets);
 					}
