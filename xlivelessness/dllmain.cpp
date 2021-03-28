@@ -17,23 +17,29 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 			return FALSE;
 		}
 
-		if (InitXLLN(hModule)) {
+		InitCriticalSections();
+
+		if (!InitXLLN(hModule)) {
+			UninitCriticalSections();
 			return FALSE;
 		}
 
 		// Emphasize that NOTHING else should be done after this point to cause this DLL not to load successfully.
-		if (InitXllnModules()) {
+		if (!InitXllnModules()) {
+			UninitCriticalSections();
 			return FALSE;
 		}
 	}
 	else if (ul_reason_for_call == DLL_PROCESS_DETACH) {
-		if (UninitXllnModules()) {
+		if (!UninitXllnModules()) {
 			return FALSE;
 		}
 
-		if (UninitXLLN()) {
+		if (!UninitXLLN()) {
 			return FALSE;
 		}
+
+		UninitCriticalSections();
 	}
 	return TRUE;
 }

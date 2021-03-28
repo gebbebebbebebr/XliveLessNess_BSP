@@ -93,6 +93,15 @@
     <ClCompile Include="xlln\wnd-connections.cpp">
       <Filter>Source Files\xlln</Filter>
     </ClCompile>
+    <ClCompile Include="utils\util-socket.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\util-checksum.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="utils\sha256.cpp">
+      <Filter>Source Files\utils</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -166,6 +175,15 @@
     </ClInclude>
     <ClInclude Include="xlln\wnd-connections.hpp">
       <Filter>Source Files\xlln</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\util-socket.hpp">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\util-checksum.hpp">
+      <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="utils\sha256.hpp">
+      <Filter>Source Files\utils</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

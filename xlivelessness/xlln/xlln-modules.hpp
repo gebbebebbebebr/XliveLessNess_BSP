@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
-HRESULT InitXllnModules();
-HRESULT UninitXllnModules();
+bool InitXllnModules();
+bool UninitXllnModules();

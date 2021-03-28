@@ -216,14 +216,14 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 	return ERROR_SUCCESS;
 }
 
-HRESULT InitXllnWndSockets()
+uint32_t InitXllnWndSockets()
 {
 	CreateThread(0, NULL, ThreadProc, (LPVOID)xlln_hModule, NULL, NULL);
 
 	return ERROR_SUCCESS;
 }
 
-HRESULT UninitXllnWndSockets()
+uint32_t UninitXllnWndSockets()
 {
 	return ERROR_SUCCESS;
 }

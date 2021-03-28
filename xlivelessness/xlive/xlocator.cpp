@@ -6,6 +6,7 @@
 #include "../xlln/debug-text.hpp"
 #include "../xlln/xlln.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/util-socket.hpp"
 #include "xnet.hpp"
 #include "xlive.hpp"
 #include "net-entity.hpp"

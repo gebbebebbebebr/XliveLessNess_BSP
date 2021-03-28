@@ -1,8 +1,9 @@
 #include <winsock2.h>
 #include "xdefs.hpp"
 #include "net-entity.hpp"
-#include "../xlln/xlln.hpp"
+#include "../xlln/debug-text.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/util-socket.hpp"
 #include "xsocket.hpp"
 #include <vector>
 #include <set>

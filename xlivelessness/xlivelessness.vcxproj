@@ -160,7 +160,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="utils\sha256.cpp" />
+    <ClCompile Include="utils\util-checksum.cpp" />
     <ClCompile Include="utils\util-hook.cpp" />
+    <ClCompile Include="utils\util-socket.cpp" />
     <ClCompile Include="utils\utils.cpp" />
     <ClCompile Include="xlive\net-entity.cpp" />
     <ClCompile Include="xlive\voice.cpp" />
@@ -189,7 +192,10 @@
   <ItemGroup>
     <ClInclude Include="dllmain.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="utils\sha256.hpp" />
+    <ClInclude Include="utils\util-checksum.hpp" />
     <ClInclude Include="utils\util-hook.hpp" />
+    <ClInclude Include="utils\util-socket.hpp" />
     <ClInclude Include="utils\utils.hpp" />
     <ClInclude Include="xlive\net-entity.hpp" />
     <ClInclude Include="xlive\voice.hpp" />

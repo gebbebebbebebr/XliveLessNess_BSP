@@ -17,7 +17,6 @@
 #include "rand-name.hpp"
 #include "../resource.h"
 #include <ws2tcpip.h>
-#include <string>
 #include <time.h>
 #include <CommCtrl.h>
 
@@ -26,7 +25,8 @@ static LRESULT CALLBACK DLLWindowProc(HWND, UINT, WPARAM, LPARAM);
 HINSTANCE xlln_hModule = NULL;
 HWND xlln_window_hwnd = NULL;
 static HMENU xlln_window_hMenu = NULL;
-static int xlln_instance = 0;
+// 0 - unassigned. Counts from 1.
+uint32_t xlln_local_instance_id = 0;
 HMENU hMenu_network_adapters = 0;
 
 static DWORD xlln_login_player = 0;
@@ -38,8 +38,6 @@ static CRITICAL_SECTION xlive_critsec_recvfrom_handler_funcs;
 static std::map<DWORD, char*> xlive_recvfrom_handler_funcs;
 
 static char *broadcastAddrInput = 0;
-
-uint32_t xlln_debuglog_level = XLLN_LOG_CONTEXT_MASK | XLLN_LOG_LEVEL_MASK;
 
 int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth)
 {
@@ -399,66 +397,32 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 	return ERROR_UNKNOWN_PROPERTY;
 }
 
-// #41143
-DWORD WINAPI XLLNDebugLog(DWORD logLevel, const char *message)
+// #41145 - new'ly[] allocates result_storage_path.
+uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *result_local_instance_id, wchar_t **result_storage_path)
 {
-	addDebugText(message);
-	return ERROR_SUCCESS;
-}
-/*
-std::string formattestthing(const char *const format, ...)
-{
-	auto temp = std::vector<char>{};
-	auto length = std::size_t{ 2 };
-	va_list args;
-	while (temp.size() <= length)
-	{
-		temp.resize(length + 1);
-		va_start(args, format);
-		const auto status = std::vsnprintf(temp.data(), temp.size(), format, args);
-		va_end(args);
-		if (status < 0)
-			throw std::runtime_error{ "string formatting error" };
-		length = static_cast<std::size_t>(status);
+	if (!result_local_instance_id && !result_storage_path) {
+		return ERROR_INVALID_PARAMETER;
 	}
-	return std::string{ temp.data(), length };
-}
-
-// #41144
-DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
-{
-	va_list args;
-	va_start(args, format);
-	va_list args2;
-	va_copy(args2, args);
-	std::string message = formattestthing(format, args2);
-	va_end(args);
-	addDebugText(message.c_str());
-	return ERROR_SUCCESS;
-}*/
-
-// #41144
-DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
-{
-	if (!(logLevel & xlln_debuglog_level & XLLN_LOG_CONTEXT_MASK) || !(logLevel & xlln_debuglog_level & XLLN_LOG_LEVEL_MASK)) {
-		return ERROR_SUCCESS;
+	if (result_storage_path) {
+		*result_storage_path = 0;
 	}
-
-	auto temp = std::vector<char>{};
-	auto length = std::size_t{ 63 };
-	va_list args;
-	while (temp.size() <= length) {
-		temp.resize(length + 1);
-		va_start(args, format);
-		const auto status = std::vsnprintf(temp.data(), temp.size(), format, args);
-		va_end(args);
-		if (status < 0) {
-			// string formatting error.
-			return ERROR_INVALID_PARAMETER;
+	if (result_local_instance_id) {
+		*result_local_instance_id = 0;
+	}
+	if (!module_handle) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (result_local_instance_id) {
+		*result_local_instance_id = xlln_local_instance_id;
+	}
+	if (result_storage_path) {
+		wchar_t *configPath = PathFromFilename(xlln_file_config_path);
+		if (!configPath) {
+			return ERROR_PATH_NOT_FOUND;
 		}
-		length = static_cast<std::size_t>(status);
+
+		*result_storage_path = configPath;
 	}
-	addDebugText(std::string{ temp.data(), length }.c_str());
 	return ERROR_SUCCESS;
 }
 
@@ -709,7 +673,9 @@ Executable Launch Parameters:\n\
 -xlivedebug ? Sleep XLiveInitialize until debugger attach.\n\
 -xlivenetdisable ? Disable all network functionality.\n\
 -xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
--xllnbroadcastaddr=<string> ? Set the broadcast address."
+-xllnbroadcastaddr=<string> ? Set the broadcast address.\n\
+-xllnconfig=<string> ? Sets the location of the config file.\n\
+-xllnlocalinstanceid=<uint> ? 0 (default) to automatically assign the Local Instance Id."
 , "About", MB_OK);
 			break;
 		}
@@ -734,7 +700,7 @@ Executable Launch Parameters:\n\
 			break;
 		}
 		case MYMENU_NETWORK_ADAPTER_REFRESH: {
-			INT error_network_adapter = RefreshNetworkAdapters();
+			INT errorNetworkAdapter = RefreshNetworkAdapters();
 			break;
 		}
 		case MYMENU_NETWORK_ADAPTER_AUTO_SELECT: {
@@ -943,7 +909,7 @@ static DWORD WINAPI ThreadShowXlln(LPVOID lpParam)
 	return ERROR_SUCCESS;
 }
 
-INT ShowXLLN(DWORD dwShowType)
+uint32_t ShowXLLN(DWORD dwShowType)
 {
 	if (dwShowType == XLLN_SHOW_LOGIN) {
 		bool anyGotAutoLogged = false;
@@ -983,7 +949,45 @@ INT ShowXLLN(DWORD dwShowType)
 	return ERROR_SUCCESS;
 }
 
-INT InitXLLN(HMODULE hModule)
+void InitCriticalSections()
+{
+	InitializeCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+	InitializeCriticalSection(&xlive_critsec_network_adapter);
+	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+	InitializeCriticalSection(&xlln_critsec_net_entity);
+	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
+	InitializeCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+	InitializeCriticalSection(&xlive_xfriends_enumerators_lock);
+	InitializeCriticalSection(&xlive_critsec_xnotify);
+	InitializeCriticalSection(&xlive_critsec_xsession);
+	InitializeCriticalSection(&liveoverlan_broadcast_lock);
+	InitializeCriticalSection(&liveoverlan_sessions_lock);
+	InitializeCriticalSection(&xlive_critsec_fps_limit);
+	InitializeCriticalSection(&xlive_critsec_sockets);
+	InitializeCriticalSection(&xlive_critsec_broadcast_addresses);
+	InitializeCriticalSection(&xlln_critsec_debug_log);
+}
+
+void UninitCriticalSections()
+{
+	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+	DeleteCriticalSection(&xlive_critsec_network_adapter);
+	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
+	DeleteCriticalSection(&xlln_critsec_net_entity);
+	DeleteCriticalSection(&xlive_xlocator_enumerators_lock);
+	DeleteCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+	DeleteCriticalSection(&xlive_xfriends_enumerators_lock);
+	DeleteCriticalSection(&xlive_critsec_xnotify);
+	DeleteCriticalSection(&xlive_critsec_xsession);
+	DeleteCriticalSection(&liveoverlan_broadcast_lock);
+	DeleteCriticalSection(&liveoverlan_sessions_lock);
+	DeleteCriticalSection(&xlive_critsec_fps_limit);
+	DeleteCriticalSection(&xlive_critsec_sockets);
+	DeleteCriticalSection(&xlive_critsec_broadcast_addresses);
+	DeleteCriticalSection(&xlln_critsec_debug_log);
+}
+
+bool InitXLLN(HMODULE hModule)
 {
 	BOOL xlln_debug_pause = FALSE;
 
@@ -1006,43 +1010,14 @@ INT InitXLLN(HMODULE hModule)
 		Sleep(500L);
 	}
 
-	InitializeCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-	InitializeCriticalSection(&xlive_critsec_network_adapter);
-	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-	InitializeCriticalSection(&xlln_critsec_net_entity);
-	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
-	InitializeCriticalSection(&xlive_xuser_achievement_enumerators_lock);
-	InitializeCriticalSection(&xlive_xfriends_enumerators_lock);
-	InitializeCriticalSection(&xlive_critsec_xnotify);
-	InitializeCriticalSection(&xlive_critsec_xsession);
-	InitializeCriticalSection(&liveoverlan_broadcast_lock);
-	InitializeCriticalSection(&liveoverlan_sessions_lock);
-	InitializeCriticalSection(&xlive_critsec_fps_limit);
-	InitializeCriticalSection(&xlive_critsec_sockets);
-	InitializeCriticalSection(&xlive_critsec_broadcast_addresses);
-	InitializeCriticalSection(&xlln_critsec_debug_log);
-
-	wchar_t mutex_name[40];
-	DWORD mutex_last_error;
-	HANDLE mutex = NULL;
-	do {
-		if (mutex) {
-			mutex_last_error = CloseHandle(mutex);
-		}
-		xlln_instance++;
-		swprintf(mutex_name, 40, L"Global\\XLLNInstance#%d", xlln_instance);
-		mutex = CreateMutexW(0, FALSE, mutex_name);
-		mutex_last_error = GetLastError();
-	} while (mutex_last_error != ERROR_SUCCESS);
-
-	INT error_DebugLog = InitDebugLog(xlln_instance);
+	uint32_t setFpsLimit = 0;
 
 	if (lpwszArglist != NULL) {
 		for (int i = 1; i < nArgs; i++) {
 			if (wcsstr(lpwszArglist[i], L"-xlivefps=") != NULL) {
-				DWORD tempuint = 0;
-				if (swscanf_s(lpwszArglist[i], L"-xlivefps=%u", &tempuint) == 1) {
-					SetFPSLimit(tempuint);
+				uint32_t tempuint32 = 0;
+				if (swscanf_s(lpwszArglist[i], L"-xlivefps=%u", &tempuint32) == 1) {
+					setFpsLimit = tempuint32;
 				}
 			}
 			else if (wcscmp(lpwszArglist[i], L"-xlivedebug") == 0) {
@@ -1066,9 +1041,52 @@ INT InitXLLN(HMODULE hModule)
 				broadcastAddrInput = new char[bufferLen];
 				wcstombs2(broadcastAddrInput, broadcastAddrInputTemp, bufferLen);
 			}
+			else if (wcsstr(lpwszArglist[i], L"-xllnconfig=") == lpwszArglist[i]) {
+				wchar_t *configFilePath = &lpwszArglist[i][12];
+				if (xlln_file_config_path) {
+					free(xlln_file_config_path);
+				}
+				xlln_file_config_path = CloneString(configFilePath);
+			}
+			else if (wcsstr(lpwszArglist[i], L"-xllnlocalinstanceid=") != NULL) {
+				uint32_t tempuint32 = 0;
+				if (swscanf_s(lpwszArglist[i], L"-xllnlocalinstanceid=%u", &tempuint32) == 1) {
+					xlln_local_instance_id = tempuint32;
+				}
+			}
 		}
 	}
 	LocalFree(lpwszArglist);
+
+	if (xlln_local_instance_id) {
+		wchar_t *mutexName = FormMallocString(L"Global\\XLiveLessNessInstanceId#%u", xlln_local_instance_id);
+		HANDLE mutex = CreateMutexW(0, FALSE, mutexName);
+		free(mutexName);
+		DWORD mutex_last_error = GetLastError();
+		if (mutex_last_error != ERROR_SUCCESS) {
+			char *messageDescription = FormMallocString("Failed to get XLiveLessNess Local Instance Id %u.", xlln_local_instance_id);
+			MessageBoxA(NULL, messageDescription, "XLLN Local Instance ID Fail", MB_OK);
+			free(messageDescription);
+			return false;
+		}
+	}
+	else {
+		DWORD mutex_last_error;
+		HANDLE mutex = NULL;
+		do {
+			if (mutex) {
+				mutex_last_error = CloseHandle(mutex);
+			}
+			wchar_t *mutexName = FormMallocString(L"Global\\XLiveLessNessInstanceId#%u", ++xlln_local_instance_id);
+			mutex = CreateMutexW(0, FALSE, mutexName);
+			free(mutexName);
+			mutex_last_error = GetLastError();
+		} while (mutex_last_error != ERROR_SUCCESS);
+	}
+
+	if (!broadcastAddrInput) {
+		broadcastAddrInput = new char[1]{""};
+	}
 
 	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
 		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
@@ -1078,20 +1096,19 @@ INT InitXLLN(HMODULE hModule)
 		xlive_users_auto_login[i] = FALSE;
 	}
 
-	if (!broadcastAddrInput) {
-		broadcastAddrInput = new char[1]{""};
-	}
+	uint32_t errorXllnConfig = InitXllnConfig();
+	uint32_t errorXllnDebugLog = InitDebugLog();
 
 	WSADATA wsaData;
 	INT result_wsaStartup = WSAStartup(2, &wsaData);
 
-	HRESULT error_XllnConfig = InitXllnConfig(xlln_instance);
+	SetFPSLimit(setFpsLimit);
 
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)NULL, NULL, NULL);
 
-	HRESULT error_XllnWndSockets = InitXllnWndSockets();
-	HRESULT error_XllnWndConnections = InitXllnWndConnections();
+	uint32_t errorXllnWndSockets = InitXllnWndSockets();
+	uint32_t errorXllnWndConnections = InitXllnWndConnections();
 
 	if (broadcastAddrInput) {
 		char *temp = FormMallocString("%s", broadcastAddrInput);
@@ -1102,40 +1119,24 @@ INT InitXLLN(HMODULE hModule)
 	xlive_title_id = 0;
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN, "TODO title.cfg not found. Default Title ID set.");
 
-	return 0;
+	return true;
 }
 
-INT UninitXLLN()
+bool UninitXLLN()
 {
-	HRESULT error_XllnWndConnections = UninitXllnWndConnections();
-	HRESULT error_XllnWndSockets = UninitXllnWndSockets();
+	uint32_t errorXllnWndConnections = UninitXllnWndConnections();
+	uint32_t errorXllnWndSockets = UninitXllnWndSockets();
 
 	if (broadcastAddrInput) {
 		delete[] broadcastAddrInput;
 		broadcastAddrInput = 0;
 	}
 
-	HRESULT error_XllnConfig = UninitXllnConfig();
+	INT resultWsaCleanup = WSACleanup();
 
-	INT error_DebugLog = UninitDebugLog();
+	uint32_t errorXllnConfig = UninitXllnConfig();
 
-	INT result_wsaStartup = WSACleanup();
+	uint32_t errorXllnDebugLog = UninitDebugLog();
 
-	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-	DeleteCriticalSection(&xlive_critsec_network_adapter);
-	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-	DeleteCriticalSection(&xlln_critsec_net_entity);
-	DeleteCriticalSection(&xlive_xlocator_enumerators_lock);
-	DeleteCriticalSection(&xlive_xuser_achievement_enumerators_lock);
-	DeleteCriticalSection(&xlive_xfriends_enumerators_lock);
-	DeleteCriticalSection(&xlive_critsec_xnotify);
-	DeleteCriticalSection(&xlive_critsec_xsession);
-	DeleteCriticalSection(&liveoverlan_broadcast_lock);
-	DeleteCriticalSection(&liveoverlan_sessions_lock);
-	DeleteCriticalSection(&xlive_critsec_fps_limit);
-	DeleteCriticalSection(&xlive_critsec_sockets);
-	DeleteCriticalSection(&xlive_critsec_broadcast_addresses);
-	DeleteCriticalSection(&xlln_critsec_debug_log);
-
-	return 0;
+	return true;
 }

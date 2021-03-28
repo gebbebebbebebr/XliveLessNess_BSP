@@ -1,7 +1,8 @@
 #pragma once
+#include <stdint.h>
 
-HRESULT InitXllnWndSockets();
-HRESULT UninitXllnWndSockets();
+uint32_t InitXllnWndSockets();
+uint32_t UninitXllnWndSockets();
 
 void XllnWndSocketsShow(bool showWindow);
 void XllnWndSocketsInvalidateSockets();

@@ -1,8 +1,6 @@
-#include <winsock2.h>
 #include "windows.h"
 #include "utils.hpp"
 #include <string>
-#include <WS2tcpip.h>
 
 char* FormMallocString(const char *const format, ...)
 {
@@ -58,7 +56,7 @@ wchar_t* FormMallocString(const wchar_t *const format, ...)
 	return resultStr;
 }
 
-// new'ly allocate a copy of this input string.
+// new'ly[] allocate a copy of this input string.
 char* CloneString(const char *str)
 {
 	size_t strBufLen = strlen(str) + 1;
@@ -67,7 +65,7 @@ char* CloneString(const char *str)
 	return result;
 }
 
-// new'ly allocate a copy of this input string.
+// new'ly[] allocate a copy of this input string.
 wchar_t* CloneString(const wchar_t *str)
 {
 	size_t strWBufLen = wcslen(str) + 1;
@@ -277,82 +275,262 @@ void ReadIniFile(
 	free(headerReadStr);
 }
 
-uint16_t GetSockAddrPort(const SOCKADDR_STORAGE *sockAddrStorage)
+void GetVKeyCodeString(int vkey, char* rtnString, int strLen)
 {
-	uint16_t portHBO =
-		sockAddrStorage->ss_family == AF_INET
-		? ntohs((*(sockaddr_in*)sockAddrStorage).sin_port)
-		: (
-			sockAddrStorage->ss_family == AF_INET6
-			? ntohs((*(sockaddr_in6*)sockAddrStorage).sin6_port)
-			: 0
-		);
-	return portHBO;
+	snprintf(rtnString, 5, "0x%x", vkey);
+	char key_name[20];
+	memset(key_name, 0, sizeof(key_name));
+	if (vkey >= 0x70 && vkey <= 0x87) {
+		int func_num = vkey - 0x70 + 1;
+		snprintf(key_name, 20, "VK_F%d", func_num);
+	}
+	else if (vkey == 0x24) {
+		snprintf(key_name, 20, "VK_Home");
+	}
+	if (strlen(key_name) > 0) {
+		snprintf(rtnString + strlen(rtnString), strLen - 5, " - %s", key_name);
+	}
 }
 
-bool SetSockAddrPort(SOCKADDR_STORAGE *sockAddrStorage, uint16_t portHBO)
+void PadCStringWithChar(char* strToPad, int toFullLength, char c)
 {
-	switch (sockAddrStorage->ss_family) {
-	case AF_INET:
-		(*(sockaddr_in*)sockAddrStorage).sin_port = htons(portHBO);
-		break;
-	case AF_INET6:
-		(*(sockaddr_in6*)sockAddrStorage).sin6_port = htons(portHBO);
-		break;
-	default:
-		return false;
+	for (int i = strlen(strToPad); i < toFullLength - 1; i++) {
+		memset(strToPad + i, c, sizeof(char));
 	}
-	return true;
+	memset(strToPad + toFullLength - 1, 0, sizeof(char));
 }
 
-/// Malloc'd result.
-char* GetSockAddrInfo(const SOCKADDR_STORAGE *sockAddrStorage)
+int GetWidePathFromFullWideFilename(wchar_t* filepath, wchar_t* rtnpath)
 {
-	// Maximum length of full domain name + sentinel.
-	char namebuf[253 + 1];
-	int error = getnameinfo((sockaddr*)sockAddrStorage, sizeof(SOCKADDR_STORAGE), namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
-	if (!error) {
-		uint16_t portHBO = GetSockAddrPort(sockAddrStorage);
-		return portHBO ? FormMallocString("%s:%hu", namebuf, portHBO) : FormMallocString("%s", namebuf);
+	wchar_t* offset = wcsrchr(filepath, L'\\');
+	wchar_t* off2 = wcsrchr(filepath, L'/');
+	offset = offset == NULL ? off2 : ((off2 != NULL && offset < off2) ? off2 : offset);
+	if (offset == NULL) {
+		return -1;
 	}
+	swprintf(rtnpath, offset - filepath + 2, filepath);
 	return 0;
 }
 
-bool SockAddrsMatch(const SOCKADDR_STORAGE *sockAddr1, const SOCKADDR_STORAGE *sockAddr2)
+LONG GetDWORDRegKey(HKEY hKey, wchar_t* strValueName, DWORD* nValue)
 {
-	if (sockAddr1->ss_family != sockAddr2->ss_family) {
-		return false;
+	DWORD dwBufferSize(sizeof(DWORD));
+	DWORD nResult(0);
+	LONG nError = ::RegQueryValueExW(hKey,
+		strValueName,
+		0,
+		NULL,
+		reinterpret_cast<LPBYTE>(&nResult),
+		&dwBufferSize);
+	if (ERROR_SUCCESS == nError)
+	{
+		*nValue = nResult;
+	}
+	return nError;
+}
+
+char* custom_label_literal(char* label_escaped)
+{
+	int label_escaped_length = strlen(label_escaped);
+	int length_shift = 0;
+	char* label_literal = (char*)malloc(label_escaped_length + 1);
+
+	for (int i = 0; i < label_escaped_length; i++) {
+		if (label_escaped[i] == '\\' && label_escaped[i + 1] == '\\') {
+			label_literal[i + length_shift] = '\\';
+			length_shift--;
+			i++;
+		}
+		else if (label_escaped[i] == '\\' && label_escaped[i + 1] == 'n') {
+			label_literal[i + length_shift] = '\n';
+			length_shift--;
+			i++;
+		}
+		else if (label_escaped[i] == '\\' && label_escaped[i + 1] == 'r') {
+			label_literal[i + length_shift] = '\r';
+			length_shift--;
+			i++;
+		}
+		else {
+			label_literal[i + length_shift] = label_escaped[i];
+		}
 	}
 
-	switch (sockAddr1->ss_family) {
-	case AF_INET:
-		if (
-			((sockaddr_in*)sockAddr1)->sin_port != ((sockaddr_in*)sockAddr2)->sin_port
-			|| ((sockaddr_in*)sockAddr1)->sin_addr.s_addr != ((sockaddr_in*)sockAddr2)->sin_addr.s_addr
-			) {
+	label_literal[label_escaped_length + length_shift] = 0;
+	return label_literal;
+}
+
+char* custom_label_escape(char* label_literal)
+{
+	int label_literal_length = strlen(label_literal);
+	int length_shift = 0;
+	int label_escaped_length = label_literal_length + length_shift + 2;
+	char* label_escaped = (char*)malloc(label_escaped_length);
+
+	for (int i = 0; i < label_literal_length; i++) {
+		if (label_escaped_length < i + length_shift + 2) {
+			label_escaped = (char*)realloc(label_escaped, label_literal_length + length_shift + 2);
+		}
+		if (label_literal[i] == '\\') {
+			label_escaped[i + length_shift] = '\\';
+			length_shift++;
+			label_escaped[i + length_shift] = '\\';
+		}
+		else if (label_literal[i] == '\n') {
+			label_escaped[i + length_shift] = '\\';
+			length_shift++;
+			label_escaped[i + length_shift] = 'n';
+		}
+		else if (label_literal[i] == '\r') {
+			label_escaped[i + length_shift] = '\\';
+			length_shift++;
+			label_escaped[i + length_shift] = 'r';
+		}
+		else {
+			label_escaped[i + length_shift] = label_literal[i];
+		}
+	}
+
+	label_escaped[label_literal_length + length_shift] = 0;
+	return label_escaped;
+}
+
+bool FloatIsNaN(float &vagueFloat)
+{
+	DWORD* vague = (DWORD*)&vagueFloat;
+	if ((*vague >= 0x7F800000 && *vague <= 0x7FFFFFFF) || (*vague >= 0xFF800000 && *vague <= 0xFFFFFFFF)) {
+		return true;
+	}
+	return false;
+}
+
+int HostnameToIp(char* hostname, char* ip, DWORD buflen)
+{
+	/*struct hostent *he;
+	struct in_addr **addr_list;
+	int i;
+	WSADATA wsaData;
+	WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if ((he = gethostbyname(hostname)) == NULL) {
+		return WSAGetLastError();
+	}
+
+	addr_list = (struct in_addr **) he->h_addr_list;
+
+	for (i = 0; addr_list[i] != NULL; i++)
+	{
+		//Return the first one;
+		strncpy_s(ip, buflen, inet_ntoa(*addr_list[i]), 100);
+		return 0;
+	}*/
+
+	return 1;
+}
+
+static bool rfc3986_allow(char i)
+{
+	//isalnum(i)//PoS crashes
+	if ((i >= '0' && i <= '9') ||
+		(i >= 'a' && i <= 'z') ||
+		(i >= 'A' && i <= 'Z') ||
+		i == '~' || i == '-' || i == '.' || i == '_')
+		return true;
+	return false;
+}
+
+char* encode_rfc3986(char* label_literal, int label_literal_length)
+{
+	if (label_literal_length < 0)
+		label_literal_length = strlen(label_literal);
+	int escaped_buflen = (label_literal_length * 3) + 1;
+	char* label_escaped = (char*)malloc(escaped_buflen * sizeof(char));
+	int escaped_buff_i = 0;
+
+	for (int i = 0; i < label_literal_length; i++) {
+		unsigned char uletter = label_literal[i];
+		if (!rfc3986_allow(uletter)) {
+			sprintf_s(label_escaped + escaped_buff_i, 4, "%%%02X", uletter);
+			escaped_buff_i += 2;
+		}
+		else {
+			label_escaped[escaped_buff_i] = label_literal[i];
+		}
+		escaped_buff_i++;
+	}
+	label_escaped[escaped_buff_i] = 0;
+	return label_escaped;
+}
+
+bool StrnCaseInsensEqu(char* str1, char* str2, unsigned int chk_len)
+{
+	unsigned int chk_len2 = strlen(str1);
+	if (chk_len2 < chk_len) {
+		chk_len = chk_len2;
+	}
+	chk_len2 = strlen(str2);
+	if (chk_len2 != chk_len) {
+		return false;
+	}
+	const int case_diff = 'A' - 'a';
+	for (unsigned int i = 0; i < chk_len; i++) {
+		if (str1[i] != str2[i]) {
+			int sa = str1[i];
+			if (sa >= 'a' && sa <= 'z') {
+				sa += case_diff;
+			}
+			else if (sa >= 'A' && sa <= 'Z') {
+				sa -= case_diff;
+			}
+			if (sa == str2[i]) {
+				continue;
+			}
 			return false;
 		}
-		break;
-	case AF_INET6:
-		if (
-			((sockaddr_in6*)sockAddr1)->sin6_port != ((sockaddr_in6*)sockAddr2)->sin6_port
-			|| ((sockaddr_in6*)sockAddr1)->sin6_flowinfo != ((sockaddr_in6*)sockAddr2)->sin6_flowinfo
-			|| ((sockaddr_in6*)sockAddr1)->sin6_scope_id != ((sockaddr_in6*)sockAddr2)->sin6_scope_id
-			) {
-			return false;
-		}
-		if (memcmp(((sockaddr_in6*)sockAddr1)->sin6_addr.s6_addr, ((sockaddr_in6*)sockAddr2)->sin6_addr.s6_addr, sizeof(IN6_ADDR)) != 0) {
-			return false;
-		}
-		break;
-	default:
-		if (memcmp(sockAddr1, sockAddr2, sizeof(SOCKADDR_STORAGE)) != 0) {
-			return false;
-		}
-		break;
 	}
 
 	return true;
+}
+
+char* GetModuleFilePathA(HMODULE hModule)
+{
+	size_t titleFilenameBufLen = 100;
+	char *titleFileName = (char*)malloc(sizeof(char) * titleFilenameBufLen);
+	DWORD titleFilenameLen;
+	DWORD lastErr;
+	while (1) {
+		titleFilenameLen = GetModuleFileNameA(hModule, titleFileName, titleFilenameBufLen);
+		if ((lastErr = GetLastError()) == ERROR_INSUFFICIENT_BUFFER) {
+			titleFileName = (char*)realloc(titleFileName, sizeof(char) * (titleFilenameBufLen += 100));
+			continue;
+		}
+		break;
+	}
+	if (!titleFilenameLen) {
+		free(titleFileName);
+		return 0;
+	}
+	return titleFileName;
+}
+
+wchar_t* GetModuleFilePathW(HMODULE hModule)
+{
+	size_t titleFilenameBufLen = 100;
+	wchar_t *titleFileName = (wchar_t*)malloc(sizeof(wchar_t) * titleFilenameBufLen);
+	DWORD titleFilenameLen;
+	DWORD lastErr;
+	while (1) {
+		titleFilenameLen = GetModuleFileNameW(hModule, titleFileName, titleFilenameBufLen);
+		if ((lastErr = GetLastError()) == ERROR_INSUFFICIENT_BUFFER) {
+			titleFileName = (wchar_t*)realloc(titleFileName, sizeof(wchar_t) * (titleFilenameBufLen += 100));
+			continue;
+		}
+		break;
+	}
+	if (!titleFilenameLen) {
+		free(titleFileName);
+		return 0;
+	}
+	return titleFileName;
 }
 
 void wcstombs2(char* buffer, const wchar_t* text, size_t buf_len)
@@ -412,4 +590,396 @@ void ReplaceFilePathSensitiveChars(wchar_t *filename)
 			filename[i] = '_';
 		}
 	}
+}
+
+// Assuming whitespace trimmed pathname.
+// Can handle forward or back slash combined paths.
+const char* LastPathItem(const char *pathname)
+{
+	return LastPathItem(pathname, EOF);
+}
+
+// Assuming whitespace trimmed pathname.
+// Can handle forward or back slash combined paths.
+const wchar_t* LastPathItem(const wchar_t *pathname)
+{
+	return LastPathItem(pathname, EOF);
+}
+
+const char* LastPathItem(const char *pathname, size_t end_length)
+{
+	if (!pathname) {
+		return 0;
+	}
+	
+	const char *result = pathname;
+	size_t pathnameLen = end_length != EOF ? end_length : strlen(pathname);
+	
+	// skip the last normal char and null sentinel
+	// (since we don't want to break on a folder path ending with a slash).
+	for (const char *pathnameScan = &pathname[pathnameLen - 2]; pathnameScan >= pathname; pathnameScan--) {
+		if (*pathnameScan == '/' || *pathnameScan == '\\') {
+			result = &pathnameScan[1];
+			break;
+		}
+	}
+	
+	return result;
+}
+
+const wchar_t* LastPathItem(const wchar_t *pathname, size_t end_length)
+{
+	if (!pathname) {
+		return 0;
+	}
+	
+	const wchar_t *result = pathname;
+	size_t pathnameLen = end_length != EOF ? end_length : wcslen(pathname);
+	
+	// skip the last normal char and null sentinel
+	// (since we don't want to break on a folder path ending with a slash).
+	for (const wchar_t *pathnameScan = &pathname[pathnameLen - 2]; pathnameScan >= pathname; pathnameScan--) {
+		if (*pathnameScan == '/' || *pathnameScan == '\\') {
+			result = &pathnameScan[1];
+			break;
+		}
+	}
+	
+	return result;
+}
+
+// Can handle forward or back slash combined paths.
+const char* FilenameFromPathname(const char *pathname)
+{
+	if (!pathname) {
+		return 0;
+	}
+	
+	const char *result = pathname;
+	size_t pathnameLen = strlen(pathname);
+	
+	// skip the null sentinel
+	for (const char *pathnameScan = &pathname[pathnameLen - 1]; pathnameScan > pathname; pathnameScan--) {
+		if (*pathnameScan == '/' || *pathnameScan == '\\') {
+			result = &pathnameScan[1];
+			break;
+		}
+	}
+	
+	return result;
+}
+
+// Can handle forward or back slash combined paths.
+const wchar_t* FilenameFromPathname(const wchar_t *pathname)
+{
+	if (!pathname) {
+		return 0;
+	}
+	
+	const wchar_t *result = pathname;
+	size_t pathnameLen = wcslen(pathname);
+	
+	// skip the null sentinel
+	for (const wchar_t *pathnameScan = &pathname[pathnameLen - 1]; pathnameScan > pathname; pathnameScan--) {
+		if (*pathnameScan == '/' || *pathnameScan == '\\') {
+			result = &pathnameScan[1];
+			break;
+		}
+	}
+	
+	return result;
+}
+
+// new'ly[] allocates a string with just the path not including the filename.
+char* PathFromFilename(const char *filename_path)
+{
+	const char *filename = FilenameFromPathname(filename_path);
+	if (!filename) {
+		return 0;
+	}
+	
+	size_t pathLen = ((size_t)filename - (size_t)filename_path) / sizeof(char);
+	char *path = new char[pathLen + 1];
+	memcpy(path, filename_path, pathLen * sizeof(char));
+	path[pathLen] = 0;
+	
+	return path;
+}
+
+// new'ly[] allocates a string with just the path not including the filename.
+wchar_t* PathFromFilename(const wchar_t *filename_path)
+{
+	const wchar_t *filename = FilenameFromPathname(filename_path);
+	if (!filename) {
+		return 0;
+	}
+
+	size_t pathLen = ((size_t)filename - (size_t)filename_path) / sizeof(wchar_t);
+	wchar_t *path = new wchar_t[pathLen + 1];
+	memcpy(path, filename_path, pathLen * sizeof(wchar_t));
+	path[pathLen] = 0;
+
+	return path;
+}
+
+// new'ly[] allocates a string with just the path not including the filename.
+wchar_t* GetParentPath(const wchar_t *path)
+{
+	const wchar_t *lastItem = LastPathItem(path);
+	if (!lastItem) {
+		return 0;
+	}
+
+	size_t parentPathLen = ((size_t)lastItem - (size_t)path) / sizeof(wchar_t);
+	wchar_t *parentPath = new wchar_t[parentPathLen + 1];
+	memcpy(parentPath, path, parentPathLen * sizeof(wchar_t));
+	parentPath[parentPathLen] = 0;
+
+	return parentPath;
+}
+
+// Find the number of chars that are the same between the primary and secondary string (does not include end sentinel).
+// If identical then { result == strlen(primary) }.
+size_t StrSameChrFor(const char *primary, const char *secondary)
+{
+	if (!primary || !secondary) {
+		return 0;
+	}
+	
+	for (size_t i = 0; true; i++) {
+		if (primary[i] != secondary[i]
+			|| primary[i] == 0
+			|| primary[i] == EOF
+			|| secondary[i] == 0
+			|| secondary[i] == EOF
+		) {
+			return i;
+		}
+	}
+	
+	return 0;
+}
+
+// Find the number of chars that are the same between the primary and secondary string (does not include end sentinel).
+// If identical then { result == strlen(primary) }.
+size_t StrSameChrFor(const wchar_t *primary, const wchar_t *secondary)
+{
+	if (!primary || !secondary) {
+		return 0;
+	}
+	
+	for (size_t i = 0; true; i++) {
+		if (primary[i] != secondary[i]
+			|| primary[i] == 0
+			|| primary[i] == EOF
+			|| secondary[i] == 0
+			|| secondary[i] == EOF
+		) {
+			return i;
+		}
+	}
+	
+	return 0;
+}
+
+// Same as StrSameChrFor except it only checks for whole path items (whole matching directories and ending file).
+size_t StrSamePathFor(const char *primary, const char *secondary)
+{
+	if (!primary || !secondary) {
+		return 0;
+	}
+	
+	size_t i = 0;
+	
+	// Search for first difference or end of string.
+	while (1) {
+		if (primary[i] != secondary[i]
+			|| primary[i] == 0
+			|| primary[i] == EOF
+			|| secondary[i] == 0
+			|| secondary[i] == EOF
+		) {
+			break;
+		}
+		i++;
+	}
+	
+	if (i != 0 && (primary[i] != 0 || secondary[i] != 0)) {
+		// Go back if this is not the same path item.
+		while (1) {
+			if (primary[i] == '/' || primary[i] == '\\') {
+				i++;
+				break;
+			}
+			if (i == 0) {
+				break;
+			}
+			i--;
+		}
+	}
+	
+	return i;
+}
+
+// Same as StrSameChrFor except it only checks for whole path items (whole matching directories and ending file).
+size_t StrSamePathFor(const wchar_t *primary, const wchar_t *secondary)
+{
+	if (!primary || !secondary) {
+		return 0;
+	}
+	
+	size_t i = 0;
+	
+	// Search for first difference or end of string.
+	while (1) {
+		if (primary[i] != secondary[i]
+			|| primary[i] == 0
+			|| primary[i] == EOF
+			|| secondary[i] == 0
+			|| secondary[i] == EOF
+		) {
+			break;
+		}
+		i++;
+	}
+	
+	if (i != 0 && (primary[i] != 0 || secondary[i] != 0)) {
+		// Go back if this is not the same path item.
+		while (1) {
+			if (primary[i] == '/' || primary[i] == '\\') {
+				i++;
+				break;
+			}
+			if (i == 0) {
+				break;
+			}
+			i--;
+		}
+	}
+	
+	return i;
+}
+
+size_t LenOfFirstPathItem(const char *pathname)
+{
+	size_t result = 0;
+	char chr;
+	while (1) {
+		chr = pathname[result];
+		if (chr == 0) {
+			break;
+		}
+		result++;
+		if (chr == '/' || chr == '\\') {
+			break;
+		}
+	}
+	return result;
+}
+
+size_t LenOfFirstPathItem(const wchar_t *pathname)
+{
+	size_t result = 0;
+	wchar_t chr;
+	while (1) {
+		chr = pathname[result];
+		if (chr == 0) {
+			break;
+		}
+		result++;
+		if (chr == '/' || chr == '\\') {
+			break;
+		}
+	}
+	return result;
+}
+
+// new'ly[] allocates a string for the end item found before the end_position.
+char* GetItemBeforeLastPos(const char *full_pathname, const char *&end_position)
+{
+	if (full_pathname == 0 || (end_position != 0 && end_position <= full_pathname)) {
+		return 0;
+	}
+	if (end_position == 0) {
+		end_position = full_pathname + strlen(full_pathname);
+	}
+	
+	const char *start_position = LastPathItem(full_pathname, end_position - full_pathname);
+
+	size_t resultLen = ((size_t)end_position - (size_t)start_position) / sizeof(char);
+	char *result = new char[resultLen + 1];
+	memcpy(result, start_position, resultLen * sizeof(char));
+	result[resultLen] = 0;
+	
+	end_position = start_position;
+	
+	return result;
+}
+
+// new'ly[] allocates a string for the end item found before the end_position.
+wchar_t* GetItemBeforeLastPos(const wchar_t *full_pathname, const wchar_t *&end_position)
+{
+	if (full_pathname == 0 || (end_position != 0 && end_position <= full_pathname)) {
+		return 0;
+	}
+	if (end_position == 0) {
+		end_position = full_pathname + wcslen(full_pathname);
+	}
+	
+	const wchar_t *start_position = LastPathItem(full_pathname, end_position - full_pathname);
+	
+	size_t resultLen = ((size_t)end_position - (size_t)start_position) / sizeof(wchar_t);
+	wchar_t *result = new wchar_t[resultLen + 1];
+	memcpy(result, start_position, resultLen * sizeof(wchar_t));
+	result[resultLen] = 0;
+	
+	end_position = start_position;
+	
+	return result;
+}
+
+bool EndsWith(const char *str, const char *suffix)
+{
+	if (!str || !suffix) {
+		return false;
+	}
+	size_t lenstr = strlen(str);
+	size_t lensuffix = strlen(suffix);
+	if (lensuffix > lenstr) {
+		return false;
+	}
+	return strncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
+}
+
+bool EndsWith(const wchar_t *str, const wchar_t *suffix)
+{
+	if (!str || !suffix) {
+		return false;
+	}
+	size_t lenstr = wcslen(str);
+	size_t lensuffix = wcslen(suffix);
+	if (lensuffix > lenstr) {
+		return false;
+	}
+	return wcsncmp(str + lenstr - lensuffix, suffix, lensuffix) == 0;
+}
+
+uint32_t EnsureDirectoryExists(const wchar_t *path)
+{
+	int32_t resultMkdir = _wmkdir(path);
+	uint32_t errorMkdir = GetLastError();
+	if (resultMkdir == 0 || errorMkdir == ERROR_ALREADY_EXISTS) {
+		return ERROR_SUCCESS;
+	}
+	if (errorMkdir == ERROR_PATH_NOT_FOUND) {
+		wchar_t *parentPath = GetParentPath(path);
+		uint32_t resultNested = EnsureDirectoryExists(parentPath);
+		delete[] parentPath;
+		if (resultNested == ERROR_SUCCESS) {
+			// Try again now that the parent path exists.
+			return EnsureDirectoryExists(path);
+		}
+		return resultNested;
+	}
+	return errorMkdir;
 }

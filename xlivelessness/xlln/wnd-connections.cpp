@@ -4,6 +4,7 @@
 #include "./wnd-sockets.hpp"
 #include "./xlln.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/util-socket.hpp"
 #include "../xlive/xsocket.hpp"
 #include "../xlive/net-entity.hpp"
 #include <stdint.h>
@@ -214,14 +215,14 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 	return ERROR_SUCCESS;
 }
 
-HRESULT InitXllnWndConnections()
+uint32_t InitXllnWndConnections()
 {
 	CreateThread(0, NULL, ThreadProc, (LPVOID)xlln_hModule, NULL, NULL);
 
 	return ERROR_SUCCESS;
 }
 
-HRESULT UninitXllnWndConnections()
+uint32_t UninitXllnWndConnections()
 {
 	return ERROR_SUCCESS;
 }

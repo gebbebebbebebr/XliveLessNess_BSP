@@ -3,11 +3,15 @@
 #include "debug-text.hpp"
 #include "../utils/utils.hpp"
 #include "../xlln/xlln.hpp"
+#include "../xlln/xlln-config.hpp"
 #include <string>
 #include <stdint.h>
+#include <vector>
 
 static bool initialised_debug_log = false;
 CRITICAL_SECTION xlln_critsec_debug_log;
+
+uint32_t xlln_debuglog_level = XLLN_LOG_CONTEXT_MASK | XLLN_LOG_LEVEL_MASK;
 
 // for the on screen debug log.
 static char** DebugStr;
@@ -188,8 +192,124 @@ void FUNC_STUB2(const char* func)
 	XllnDebugBreak(errMsg);
 }
 
-INT InitDebugLog(DWORD dwInstanceId)
+// #41143
+DWORD WINAPI XLLNDebugLog(DWORD logLevel, const char *message)
 {
+	addDebugText(message);
+	return ERROR_SUCCESS;
+}
+
+/*
+std::string formattestthing(const char *const format, ...)
+{
+	auto temp = std::vector<char>{};
+	auto length = std::size_t{ 2 };
+	va_list args;
+	while (temp.size() <= length)
+	{
+		temp.resize(length + 1);
+		va_start(args, format);
+		const auto status = std::vsnprintf(temp.data(), temp.size(), format, args);
+		va_end(args);
+		if (status < 0)
+			throw std::runtime_error{ "string formatting error" };
+		length = static_cast<std::size_t>(status);
+	}
+	return std::string{ temp.data(), length };
+}
+
+// #41144
+DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
+{
+	va_list args;
+	va_start(args, format);
+	va_list args2;
+	va_copy(args2, args);
+	std::string message = formattestthing(format, args2);
+	va_end(args);
+	addDebugText(message.c_str());
+	return ERROR_SUCCESS;
+}
+*/
+
+// #41144
+DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...)
+{
+	if (!(logLevel & xlln_debuglog_level & XLLN_LOG_CONTEXT_MASK) || !(logLevel & xlln_debuglog_level & XLLN_LOG_LEVEL_MASK)) {
+		return ERROR_SUCCESS;
+	}
+
+	auto temp = std::vector<char>{};
+	auto length = std::size_t{ 63 };
+	va_list args;
+	while (temp.size() <= length) {
+		temp.resize(length + 1);
+		va_start(args, format);
+		const auto status = std::vsnprintf(temp.data(), temp.size(), format, args);
+		va_end(args);
+		if (status < 0) {
+			// string formatting error.
+			return ERROR_INVALID_PARAMETER;
+		}
+		length = static_cast<std::size_t>(status);
+	}
+	addDebugText(std::string{ temp.data(), length }.c_str());
+	return ERROR_SUCCESS;
+}
+
+uint32_t __stdcall XLLNDebugLogECodeF(uint32_t logLevel, uint32_t error_code, const char *const format, ...)
+{
+	if (!(logLevel & xlln_debuglog_level & XLLN_LOG_CONTEXT_MASK) || !(logLevel & xlln_debuglog_level & XLLN_LOG_LEVEL_MASK)) {
+		return ERROR_SUCCESS;
+	}
+
+	auto temp = std::vector<char>{};
+	auto length = std::size_t{ 63 };
+	va_list args;
+	while (temp.size() <= length) {
+		temp.resize(length + 1);
+		va_start(args, format);
+		const auto status = std::vsnprintf(temp.data(), temp.size(), format, args);
+		va_end(args);
+		if (status < 0) {
+			// string formatting error.
+			return ERROR_INVALID_PARAMETER;
+		}
+		length = static_cast<std::size_t>(status);
+	}
+
+	TCHAR *msgBuf = NULL;
+	if (FormatMessageW(
+			FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS | FORMAT_MESSAGE_MAX_WIDTH_MASK
+			, NULL
+			, error_code
+			, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT)
+			, (LPTSTR)&msgBuf
+			, 0
+			, NULL
+		)
+	) {
+		wchar_t *logMessage = FormMallocString(L"%hs (0x%08x, %s).", std::string{ temp.data(), length }.c_str(), error_code, msgBuf);
+		LocalFree(msgBuf);
+		addDebugText(logMessage);
+		free(logMessage);
+	}
+	else {
+		char *logMessage = FormMallocString("%s (0x%08x).", std::string{ temp.data(), length }.c_str(), error_code);
+		addDebugText(logMessage);
+		free(logMessage);
+	}
+
+	return ERROR_SUCCESS;
+}
+
+uint32_t InitDebugLog()
+{
+	if (!xlln_file_config_path) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_ERROR, "XLLN Config is not set so the log directory cannot be determined.");
+		return ERROR_FUNCTION_FAILED;
+	}
+
 	blacklist_len_max = 50;
 	blacklist = (char**)malloc(sizeof(char*) * blacklist_len_max);
 
@@ -197,21 +317,32 @@ INT InitDebugLog(DWORD dwInstanceId)
 	for (int i = 0; i < DebugTextArrayLenMax; i++) {
 		DebugStr[i] = (char*)calloc(1, sizeof(char));
 	}
-	wchar_t debug_file_path[1024];
-	swprintf(debug_file_path, 1024, L"%wsxlln_debug_%d.log", L"./", dwInstanceId);
-	debugFile = _wfopen(debug_file_path, L"w");
-	char debug_file_path_log[1034];
-	sprintf(debug_file_path_log, "PATH: %ws", debug_file_path);
-	initialised_debug_log = true;
-	addDebugText(debug_file_path_log);
-	addDebugText("Initialised Debug Logger.");
+	wchar_t *configPath = PathFromFilename(xlln_file_config_path);
+	wchar_t *debugLogPath = FormMallocString(L"%slogs/", configPath);
+	delete[] configPath;
+	uint32_t errorMkdir = EnsureDirectoryExists(debugLogPath);
+	if (errorMkdir) {
+		XLLN_DEBUG_LOG_ECODE(errorMkdir, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "EnsureDirectoryExists(...) error on path \"%ls\".", debugLogPath);
+	}
+	wchar_t *debugLogFilePath = FormMallocString(L"%sxlln-debug-%u.log", debugLogPath, xlln_local_instance_id);
+	free(debugLogPath);
+	debugFile = _wfopen(debugLogFilePath, L"w");
+	if (debugFile) {
+		initialised_debug_log = true;
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO, "Initialised config: \"%ls\".", debugLogFilePath);
+	}
+	else {
+		initialised_debug_log = false;
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "Failed to initialise config: \"%ls\".", debugLogFilePath);
+	}
+	free(debugLogFilePath);
 
-	return S_OK;
+	return ERROR_SUCCESS;
 }
 
-INT UninitDebugLog()
+uint32_t UninitDebugLog()
 {
 	initialised_debug_log = false;
 
-	return S_OK;
+	return ERROR_SUCCESS;
 }

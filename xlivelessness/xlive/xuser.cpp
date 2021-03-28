@@ -1,36 +1,15 @@
+#include <winsock2.h>
 #include "xdefs.hpp"
 #include "xuser.hpp"
 #include "xlive.hpp"
 #include "xsession.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../xlln/xlln.hpp"
+#include "../utils/utils.hpp"
 #include <stdio.h>
 
 CRITICAL_SECTION xlive_xuser_achievement_enumerators_lock;
 std::map<HANDLE, std::vector<uint32_t>> xlive_xuser_achievement_enumerators;
-
-//TODO move to a utils file.
-void EnsureDirectoryExists(wchar_t* path) {
-	int buflen = wcslen(path) + 1;
-	wchar_t* path2 = (wchar_t*)malloc(sizeof(wchar_t) * buflen);
-	memcpy(path2, path, sizeof(wchar_t) * buflen);
-
-	for (int i = 1; i < buflen; i++) {
-		if (path2[i] == L'/' || path2[i] == L'\\') {
-			wchar_t temp_cut = 0;
-			if (path2[i + 1] != 0) {
-				temp_cut = path2[i + 1];
-				path2[i + 1] = 0;
-			}
-			BOOL err_create = CreateDirectoryW(path2, NULL);
-			if (temp_cut) {
-				path2[i + 1] = temp_cut;
-			}
-		}
-	}
-
-	free(path2);
-}
 
 BOOL XLivepIsPropertyIdValid(DWORD dwPropertyId, BOOL a2)
 {

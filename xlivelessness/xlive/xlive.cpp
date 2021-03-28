@@ -91,6 +91,11 @@ INT RefreshNetworkAdapters()
 		// 3 attempts max.
 	} while ((dwRetVal == ERROR_BUFFER_OVERFLOW) && (Iterations < 3));
 
+	if (dwRetVal != NO_ERROR && dwRetVal != ERROR_NO_DATA) {
+		result = ERROR_UNIDENTIFIED_ERROR;
+		XLLN_DEBUG_LOG_ECODE(dwRetVal, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s GetAdaptersAddresses(AF_INET, ...) failed with error:", __func__);
+	}
+
 	{
 		EnterCriticalSection(&xlive_critsec_network_adapter);
 
@@ -199,36 +204,6 @@ INT RefreshNetworkAdapters()
 			else {
 				result = ERROR_NETWORK_UNREACHABLE;
 			}
-		}
-		else {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s GetAdaptersAddresses failed with error: 0x%08x."
-				, __func__
-				, dwRetVal
-			);
-			if (dwRetVal == ERROR_NO_DATA) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s No addresses were found for the requested parameters.", __func__);
-			}
-			else {
-				LPSTR lpMsgBuf = NULL;
-				if (FormatMessageA(
-					FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS
-					, NULL
-					, dwRetVal
-					, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT)
-					, (LPSTR)&lpMsgBuf // Default language
-					, 0
-					, NULL
-				)) {
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "%s GetAdaptersAddresses error: %s."
-						, __func__
-						, lpMsgBuf
-					);
-					LocalFree(lpMsgBuf);
-				}
-			}
-			result = ERROR_UNIDENTIFIED_ERROR;
 		}
 
 		if (!xlive_network_adapter) {
@@ -519,10 +494,10 @@ VOID WINAPI XLiveUninitialize()
 {
 	TRACE_FX();
 
-	INT error_XSession = UninitXSession();
-	INT error_XRender = UninitXRender();
-	INT error_NetEntity = UninitNetEntity();
-	INT error_XSocket = UninitXSocket();
+	INT errorXSession = UninitXSession();
+	INT errorXRender = UninitXRender();
+	INT errorNetEntity = UninitNetEntity();
+	INT errorXSocket = UninitXSocket();
 }
 
 // #5005
@@ -1359,7 +1334,7 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 		xlive_init_preferred_network_adapter_name = CloneString(pPii->pszAdapterName);
 	}
 
-	INT error_network_adapter = RefreshNetworkAdapters();
+	INT errorNetworkAdapter = RefreshNetworkAdapters();
 
 	LeaveCriticalSection(&xlive_critsec_network_adapter);
 
@@ -1378,7 +1353,7 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 				xlive_base_port = 1000;
 				break;
 			}
-			swprintf(mutex_name, 40, L"Global\\XLLNBasePort#%hu", xlive_base_port);
+			swprintf(mutex_name, 40, L"Global\\XLiveLessNessBasePort#%hu", xlive_base_port);
 			mutex = CreateMutexW(0, TRUE, mutex_name);
 			mutex_last_error = GetLastError();
 		} while (mutex_last_error != ERROR_SUCCESS);
@@ -1389,12 +1364,12 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 		);
 	}
 
-	INT error_XSocket = InitXSocket();
+	INT errorXSocket = InitXSocket();
 	CreateLocalUser();
-	INT error_NetEntity = InitNetEntity();
+	INT errorNetEntity = InitNetEntity();
 	//TODO If the title's graphics system has not yet been initialized, D3D will be passed in XLiveOnCreateDevice(...).
-	INT error_XRender = InitXRender(pPii);
-	INT error_XSession = InitXSession();
+	INT errorXRender = InitXRender(pPii);
+	INT errorXSession = InitXSession();
 
 	xlive_initialised = TRUE;
 	return S_OK;

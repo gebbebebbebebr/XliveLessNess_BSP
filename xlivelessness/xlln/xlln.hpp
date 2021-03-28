@@ -41,20 +41,13 @@
 #define MYMENU_NETWORK_ADAPTER_SEPARATOR		(WM_APP + 169)
 #define MYMENU_NETWORK_ADAPTERS					(WM_APP + 170)
 
-#ifdef _DEBUG
-#define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
-#define GET_SOCKADDR_INFO(sockAddrStorage) GetSockAddrInfo(sockAddrStorage)
-#else
-#define XLLN_DEBUG_LOG(logLevel, format, ...)
-#define GET_SOCKADDR_INFO(sockAddrStorage) NULL
-#endif
-
 DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
 DWORD WINAPI XLLNLogout(DWORD dwUserIndex);
-DWORD WINAPI XLLNDebugLogF(DWORD logLevel, const char *const format, ...);
-INT InitXLLN(HMODULE hModule);
-INT UninitXLLN();
-INT ShowXLLN(DWORD dwShowType);
+void InitCriticalSections();
+void UninitCriticalSections();
+bool InitXLLN(HMODULE hModule);
+bool UninitXLLN();
+uint32_t ShowXLLN(DWORD dwShowType);
 void UpdateUserInputBoxes(DWORD dwUserIndex);
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
 
@@ -63,33 +56,9 @@ int CreateItem(HWND hwndListView, int iItem);
 
 extern HINSTANCE xlln_hModule;
 extern HWND xlln_window_hwnd;
+extern uint32_t xlln_local_instance_id;
 extern HMENU hMenu_network_adapters;
 extern BOOL xlln_debug;
-extern uint32_t xlln_debuglog_level;
-
-#define XLLN_LOG_LEVEL_MASK		0b00111111
-// Function call tracing.
-#define XLLN_LOG_LEVEL_TRACE	0b00000001
-// Function, variable and operation logging.
-#define XLLN_LOG_LEVEL_DEBUG	0b00000010
-// Generally useful information to log (service start/stop, configuration assumptions, etc).
-#define XLLN_LOG_LEVEL_INFO		0b00000100
-// Anything that can potentially cause application oddities, but is being handled adequately.
-#define XLLN_LOG_LEVEL_WARN		0b00001000
-// Any error which is fatal to the operation, but not the service or application (can't open a required file, missing data, etc.).
-#define XLLN_LOG_LEVEL_ERROR	0b00010000
-// Errors that will terminate the application.
-#define XLLN_LOG_LEVEL_FATAL	0b00100000
-
-#define XLLN_LOG_CONTEXT_MASK			(0b10000111 << 8)
-// Logs related to Xlive functionality.
-#define XLLN_LOG_CONTEXT_XLIVE			(0b00000001 << 8)
-// Logs related to XLiveLessNess functionality.
-#define XLLN_LOG_CONTEXT_XLIVELESSNESS	(0b00000010 << 8)
-// Logs related to XLLN-Module functionality.
-#define XLLN_LOG_CONTEXT_XLLN_MODULE	(0b00000100 << 8)
-// Logs related to functionality from other areas of the application.
-#define XLLN_LOG_CONTEXT_OTHER			(0b10000000 << 8)
 
 namespace XLLNModifyPropertyTypes {
 	const char* const TypeNames[]{
@@ -120,7 +89,3 @@ typedef DWORD(WINAPI *tXLLNLogin)(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dw
 typedef DWORD(WINAPI *tXLLNLogout)(DWORD dwUserIndex);
 // #41142
 typedef DWORD(WINAPI *tXLLNModifyProperty)(XLLNModifyPropertyTypes::TYPE propertyId, DWORD *newValue, DWORD *oldValue);
-// #41143
-typedef DWORD(WINAPI *tXLLNDebugLog)(DWORD logLevel, const char *message);
-// #41144
-typedef DWORD(WINAPI *tXLLNDebugLogF)(DWORD logLevel, const char *const format, ...);

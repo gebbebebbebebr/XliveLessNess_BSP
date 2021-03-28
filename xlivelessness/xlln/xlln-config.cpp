@@ -14,8 +14,10 @@
 // Link with iphlpapi.lib
 #include <iphlpapi.h>
 
-const char XllnConfigHeader[] = "XLLN-Config-Version";
-const char XllnConfigVersion[] = DLL_VERSION_STR;
+wchar_t *xlln_file_config_path = 0;
+
+static const char XllnConfigHeader[] = "XLLN-Config-Version";
+static const char XllnConfigVersion[] = DLL_VERSION_STR;
 
 typedef struct {
 	bool keepInvalidLines = false;
@@ -272,13 +274,13 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 	return 0;
 }
 
-HRESULT SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT *configContext)
+static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT *configContext)
 {
 	FILE* fileConfig = 0;
 
-	errno_t err = _wfopen_s(&fileConfig, file_config_path, L"wb");
+	uint32_t err = _wfopen_s(&fileConfig, file_config_path, L"wb");
 	if (err) {
-		return E_HANDLE;
+		return err;
 	}
 
 #define WriteText(text) fputs(text, fileConfig)
@@ -407,52 +409,172 @@ HRESULT SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT
 
 	fclose(fileConfig);
 
-	return S_OK;
-}
-
-HRESULT XllnConfig(const wchar_t *file_config_path, bool saveConfig)
-{
-	FILE* fileConfig = 0;
-
-	errno_t err = _wfopen_s(&fileConfig, file_config_path, L"rb");
-	if (err) {
-		return SaveXllnConfig(file_config_path, 0);
-	}
-
-	INTERPRET_CONFIG_CONTEXT interpretationContext;
-	interpretationContext.keepInvalidLines = saveConfig;
-	interpretationContext.saveValuesRead = !saveConfig;
-
-	ReadIniFile(fileConfig, true, XllnConfigHeader, XllnConfigVersion, interpretConfigSetting, (void*)&interpretationContext);
-
-	for (char *&readSettingName : interpretationContext.readSettings) {
-		delete[] readSettingName;
-	}
-
-	fclose(fileConfig);
-
-	if (saveConfig) {
-		SaveXllnConfig(file_config_path, &interpretationContext);
-
-		for (char *&badEntry : interpretationContext.badConfigEntries) {
-			delete[] badEntry;
-		}
-		for (char *&otherEntry : interpretationContext.otherConfigHeaderEntries) {
-			delete[] otherEntry;
-		}
-	}
-
-	return S_OK;
-}
-
-HRESULT InitXllnConfig(int local_instance_num)
-{
-	XllnConfig(L"./xlln/xlln-config.ini", false);
 	return ERROR_SUCCESS;
 }
 
-HRESULT UninitXllnConfig()
+static uint32_t XllnConfig(bool save_config)
 {
-	XllnConfig(L"./xlln/xlln-config.ini", true);
+	// Always read the/a config file before saving.
+	uint32_t result = ERROR_FUNCTION_FAILED;
+	errno_t errorFopen = ERROR_SUCCESS;
+	FILE* fileConfig = 0;
+
+	if (xlln_file_config_path) {
+		errorFopen = _wfopen_s(&fileConfig, xlln_file_config_path, L"rb");
+		if (!fileConfig) {
+			if (errorFopen == ENOENT) {
+				result = ERROR_FILE_NOT_FOUND;
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Config file not found: \"%ls\".", xlln_file_config_path);
+			}
+			else {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Config file read error: %d, \"%ls\".", errorFopen, xlln_file_config_path);
+				return ERROR_FUNCTION_FAILED;
+			}
+		}
+	}
+
+	wchar_t *configAutoPath = 0;
+	wchar_t *configAutoFallbackPath1 = 0;
+	wchar_t *configAutoFallbackPath2 = 0;
+	if (!fileConfig && !xlln_file_config_path) {
+		wchar_t* appdataPath = 0;
+		errno_t errorEnvVar = _wdupenv_s(&appdataPath, NULL, L"LOCALAPPDATA");
+		if (errorEnvVar) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "%LOCALAPPDATA% path unable to be resolved with error: %d.", errorEnvVar);
+		}
+
+		for (uint32_t searchInstanceId = xlln_local_instance_id; searchInstanceId != 0; searchInstanceId--) {
+			bool appdataDirectory = false;
+			do {
+				if (configAutoPath) {
+					free(configAutoPath);
+				}
+				if (appdataDirectory) {
+					configAutoPath = FormMallocString(L"%s/XLiveLessNess/xlln-config-%u.ini", appdataPath, searchInstanceId);
+					if (!configAutoFallbackPath1) {
+						configAutoFallbackPath1 = CloneString(configAutoPath);
+					}
+				}
+				else {
+					configAutoPath = FormMallocString(L"./XLiveLessNess/xlln-config-%u.ini", searchInstanceId);
+					if (!configAutoFallbackPath2) {
+						configAutoFallbackPath2 = CloneString(configAutoPath);
+					}
+				}
+				errorFopen = _wfopen_s(&fileConfig, configAutoPath, L"rb");
+				if (fileConfig) {
+					searchInstanceId = 0;
+					break;
+				}
+				if (errorFopen == ENOENT) {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file not found: \"%ls\".", configAutoPath);
+				}
+				else {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file read error: %d, \"%ls\".", errorFopen, configAutoPath);
+				}
+			} while (!errorEnvVar && (appdataDirectory = !appdataDirectory));
+			if (searchInstanceId == 0) {
+				break;
+			}
+		}
+
+		if (appdataPath) {
+			free(appdataPath);
+		}
+	}
+
+	INTERPRET_CONFIG_CONTEXT *interpretationContext = 0;
+	if (fileConfig) {
+		interpretationContext = new INTERPRET_CONFIG_CONTEXT;
+		interpretationContext->keepInvalidLines = true;
+		interpretationContext->saveValuesRead = !save_config;
+
+		ReadIniFile(fileConfig, true, XllnConfigHeader, XllnConfigVersion, interpretConfigSetting, (void*)interpretationContext);
+
+		for (char *&readSettingName : interpretationContext->readSettings) {
+			delete[] readSettingName;
+		}
+		interpretationContext->readSettings.clear();
+
+		fclose(fileConfig);
+		fileConfig = 0;
+	}
+
+	if (configAutoPath) {
+		free(configAutoPath);
+		configAutoPath = 0;
+	}
+
+	for (uint8_t i = 0; i < 2; i++) {
+		wchar_t *saveToConfigFilePath = 0;
+		if (xlln_file_config_path) {
+			saveToConfigFilePath = xlln_file_config_path;
+			i = 2;
+		}
+		else if (i == 0) {
+			saveToConfigFilePath = configAutoFallbackPath1;
+		}
+		else if (i == 1) {
+			saveToConfigFilePath = configAutoFallbackPath2;
+		}
+
+		if (saveToConfigFilePath) {
+			wchar_t *saveToConfigPath = PathFromFilename(saveToConfigFilePath);
+			uint32_t errorMkdir = EnsureDirectoryExists(saveToConfigPath);
+			delete[] saveToConfigPath;
+			if (errorMkdir) {
+				result = ERROR_DIRECTORY;
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "EnsureDirectoryExists(...) error: %u, \"%ls\".", errorMkdir, saveToConfigFilePath);
+				break;
+			}
+			else {
+				uint32_t errorSaveConfig = SaveXllnConfig(saveToConfigFilePath, interpretationContext);
+				if (errorSaveConfig) {
+					result = errorSaveConfig;
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "SaveXllnConfig(...) error: %u, \"%ls\".", errorSaveConfig, saveToConfigFilePath);
+				}
+				else {
+					result = ERROR_SUCCESS;
+					if (!xlln_file_config_path) {
+						xlln_file_config_path = CloneString(saveToConfigFilePath);
+					}
+				}
+				break;
+			}
+		}
+	}
+	
+	if (configAutoFallbackPath1) {
+		delete[] configAutoFallbackPath1;
+		configAutoFallbackPath1 = 0;
+	}
+	if (configAutoFallbackPath2) {
+		delete[] configAutoFallbackPath2;
+		configAutoFallbackPath2 = 0;
+	}
+
+	if (interpretationContext) {
+		for (char *&badEntry : interpretationContext->badConfigEntries) {
+			delete[] badEntry;
+		}
+		interpretationContext->badConfigEntries.clear();
+		for (char *&otherEntry : interpretationContext->otherConfigHeaderEntries) {
+			delete[] otherEntry;
+		}
+		interpretationContext->otherConfigHeaderEntries.clear();
+	}
+
+	return result;
+}
+
+uint32_t InitXllnConfig()
+{
+	XllnConfig(false);
+	return ERROR_SUCCESS;
+}
+
+uint32_t UninitXllnConfig()
+{
+	XllnConfig(true);
 	return ERROR_SUCCESS;
 }

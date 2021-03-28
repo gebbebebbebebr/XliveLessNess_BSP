@@ -9,6 +9,7 @@
 #include "xlocator.hpp"
 #include "net-entity.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/util-socket.hpp"
 #include <ctime>
 #include <WS2tcpip.h>
 
@@ -369,12 +370,12 @@ SOCKET WINAPI XSocketBind(SOCKET s, const struct sockaddr *name, int namelen)
 			}
 		}
 		else {
-			INT error_getsockname = WSAGetLastError();
+			INT errorGetsockname = WSAGetLastError();
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 				, "Socket 0x%08x bind port mapped from %hu to unknown address from getsockname with error 0x%08x."
 				, s
 				, portHBO
-				, error_getsockname
+				, errorGetsockname
 			);
 		}
 

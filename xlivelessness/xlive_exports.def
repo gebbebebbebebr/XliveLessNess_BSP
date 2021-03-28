@@ -287,3 +287,4 @@ EXPORTS
 	XLLNModifyProperty @41142
 	XLLNDebugLog @41143
 	XLLNDebugLogF @41144
+	XLLNGetXLLNStoragePath @41145
