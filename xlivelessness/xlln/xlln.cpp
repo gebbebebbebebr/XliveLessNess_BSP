@@ -397,14 +397,17 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 	return ERROR_UNKNOWN_PROPERTY;
 }
 
-// #41145 - new'ly[] allocates result_storage_path.
-uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *result_local_instance_id, wchar_t **result_storage_path)
+// #41145
+uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *result_local_instance_id, wchar_t *result_storage_path_buffer, size_t *result_storage_path_buffer_size)
 {
-	if (!result_local_instance_id && !result_storage_path) {
+	if (!result_local_instance_id && !result_storage_path_buffer && !result_storage_path_buffer_size) {
 		return ERROR_INVALID_PARAMETER;
 	}
-	if (result_storage_path) {
-		*result_storage_path = 0;
+	if (result_storage_path_buffer && !result_storage_path_buffer_size) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (result_storage_path_buffer) {
+		result_storage_path_buffer[0] = 0;
 	}
 	if (result_local_instance_id) {
 		*result_local_instance_id = 0;
@@ -415,13 +418,28 @@ uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *resu
 	if (result_local_instance_id) {
 		*result_local_instance_id = xlln_local_instance_id;
 	}
-	if (result_storage_path) {
+	if (result_storage_path_buffer_size) {
 		wchar_t *configPath = PathFromFilename(xlln_file_config_path);
 		if (!configPath) {
+			*result_storage_path_buffer_size = 0;
 			return ERROR_PATH_NOT_FOUND;
 		}
 
-		*result_storage_path = configPath;
+		size_t configPathLen = wcslen(configPath);
+		size_t configPathBufSize = (configPathLen + 1) * sizeof(wchar_t);
+
+		if (configPathBufSize > *result_storage_path_buffer_size) {
+			*result_storage_path_buffer_size = configPathBufSize;
+			delete[] configPath;
+			return ERROR_INSUFFICIENT_BUFFER;
+		}
+		if (*result_storage_path_buffer_size == 0) {
+			*result_storage_path_buffer_size = configPathBufSize;
+		}
+		if (result_storage_path_buffer) {
+			memcpy(result_storage_path_buffer, configPath, configPathBufSize);
+		}
+		delete[] configPath;
 	}
 	return ERROR_SUCCESS;
 }
