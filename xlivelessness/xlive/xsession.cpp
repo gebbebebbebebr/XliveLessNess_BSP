@@ -47,11 +47,11 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 		return ERROR_FUNCTION_FAILED;
 	}
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if (!pqwSessionNonce) {
@@ -106,7 +106,7 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 	memset(xsessionDetails, 0, sizeof(XSESSION_LOCAL_DETAILS));
 
 	if (dwFlags & XSESSION_CREATE_HOST) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s User %d is hosting a session.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s User %u is hosting a session.", __func__, dwUserIndex);
 
 		xsessionDetails->dwUserIndexHost = dwUserIndex;
 		xsessionDetails->qwNonce = xlive_users_info[dwUserIndex]->xuid;
@@ -309,7 +309,7 @@ DWORD WINAPI XSessionLeaveLocal(HANDLE hSession, DWORD dwUserCount, const DWORD 
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (dwUserCount > XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount (%d) is greater than XLIVE_LOCAL_USER_COUNT (%d).", __func__, dwUserCount, XLIVE_LOCAL_USER_COUNT);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount (%u) is greater than XLIVE_LOCAL_USER_COUNT (%u).", __func__, dwUserCount, XLIVE_LOCAL_USER_COUNT);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!pdwUserIndexes) {
@@ -380,7 +380,7 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 
 			if (requestedSlotCountPrivate > xsessionDetails->dwAvailablePrivateSlots) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%d > %d)"
+					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%u > %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPrivate
@@ -390,7 +390,7 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 			}
 			else if (requestedSlotCountPublic > xsessionDetails->dwAvailablePublicSlots) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%d > %d)"
+					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%u > %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPublic
@@ -500,7 +500,7 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (dwUserCount > XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount (%d) is greater than XLIVE_LOCAL_USER_COUNT (%d).", __func__, dwUserCount, XLIVE_LOCAL_USER_COUNT);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwUserCount (%u) is greater than XLIVE_LOCAL_USER_COUNT (%u).", __func__, dwUserCount, XLIVE_LOCAL_USER_COUNT);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!pdwUserIndexes) {
@@ -531,7 +531,7 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 
 			if (requestedSlotCountPrivate > xsessionDetails->dwAvailablePrivateSlots) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%d > %d)"
+					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%u > %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPrivate
@@ -541,7 +541,7 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 			}
 			else if (requestedSlotCountPublic > xsessionDetails->dwAvailablePublicSlots) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%d > %d)"
+					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%u > %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPublic
@@ -587,10 +587,10 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 						xsessionDetails->pSessionMembers[iMember].xuidOnline = xlive_users_info[localUserIndex]->xuid;
 						xsessionDetails->pSessionMembers[iMember].dwUserIndex = localUserIndex;
 						if (xsessionDetails->pSessionMembers[iMember].dwFlags & XSESSION_MEMBER_FLAGS_ZOMBIE) {
-							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s Local user %d was previously in the session.", __func__, localUserIndex);
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s Local user %u was previously in the session.", __func__, localUserIndex);
 						}
 						else {
-							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Local user %d is already in the session.", __func__, localUserIndex);
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Local user %u is already in the session.", __func__, localUserIndex);
 						}
 						if (xsessionDetails->pSessionMembers[iMember].dwFlags & XSESSION_MEMBER_FLAGS_PRIVATE_SLOT) {
 							xsessionDetails->dwAvailablePrivateSlots++;

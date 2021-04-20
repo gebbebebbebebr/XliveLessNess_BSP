@@ -979,10 +979,11 @@ typedef struct _XUSER_READ_PROFILE_SETTING_RESULT {
 
 #pragma pack(push, 1) // Save then set byte alignment setting.
 typedef struct {
-	unsigned int id : 14;
-	unsigned int unknown : 2;
-	unsigned int max_length : 12;
-	unsigned int data_type : 4;
+	unsigned int id : 16;
+	//unsigned int id : 14;
+	//unsigned int unknown : 2; // These bits are not used afaik. Probably part of id. Could also be an 8 and 8 devide with some other important setting.
+	unsigned int data_size : 12; // Is the exact data size, or the max (UNICODE, BINARY).
+	unsigned int data_type : 4; // XUSER_DATA_TYPE_
 } SETTING_ID;
 #pragma pack(pop) // Return to original alignment setting.
 
@@ -1183,13 +1184,40 @@ typedef enum _XSTORAGE_FACILITY
 	XSTORAGE_FACILITY_PER_USER_TITLE = 3
 } XSTORAGE_FACILITY;
 #define XSTORAGE_FACILITY_INFO_GAME_CLIP DWORD
+#define MAX_STORAGE_RESULTS 0x100
+#define XONLINE_MAX_PATHNAME_LENGTH 255
 
 #pragma pack(push, 1) // Save then set byte alignment setting.
+
 typedef struct _XSTORAGE_DOWNLOAD_TO_MEMORY_RESULTS {
 	DWORD dwBytesTotal;
 	XUID xuidOwner;
 	FILETIME ftCreated;
 } XSTORAGE_DOWNLOAD_TO_MEMORY_RESULTS;
+
+typedef struct _XSTORAGE_FILE_INFO {
+	DWORD dwTitleID;
+	DWORD dwTitleVersion;
+	ULONGLONG qwOwnerPUID;
+	BYTE bCountryID;
+	ULONGLONG qwReserved;
+	DWORD dwContentType;
+	DWORD dwStorageSize;
+	DWORD dwInstalledSize;
+	FILETIME ftCreated;
+	FILETIME ftLastModified;
+	WORD wAttributesSize;
+	WORD cchPathName;
+	WCHAR *pwszPathName;
+	BYTE *pbAttributes;
+} XSTORAGE_FILE_INFO, *PXSTORAGE_FILE_INFO;
+
+typedef struct _XSTORAGE_ENUMERATE_RESULTS {
+	DWORD dwTotalNumItems;
+	DWORD dwNumItemsReturned;
+	XSTORAGE_FILE_INFO *pItems;
+} XSTORAGE_ENUMERATE_RESULTS;
+
 #pragma pack(pop) // Return to original alignment setting.
 
 

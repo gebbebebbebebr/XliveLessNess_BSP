@@ -1395,11 +1395,11 @@ DWORD WINAPI XStringVerify(DWORD dwFlags, const CHAR *szLocale, DWORD dwNumStrin
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (strlen(szLocale) >= XSTRING_MAX_LENGTH) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (strlen(szLocale) >= XSTRING_MAX_LENGTH) (%d >= %d).", __func__, strlen(szLocale), XSTRING_MAX_LENGTH);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (strlen(szLocale) >= XSTRING_MAX_LENGTH) (%u >= %u).", __func__, (uint32_t)strlen(szLocale), XSTRING_MAX_LENGTH);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (dwNumStrings > XSTRING_MAX_STRINGS) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwNumStrings > XSTRING_MAX_STRINGS) (%d > %d).", __func__, dwNumStrings, XSTRING_MAX_STRINGS);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwNumStrings > XSTRING_MAX_STRINGS) (%u > %u).", __func__, dwNumStrings, XSTRING_MAX_STRINGS);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!pStringData) {
@@ -1468,27 +1468,27 @@ DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, 
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if (dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) (%d >= %d).", __func__, dwFriendsToReturn, XFRIENDS_MAX_C_RESULT);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) (%u >= %u).", __func__, dwFriendsToReturn, XFRIENDS_MAX_C_RESULT);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (dwStartingIndex >= XFRIENDS_MAX_C_RESULT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex >= XFRIENDS_MAX_C_RESULT) (%d >= %d).", __func__, dwStartingIndex, XFRIENDS_MAX_C_RESULT);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex >= XFRIENDS_MAX_C_RESULT) (%u >= %u).", __func__, dwStartingIndex, XFRIENDS_MAX_C_RESULT);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (dwStartingIndex + dwFriendsToReturn < dwStartingIndex) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn < dwStartingIndex) (%d + %d >= %d).", __func__, dwStartingIndex, dwFriendsToReturn, dwStartingIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn < dwStartingIndex) (%u + %u >= %u).", __func__, dwStartingIndex, dwFriendsToReturn, dwStartingIndex);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (dwStartingIndex + dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) (%d + %d > %d).", __func__, dwStartingIndex, dwFriendsToReturn, XFRIENDS_MAX_C_RESULT);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwStartingIndex + dwFriendsToReturn > XFRIENDS_MAX_C_RESULT) (%u + %u > %u).", __func__, dwStartingIndex, dwFriendsToReturn, XFRIENDS_MAX_C_RESULT);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!pcbBuffer) {
@@ -1521,11 +1521,11 @@ DWORD WINAPI XInviteGetAcceptedInfo(DWORD dwUserIndex, XINVITE_INFO *pInfo)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if (!pInfo) {
@@ -1571,11 +1571,11 @@ DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees,
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if (!cInvitees) {
@@ -1583,7 +1583,7 @@ DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees,
 		return E_INVALIDARG;
 	}
 	if (cInvitees > 0x64) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cInvitees (%d) is greater than 0x64.", __func__, cInvitees);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cInvitees (%u) is greater than 0x64.", __func__, cInvitees);
 		return E_INVALIDARG;
 	}
 	if (!pXuidInvitees) {
@@ -1750,7 +1750,7 @@ DWORD WINAPI XLiveContentCreateEnumerator(DWORD cItems, XLIVE_CONTENT_RETRIEVAL_
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (cItems > 100) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems (%d) is greater than 100.", __func__, cItems);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems (%u) is greater than 100.", __func__, cItems);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!pcbBuffer) {
@@ -1766,15 +1766,15 @@ DWORD WINAPI XLiveContentCreateEnumerator(DWORD cItems, XLIVE_CONTENT_RETRIEVAL_
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (pContentRetrievalInfo->dwContentAPIVersion != 1) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pContentRetrievalInfo->dwContentAPIVersion (%d) is not 1.", __func__, pContentRetrievalInfo->dwContentAPIVersion);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pContentRetrievalInfo->dwContentAPIVersion (%u) is not 1.", __func__, pContentRetrievalInfo->dwContentAPIVersion);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (pContentRetrievalInfo->dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, pContentRetrievalInfo->dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, pContentRetrievalInfo->dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[pContentRetrievalInfo->dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, pContentRetrievalInfo->dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, pContentRetrievalInfo->dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if ((pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS) && (pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID)) {
@@ -1782,7 +1782,7 @@ DWORD WINAPI XLiveContentCreateEnumerator(DWORD cItems, XLIVE_CONTENT_RETRIEVAL_
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (pContentRetrievalInfo->dwContentType != XCONTENTTYPE_MARKETPLACE) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pContentRetrievalInfo->dwContentType (%d) is not XCONTENTTYPE_MARKETPLACE.", __func__, pContentRetrievalInfo->dwContentType);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pContentRetrievalInfo->dwContentType (%u) is not XCONTENTTYPE_MARKETPLACE.", __func__, pContentRetrievalInfo->dwContentType);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!(pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_CONTENT_TYPES)) {
@@ -1847,11 +1847,11 @@ DWORD WINAPI XMarketplaceCreateOfferEnumerator(DWORD dwUserIndex, DWORD dwOfferT
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if (!dwOfferType) {
@@ -1867,7 +1867,7 @@ DWORD WINAPI XMarketplaceCreateOfferEnumerator(DWORD dwUserIndex, DWORD dwOfferT
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (cItem > 0x64) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItem (%d) is greater than 0x64.", __func__, cItem);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItem (%u) is greater than 0x64.", __func__, cItem);
 		return ERROR_INVALID_PARAMETER;
 	}
 

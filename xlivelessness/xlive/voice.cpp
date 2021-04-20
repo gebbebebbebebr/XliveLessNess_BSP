@@ -27,19 +27,19 @@ INT WINAPI XHVCreateEngine(PXHV_INIT_PARAMS pParams, PHANDLE phWorkerThread, IXH
 		return E_INVALIDARG;
 	}
 	if (pParams->dwMaxLocalTalkers > XHV_MAX_LOCAL_TALKERS) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwMaxLocalTalkers (%d) is greater than %d.", __func__, pParams->dwMaxLocalTalkers, XHV_MAX_LOCAL_TALKERS);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwMaxLocalTalkers (%u) is greater than %u.", __func__, pParams->dwMaxLocalTalkers, XHV_MAX_LOCAL_TALKERS);
 		return E_INVALIDARG;
 	}
 	if (pParams->dwMaxRemoteTalkers > XHV_MAX_REMOTE_TALKERS) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwMaxRemoteTalkers (%d) is greater than %d.", __func__, pParams->dwMaxRemoteTalkers, XHV_MAX_REMOTE_TALKERS);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwMaxRemoteTalkers (%u) is greater than %u.", __func__, pParams->dwMaxRemoteTalkers, XHV_MAX_REMOTE_TALKERS);
 		return E_INVALIDARG;
 	}
 	if (pParams->dwNumLocalTalkerEnabledModes > XHV_MAX_PROCESSING_MODES) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwNumLocalTalkerEnabledModes (%d) is greater than %d.", __func__, pParams->dwNumLocalTalkerEnabledModes, XHV_MAX_PROCESSING_MODES);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwNumLocalTalkerEnabledModes (%u) is greater than %u.", __func__, pParams->dwNumLocalTalkerEnabledModes, XHV_MAX_PROCESSING_MODES);
 		return E_INVALIDARG;
 	}
 	if (pParams->dwNumRemoteTalkerEnabledModes > XHV_MAX_PROCESSING_MODES) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwNumRemoteTalkerEnabledModes (%d) is greater than %d.", __func__, pParams->dwNumRemoteTalkerEnabledModes, XHV_MAX_PROCESSING_MODES);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pParams->dwNumRemoteTalkerEnabledModes (%u) is greater than %u.", __func__, pParams->dwNumRemoteTalkerEnabledModes, XHV_MAX_PROCESSING_MODES);
 		return E_INVALIDARG;
 	}
 	if (!pParams->dwNumLocalTalkerEnabledModes) {

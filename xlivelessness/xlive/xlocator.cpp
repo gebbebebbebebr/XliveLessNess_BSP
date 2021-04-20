@@ -195,7 +195,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 {
 	DWORD buflenread = sizeof(LIVE_SERVER_DETAILS);
 	if (buflenread > buflen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread > buflen) (%d > %d).", __func__, buflenread, buflen);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread > buflen) (%u > %u).", __func__, buflenread, buflen);
 		return FALSE;
 	}
 	XLOCATOR_SEARCHRESULT* xlocator_result = new XLOCATOR_SEARCHRESULT;
@@ -225,7 +225,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 	buflenread += (sizeof(DWORD) + sizeof(BYTE)) * xlocator_result->cProperties;
 
 	if (buflenread > buflen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread > buflen) (%d > %d).", __func__, buflenread, buflen);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread > buflen) (%u > %u).", __func__, buflenread, buflen);
 		delete[] xlocator_result->pProperties;
 		delete xlocator_result;
 		return FALSE;
@@ -259,7 +259,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 			buflenread += sizeof(DWORD); //value.string.cbData
 			if (buflenread > buflen) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d (buflenread > buflen) (%d > %d)."
+					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u (buflenread > buflen) (%u > %u)."
 					, __func__
 					, i + 1
 					, xlocator_result->cProperties
@@ -274,7 +274,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 			propertiesBuf += xlocator_result->pProperties[i].value.string.cbData;
 			if (buflenread > buflen) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d (buflenread > buflen) (%d > %d)."
+					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u (buflenread > buflen) (%u > %u)."
 					, __func__
 					, i + 1
 					, xlocator_result->cProperties
@@ -285,7 +285,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 			}
 			if (xlocator_result->pProperties[i].value.string.cbData % 2) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d buflen is not a factor of 2 (%d)."
+					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u buflen is not a factor of 2 (%u)."
 					, __func__
 					, i + 1
 					, xlocator_result->cProperties
@@ -295,7 +295,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 			}
 			if (*(WCHAR*)(propertiesBuf - sizeof(WCHAR)) != 0) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %d/%d is not null terminated."
+					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u is not null terminated."
 					, __func__
 					, i + 1
 					, xlocator_result->cProperties
@@ -308,7 +308,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 			buflenread += sizeof(DWORD); //value.binary.cbData
 			if (buflenread > buflen) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_BINARY item %d/%d (buflenread > buflen) (%d > %d)."
+					, "%s XUSER_DATA_TYPE_BINARY item %u/%u (buflenread > buflen) (%u > %u)."
 					, __func__
 					, i + 1
 					, xlocator_result->cProperties
@@ -323,7 +323,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 			propertiesBuf += xlocator_result->pProperties[i].value.binary.cbData;
 			if (buflenread > buflen) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_BINARY item %d/%d (buflenread > buflen) (%d > %d)."
+					, "%s XUSER_DATA_TYPE_BINARY item %u/%u (buflenread > buflen) (%u > %u)."
 					, __func__
 					, i + 1
 					, xlocator_result->cProperties
@@ -341,7 +341,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		}
 		case XUSER_DATA_TYPE_NULL: {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s XUSER_DATA_TYPE_NULL item %d/%d."
+				, "%s XUSER_DATA_TYPE_NULL item %u/%u."
 				, __func__
 				, i + 1
 				, xlocator_result->cProperties
@@ -350,7 +350,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		}
 		default: {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s Unknown XUSER_DATA_TYPE item %d/%d."
+				, "%s Unknown XUSER_DATA_TYPE item %u/%u."
 				, __func__
 				, i + 1
 				, xlocator_result->cProperties
@@ -366,14 +366,14 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 	}
 
 	if (buflenread != buflen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread != buflen) (%d != %d).", __func__, buflenread, buflen);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread != buflen) (%u != %u).", __func__, buflenread, buflen);
 		delete[] xlocator_result->pProperties;
 		delete xlocator_result;
 		return FALSE;
 	}
 
 	if (i != xlocator_result->cProperties) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (i != xlocator_result->cProperties) (%d != %d).", __func__, i, xlocator_result->cProperties);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (i != xlocator_result->cProperties) (%u != %u).", __func__, i, xlocator_result->cProperties);
 		delete[] xlocator_result->pProperties;
 		delete xlocator_result;
 		return FALSE;
@@ -430,7 +430,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		}
 		case XUSER_DATA_TYPE_NULL: {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s XUSER_DATA_TYPE_NULL item %d/%d."
+				, "%s XUSER_DATA_TYPE_NULL item %u/%u."
 				, __func__
 				, i + 1
 				, xlocator_result->cProperties
@@ -439,7 +439,7 @@ BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWOR
 		}
 		default: {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s Unknown XUSER_DATA_TYPE item %d/%d."
+				, "%s Unknown XUSER_DATA_TYPE item %u/%u."
 				, __func__
 				, i + 1
 				, xlocator_result->cProperties
@@ -914,11 +914,11 @@ HRESULT WINAPI XLocatorServerAdvertise(
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return E_INVALIDARG;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return E_INVALIDARG;
 	}
 	if (dwServerType > INT_MAX) {
@@ -930,11 +930,11 @@ HRESULT WINAPI XLocatorServerAdvertise(
 		return E_INVALIDARG;
 	}
 	if (dwMaxPublicSlots < dwFilledPublicSlots) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwMaxPublicSlots (%d) > dwFilledPublicSlots (%d).", __func__, dwMaxPublicSlots, dwFilledPublicSlots);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwMaxPublicSlots (%u) > dwFilledPublicSlots (%u).", __func__, dwMaxPublicSlots, dwFilledPublicSlots);
 		return E_INVALIDARG;
 	}
 	if (dwMaxPrivateSlots < dwFilledPrivateSlots) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwMaxPrivateSlots (%d) > dwFilledPrivateSlots (%d).", __func__, dwMaxPrivateSlots, dwFilledPrivateSlots);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwMaxPrivateSlots (%u) > dwFilledPrivateSlots (%u).", __func__, dwMaxPrivateSlots, dwFilledPrivateSlots);
 		return E_INVALIDARG;
 	}
 	if (dwMaxPublicSlots > INT_MAX) {
@@ -992,11 +992,11 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return E_INVALIDARG;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return E_INVALIDARG;
 	}
 	if (!xlive_xlocator_initialized) {
@@ -1072,11 +1072,11 @@ HRESULT WINAPI XLocatorGetServiceProperty(DWORD dwUserIndex, DWORD cNumPropertie
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return E_INVALIDARG;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return E_INVALIDARG;
 	}
 	if (!cNumProperties) {
@@ -1149,11 +1149,11 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if (!cItems) {
@@ -1175,7 +1175,7 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 	if (cRequiredPropertyIDs) {
 		for (unsigned int i = 0; i < cRequiredPropertyIDs; i++) {
 			if (!pRequiredPropertyIDs[i]) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pRequiredPropertyIDs[%d] is NULL.", __func__, i);
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pRequiredPropertyIDs[%u] is NULL.", __func__, i);
 				return ERROR_INVALID_PARAMETER;
 			}
 		}
@@ -1192,11 +1192,11 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 		XLOCATOR_FILTER_GROUP *list = pxlFilterGroups;
 		for (unsigned int i = 0; i < cFilterGroupItems; i++) {
 			if (!list[i].ukn1) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s list[%d].ukn1 is NULL.", __func__, i);
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s list[%u].ukn1 is NULL.", __func__, i);
 				return ERROR_INVALID_PARAMETER;
 			}
 			if (!list[i].ukn2) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s list[%d].ukn2 is NULL.", __func__, i);
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s list[%u].ukn2 is NULL.", __func__, i);
 				return ERROR_INVALID_PARAMETER;
 			}
 		}

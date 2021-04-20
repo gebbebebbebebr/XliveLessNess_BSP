@@ -6,6 +6,7 @@
 #include "wnd-sockets.hpp"
 #include "wnd-connections.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/util-checksum.hpp"
 #include "../xlive/xdefs.hpp"
 #include "../xlive/xlive.hpp"
 #include "../xlive/xlocator.hpp"
@@ -246,8 +247,9 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 		return ERROR_ALREADY_ASSIGNED;
 
 	if (!dwUserId) {
-		//Generate Random Number?
-		dwUserId = rand();
+		// Not including the null terminator.
+		uint32_t usernameSize = strlen(szUsername);
+		dwUserId = crc32buf((uint8_t*)szUsername, usernameSize);
 	}
 	if (szUsername) {
 		memcpy(xlive_users_info[dwUserIndex]->szUserName, szUsername, XUSER_NAME_SIZE);
@@ -290,11 +292,11 @@ DWORD WINAPI XLLNLogout(DWORD dwUserIndex)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d does not exist.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
 		return ERROR_NO_SUCH_USER;
 	}
 	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %d is not signed in.", __func__, dwUserIndex);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
 
@@ -565,7 +567,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 		SetBkColor(hdc, 0x00C8C8C8);
 
 		{
-			char *textLabel = FormMallocString("Player %d username:", xlln_login_player + 1);
+			char *textLabel = FormMallocString("Player %u username:", xlln_login_player + 1);
 			TextOutA(hdc, 140, 10, textLabel, strlen(textLabel));
 			free(textLabel);
 		}

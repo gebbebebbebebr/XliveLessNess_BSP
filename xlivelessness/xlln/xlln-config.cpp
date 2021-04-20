@@ -192,7 +192,7 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 				}
 				else if (_strnicmp("xlive_username_p", settingName, 16) == 0) {
 					uint32_t iUser;
-					if (sscanf_s(&settingName[16], "%d", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
+					if (sscanf_s(&settingName[16], "%u", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
 						iUser--;
 						char *username = CloneString(value);
 						if (TrimRemoveConsecutiveSpaces(username) <= XUSER_MAX_NAME_LENGTH) {
@@ -212,7 +212,7 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 				}
 				else if (_strnicmp("xlive_user_live_enabled_p", settingName, 25) == 0) {
 					uint32_t iUser;
-					if (sscanf_s(&settingName[25], "%d", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
+					if (sscanf_s(&settingName[25], "%u", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
 						iUser--;
 						uint32_t tempuint32;
 						if (sscanf_s(value, "%u", &tempuint32) == 1) {
@@ -230,7 +230,7 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 				}
 				else if (_strnicmp("xlive_user_auto_login_p", settingName, 23) == 0) {
 					uint32_t iUser;
-					if (sscanf_s(&settingName[23], "%d", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
+					if (sscanf_s(&settingName[23], "%u", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
 						iUser--;
 						uint32_t tempuint32;
 						if (sscanf_s(value, "%u", &tempuint32) == 1) {
@@ -383,10 +383,10 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteTextF("\nxlln_debuglog_level = 0x%08x", xlln_debuglog_level);
 	WriteTextF("\nxlive_network_adapter = %s", xlive_config_preferred_network_adapter_name ? xlive_config_preferred_network_adapter_name : "");
 	WriteTextF("\nxlive_ignore_title_network_adapter = %u", xlive_ignore_title_network_adapter ? 1 : 0);
-	for (size_t iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
-		WriteTextF("\nxlive_username_p%d = %s", iUser + 1, xlive_users_username[iUser]);
-		WriteTextF("\nxlive_user_live_enabled_p%d = %u", iUser + 1, xlive_users_live_enabled[iUser] ? 1 : 0);
-		WriteTextF("\nxlive_user_auto_login_p%d = %u", iUser + 1, xlive_users_auto_login[iUser] ? 1 : 0);
+	for (uint32_t iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
+		WriteTextF("\nxlive_username_p%u = %s", iUser + 1, xlive_users_username[iUser]);
+		WriteTextF("\nxlive_user_live_enabled_p%u = %u", iUser + 1, xlive_users_live_enabled[iUser] ? 1 : 0);
+		WriteTextF("\nxlive_user_auto_login_p%u = %u", iUser + 1, xlive_users_auto_login[iUser] ? 1 : 0);
 	}
 	WriteText("\n\n");
 
@@ -427,7 +427,7 @@ static uint32_t XllnConfig(bool save_config)
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Config file not found: \"%ls\".", xlln_file_config_path);
 			}
 			else {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Config file read error: %d, \"%ls\".", errorFopen, xlln_file_config_path);
+				XLLN_DEBUG_LOG_ECODE(errorFopen, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Config file \"%ls\" read error:", xlln_file_config_path);
 				return ERROR_FUNCTION_FAILED;
 			}
 		}
@@ -440,7 +440,7 @@ static uint32_t XllnConfig(bool save_config)
 		wchar_t* appdataPath = 0;
 		errno_t errorEnvVar = _wdupenv_s(&appdataPath, NULL, L"LOCALAPPDATA");
 		if (errorEnvVar) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "%LOCALAPPDATA% path unable to be resolved with error: %d.", errorEnvVar);
+			XLLN_DEBUG_LOG_ECODE(errorEnvVar, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "%s %%LOCALAPPDATA%% path unable to be resolved with error:", __func__);
 		}
 
 		for (uint32_t searchInstanceId = xlln_local_instance_id; searchInstanceId != 0; searchInstanceId--) {
@@ -470,7 +470,7 @@ static uint32_t XllnConfig(bool save_config)
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file not found: \"%ls\".", configAutoPath);
 				}
 				else {
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file read error: %d, \"%ls\".", errorFopen, configAutoPath);
+					XLLN_DEBUG_LOG_ECODE(errorFopen, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file \"%ls\" read error:", configAutoPath);
 				}
 			} while (!errorEnvVar && (appdataDirectory = !appdataDirectory));
 			if (searchInstanceId == 0) {
@@ -524,7 +524,7 @@ static uint32_t XllnConfig(bool save_config)
 			delete[] saveToConfigPath;
 			if (errorMkdir) {
 				result = ERROR_DIRECTORY;
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "EnsureDirectoryExists(...) error: %u, \"%ls\".", errorMkdir, saveToConfigFilePath);
+				XLLN_DEBUG_LOG_ECODE(errorMkdir, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "%s EnsureDirectoryExists(...) error on path \"%ls\".", __func__, saveToConfigFilePath);
 				break;
 			}
 			else {

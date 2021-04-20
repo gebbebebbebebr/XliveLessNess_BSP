@@ -22,7 +22,7 @@ INT WINAPI XNetStartup(const XNetStartupParams *pxnsp)
 {
 	TRACE_FX();
 	if (pxnsp && pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams)) (%d != %d).", __func__, pxnsp->cfgSizeOfStruct, sizeof(XNetStartupParams));
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams)) (%u != %u).", __func__, pxnsp->cfgSizeOfStruct, sizeof(XNetStartupParams));
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (xlive_netsocket_abort) {

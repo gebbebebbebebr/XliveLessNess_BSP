@@ -125,7 +125,7 @@ static void InitPostImports()
 
 		uint32_t errorMkdir = EnsureDirectoryExists(modulesPath);
 		if (errorMkdir) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_WARN, "EnsureDirectoryExists(...) error: %u, \"%ls\".", errorMkdir, modulesPath);
+			XLLN_DEBUG_LOG_ECODE(errorMkdir, XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_WARN, "%s EnsureDirectoryExists(...) error on path \"%ls\".", __func__, modulesPath);
 		}
 
 		// Load all additional modules.
