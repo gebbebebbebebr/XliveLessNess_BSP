@@ -1031,6 +1031,7 @@ bool InitXLLN(HMODULE hModule)
 	}
 
 	uint32_t setFpsLimit = 0;
+	bool hasChangedFpsLimit = false;
 
 	if (lpwszArglist != NULL) {
 		for (int i = 1; i < nArgs; i++) {
@@ -1038,6 +1039,7 @@ bool InitXLLN(HMODULE hModule)
 				uint32_t tempuint32 = 0;
 				if (swscanf_s(lpwszArglist[i], L"-xlivefps=%u", &tempuint32) == 1) {
 					setFpsLimit = tempuint32;
+					hasChangedFpsLimit = true;
 				}
 			}
 			else if (wcscmp(lpwszArglist[i], L"-xlivedebug") == 0) {
@@ -1122,7 +1124,9 @@ bool InitXLLN(HMODULE hModule)
 	WSADATA wsaData;
 	INT result_wsaStartup = WSAStartup(2, &wsaData);
 
-	SetFPSLimit(setFpsLimit);
+	if (hasChangedFpsLimit) {
+		SetFPSLimit(setFpsLimit);
+	}
 
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)NULL, NULL, NULL);
