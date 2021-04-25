@@ -190,6 +190,16 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 						incorrect = true;
 					}
 				}
+				else if (SettingNameMatches("xlive_broadcast_address")) {
+					if (configContext.saveValuesRead) {
+						// TODO ParseBroadcastAddrInput(temp);
+						// do this later when config saving can be done dynamically (also need to update UI).
+						if (broadcastAddrInput) {
+							delete[] broadcastAddrInput;
+						}
+						broadcastAddrInput = CloneString(value);
+					}
+				}
 				else if (_strnicmp("xlive_username_p", settingName, 16) == 0) {
 					uint32_t iUser;
 					if (sscanf_s(&settingName[16], "%u", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
@@ -344,6 +354,15 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# On startup in XLiveInitialize(...) the title specifies its preferred network adapter to use (if any). This setting can ignore its preference.");
 	WriteText("\n");
 
+	WriteText("\n# xlive_broadcast_address:");
+	WriteText("\n# A comma separated list of network addresses to send broadcast packets to.");
+	WriteText("\n# All addresses are comma, separated. Do not use spaces at all.");
+	WriteText("\n# The IP and corresponding Port are (and must be to be considered valid) separated with a colon ':'. Since IPv6 uses colons in its format, IPv6 addresses need to be enclosed in square brackets '[' and ']'.");
+	WriteText("\n# If an address is specified with port number 0, it will use the port that the Title tried to broadcast to instead of overwriting that part also.");
+	WriteText("\n# So an example of a comma separated list of a domain name, IPv4 (local address broadcast) and an IPv6 address is as follows:");
+	WriteText("\n# glitchyscripts.com:1100,192.168.0.255:1100,[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:1100");
+	WriteText("\n");
+
 	WriteText("\n# xlive_username_p1...:");
 	WriteText("\n# Max username length is 15 characters.");
 	WriteText("\n# The username for each local profile to use.");
@@ -383,6 +402,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteTextF("\nxlln_debuglog_level = 0x%08x", xlln_debuglog_level);
 	WriteTextF("\nxlive_network_adapter = %s", xlive_config_preferred_network_adapter_name ? xlive_config_preferred_network_adapter_name : "");
 	WriteTextF("\nxlive_ignore_title_network_adapter = %u", xlive_ignore_title_network_adapter ? 1 : 0);
+	WriteTextF("\nxlive_broadcast_address = %s", broadcastAddrInput);
 	for (uint32_t iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
 		WriteTextF("\nxlive_username_p%u = %s", iUser + 1, xlive_users_username[iUser]);
 		WriteTextF("\nxlive_user_live_enabled_p%u = %u", iUser + 1, xlive_users_live_enabled[iUser] ? 1 : 0);

@@ -40,7 +40,13 @@ char* GetSockAddrInfo(const SOCKADDR_STORAGE *sockAddrStorage)
 	int error = getnameinfo((sockaddr*)sockAddrStorage, sizeof(SOCKADDR_STORAGE), namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
 	if (!error) {
 		uint16_t portHBO = GetSockAddrPort(sockAddrStorage);
-		return portHBO ? FormMallocString("%s:%hu", namebuf, portHBO) : FormMallocString("%s", namebuf);
+		return portHBO
+			? (
+				sockAddrStorage->ss_family == AF_INET
+				? FormMallocString("%s:%hu", namebuf, portHBO)
+				: FormMallocString("[%s]:%hu", namebuf, portHBO)
+			)
+			: FormMallocString("%s", namebuf);
 	}
 	return 0;
 }

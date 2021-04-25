@@ -38,7 +38,7 @@ BOOL xlln_debug = FALSE;
 static CRITICAL_SECTION xlive_critsec_recvfrom_handler_funcs;
 static std::map<DWORD, char*> xlive_recvfrom_handler_funcs;
 
-static char *broadcastAddrInput = 0;
+char *broadcastAddrInput = 0;
 
 int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth)
 {
@@ -846,9 +846,9 @@ xlln_debuglog_level = checked ? (xlln_debuglog_level | log_level_flag) : (xlln_d
 					broadcastAddrInput = new char[buflen];
 					memcpy(broadcastAddrInput, jlbuffer, buflen);
 					broadcastAddrInput[buflen - 1] = 0;
-					char *temp = FormMallocString("%s", broadcastAddrInput);
+					char *temp = CloneString(broadcastAddrInput);
 					ParseBroadcastAddrInput(temp);
-					free(temp);
+					delete[] temp;
 				}
 				break;
 			}
@@ -1032,6 +1032,7 @@ bool InitXLLN(HMODULE hModule)
 
 	uint32_t setFpsLimit = 0;
 	bool hasChangedFpsLimit = false;
+	char *execFlagBroadcastAddrInput = 0;
 
 	if (lpwszArglist != NULL) {
 		for (int i = 1; i < nArgs; i++) {
@@ -1060,8 +1061,8 @@ bool InitXLLN(HMODULE hModule)
 			else if (wcsstr(lpwszArglist[i], L"-xllnbroadcastaddr=") == lpwszArglist[i]) {
 				wchar_t *broadcastAddrInputTemp = &lpwszArglist[i][19];
 				size_t bufferLen = wcslen(broadcastAddrInputTemp) + 1;
-				broadcastAddrInput = new char[bufferLen];
-				wcstombs2(broadcastAddrInput, broadcastAddrInputTemp, bufferLen);
+				execFlagBroadcastAddrInput = new char[bufferLen];
+				wcstombs2(execFlagBroadcastAddrInput, broadcastAddrInputTemp, bufferLen);
 			}
 			else if (wcsstr(lpwszArglist[i], L"-xllnconfig=") == lpwszArglist[i]) {
 				wchar_t *configFilePath = &lpwszArglist[i][12];
@@ -1107,7 +1108,7 @@ bool InitXLLN(HMODULE hModule)
 	}
 
 	if (!broadcastAddrInput) {
-		broadcastAddrInput = new char[1]{""};
+		broadcastAddrInput = new char[1]{ "" };
 	}
 
 	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
@@ -1127,6 +1128,10 @@ bool InitXLLN(HMODULE hModule)
 	if (hasChangedFpsLimit) {
 		SetFPSLimit(setFpsLimit);
 	}
+	if (execFlagBroadcastAddrInput) {
+		delete[] broadcastAddrInput;
+		broadcastAddrInput = execFlagBroadcastAddrInput;
+	}
 
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)NULL, NULL, NULL);
@@ -1135,9 +1140,9 @@ bool InitXLLN(HMODULE hModule)
 	uint32_t errorXllnWndConnections = InitXllnWndConnections();
 
 	if (broadcastAddrInput) {
-		char *temp = FormMallocString("%s", broadcastAddrInput);
+		char *temp = CloneString(broadcastAddrInput);
 		ParseBroadcastAddrInput(temp);
-		free(temp);
+		delete[] temp;
 	}
 
 	xlive_title_id = 0;
@@ -1151,16 +1156,16 @@ bool UninitXLLN()
 	uint32_t errorXllnWndConnections = UninitXllnWndConnections();
 	uint32_t errorXllnWndSockets = UninitXllnWndSockets();
 
-	if (broadcastAddrInput) {
-		delete[] broadcastAddrInput;
-		broadcastAddrInput = 0;
-	}
-
 	INT resultWsaCleanup = WSACleanup();
 
 	uint32_t errorXllnConfig = UninitXllnConfig();
 
 	uint32_t errorXllnDebugLog = UninitDebugLog();
+
+	if (broadcastAddrInput) {
+		delete[] broadcastAddrInput;
+		broadcastAddrInput = 0;
+	}
 
 	return true;
 }

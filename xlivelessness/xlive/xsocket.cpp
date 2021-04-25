@@ -920,7 +920,7 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 		{
 			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "%s socket (0x%08x) broadcasting packet to %s."
+				, "%s socket (0x%08x) broadcasting packet for %s."
 				, __func__
 				, s
 				, sockAddrInfo ? sockAddrInfo : ""
@@ -952,6 +952,20 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 						// If it's not IPv4 or IPv6 then do not sent it.
 						continue;
 					}
+
+					{
+						char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+							, "%s socket (0x%08x) broadcasting packet to %s."
+							, __func__
+							, s
+							, sockAddrInfo ? sockAddrInfo : ""
+						);
+						if (sockAddrInfo) {
+							free(sockAddrInfo);
+						}
+					}
+
 					result = sendto(s, buf, len, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 				}
 			}
@@ -975,10 +989,36 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 				for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
 					((struct sockaddr_in*)&sockAddrExternal)->sin_port = htons(portBaseInc + portOffset);
 
+					{
+						char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+							, "%s socket (0x%08x) broadcasting packet to %s."
+							, __func__
+							, s
+							, sockAddrInfo ? sockAddrInfo : ""
+						);
+						if (sockAddrInfo) {
+							free(sockAddrInfo);
+						}
+					}
+
 					result = sendto(s, buf, len, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 				}
 			}
 			else {
+				{
+					char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+						, "%s socket (0x%08x) broadcasting packet to %s."
+						, __func__
+						, s
+						, sockAddrInfo ? sockAddrInfo : ""
+					);
+					if (sockAddrInfo) {
+						free(sockAddrInfo);
+					}
+				}
+				
 				result = sendto(s, buf, len, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 			}
 		}

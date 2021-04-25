@@ -59,6 +59,7 @@ extern HWND xlln_window_hwnd;
 extern uint32_t xlln_local_instance_id;
 extern HMENU hMenu_network_adapters;
 extern BOOL xlln_debug;
+extern char *broadcastAddrInput;
 
 namespace XLLNModifyPropertyTypes {
 	const char* const TypeNames[]{
