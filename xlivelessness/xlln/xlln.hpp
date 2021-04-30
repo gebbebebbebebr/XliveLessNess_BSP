@@ -50,6 +50,7 @@ bool UninitXLLN();
 uint32_t ShowXLLN(DWORD dwShowType);
 void UpdateUserInputBoxes(DWORD dwUserIndex);
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
+void ParseBroadcastAddrInput(char *jlbuffer);
 
 int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth);
 int CreateItem(HWND hwndListView, int iItem);

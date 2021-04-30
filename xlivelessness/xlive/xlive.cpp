@@ -36,7 +36,8 @@ static int g_dwListener = 0;
 
 bool xlive_invite_to_game = false;
 
-DWORD xlive_title_id = 0;
+uint32_t xlive_title_id = 0;
+uint32_t xlive_title_version = 0;
 
 CRITICAL_SECTION xlive_critsec_xnotify;
 
@@ -1205,7 +1206,7 @@ HRESULT WINAPI XLiveManageCredentials(LPCWSTR lpwszLiveIdName, LPCWSTR lpszLiveI
 }
 
 // #5258
-HRESULT WINAPI XLiveSignout(PXOVERLAPPED  pXOverlapped)
+HRESULT WINAPI XLiveSignout(PXOVERLAPPED pXOverlapped)
 {
 	TRACE_FX();
 
@@ -1250,7 +1251,22 @@ HRESULT WINAPI XLiveSignin(PWSTR pszLiveIdName, PWSTR pszLiveIdPassword, DWORD d
 	}
 	//XLSIGNIN_FLAG_ALLOWTITLEUPDATES XLSIGNIN_FLAG_ALLOWSYSTEMUPDATES
 
-	XLLNLogin(0, TRUE, 0, 0);
+	size_t usernameSize = wcslen(pszLiveIdName) + 1;
+	char *username = new char[usernameSize];
+	wcstombs2(username, pszLiveIdName, usernameSize);
+	ReplaceFilePathSensitiveChars(username);
+
+	uint32_t result = XLLNLogin(0, TRUE, 0, username);
+	if (result) {
+		XLLN_DEBUG_LOG_ECODE(result, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLLNLogin(..., \"%s\") failed with error:", __func__, username);
+		result = E_INVALIDARG;
+	}
+
+	delete[] username;
+
+	if (result) {
+		return result;
+	}
 
 	if (pXOverlapped) {
 		//asynchronous
@@ -1329,14 +1345,18 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	}
 
 	EnterCriticalSection(&xlive_critsec_network_adapter);
-
 	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
 		xlive_init_preferred_network_adapter_name = CloneString(pPii->pszAdapterName);
 	}
+	LeaveCriticalSection(&xlive_critsec_network_adapter);
 
 	INT errorNetworkAdapter = RefreshNetworkAdapters();
 
-	LeaveCriticalSection(&xlive_critsec_network_adapter);
+	if (broadcastAddrInput) {
+		char *temp = CloneString(broadcastAddrInput);
+		ParseBroadcastAddrInput(temp);
+		delete[] temp;
+	}
 
 	if (IsUsingBasePort(xlive_base_port)) {
 		wchar_t mutex_name[40];

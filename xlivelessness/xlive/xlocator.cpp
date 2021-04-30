@@ -86,7 +86,7 @@ VOID LiveOverLanDelete(XLOCATOR_SEARCHRESULT *xlocator_result)
 	delete xlocator_result;
 }
 
-static bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
+bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
 {
 	SOCKET_MAPPING_INFO *socketInfoSearch = 0;
 	{

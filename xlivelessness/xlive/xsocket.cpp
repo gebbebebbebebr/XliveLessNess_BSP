@@ -5,11 +5,13 @@
 #include "../xlln/xlln.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../xlln/wnd-sockets.hpp"
+#include "../xlln/xlln-keep-alive.hpp"
 #include "xnet.hpp"
 #include "xlocator.hpp"
 #include "net-entity.hpp"
 #include "../utils/utils.hpp"
 #include "../utils/util-socket.hpp"
+#include "../resource.h"
 #include <ctime>
 #include <WS2tcpip.h>
 
@@ -23,7 +25,7 @@ std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
 CRITICAL_SECTION xlive_critsec_broadcast_addresses;
-std::vector<SOCKADDR_STORAGE> xlive_broadcast_addresses;
+std::vector<XLLNBroadcastEntity::BROADCAST_ENTITY> xlive_broadcast_addresses;
 
 VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, bool isAsking, uint32_t instanceIdConsumeRemaining)
 {
@@ -743,6 +745,74 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 				LiveOverLanRecieve(s, sockAddrExternal, sockAddrExternalLen, (const LIVE_SERVER_DETAILS*)buf, result);
 				return 0;
 			}
+			case XLLNNetPacketType::tHUB_REQUEST: {
+				if (result < cpHeaderLen + sizeof(XLLNNetPacketType::HUB_REQUEST_PACKET)) {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+						, "%s INVALID HUB_REQUEST_PACKET Recieved."
+						, __func__
+					);
+					return 0;
+				}
+
+				const int altBufferSize = sizeof(XLLNNetPacketType::TYPE) + sizeof(XLLNNetPacketType::HUB_REPLY_PACKET);
+				uint8_t *altBuf = new uint8_t[altBufferSize];
+				altBuf[0] = XLLNNetPacketType::tHUB_REPLY;
+				XLLNNetPacketType::HUB_REPLY_PACKET *replyPacket = (XLLNNetPacketType::HUB_REPLY_PACKET*)&altBuf[sizeof(XLLNNetPacketType::TYPE)];
+				replyPacket->isHubServer = false;
+				replyPacket->xllnVersion = (DLL_VERSION_MAJOR << 24) + (DLL_VERSION_MINOR << 16) + (DLL_VERSION_REVISION << 8) + DLL_VERSION_BUILD;
+				
+				{
+					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
+						, "HUB_REQUEST REPLY to %s length:%d."
+						, sockAddrInfo ? sockAddrInfo : ""
+						, altBufferSize
+					);
+					if (sockAddrInfo) {
+						free(sockAddrInfo);
+					}
+				}
+				
+				sendto(s, (const char*)altBuf, altBufferSize, 0, (const sockaddr*)sockAddrExternal, sockAddrExternalLen);
+
+				delete[] altBuf;
+				return 0;
+			}
+			case XLLNNetPacketType::tHUB_REPLY: {
+				for (XLLNBroadcastEntity::BROADCAST_ENTITY &broadcastEntity : xlive_broadcast_addresses) {
+					if (SockAddrsMatch(&broadcastEntity.sockaddr, sockAddrExternal)) {
+						if (result < cpHeaderLen + sizeof(XLLNNetPacketType::HUB_REPLY_PACKET)) {
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+								, "%s INVALID HUB_REPLY_PACKET Recieved."
+								, __func__
+							);
+							return 0;
+						}
+
+						XLLNNetPacketType::HUB_REPLY_PACKET &replyPacket = *(XLLNNetPacketType::HUB_REPLY_PACKET*)&buf[cpHeaderLen];
+						if (broadcastEntity.entityType != XLLNBroadcastEntity::TYPE::tBROADCAST_ADDR) {
+							broadcastEntity.entityType = replyPacket.isHubServer != 0 ? XLLNBroadcastEntity::TYPE::tHUB_SERVER : XLLNBroadcastEntity::TYPE::tOTHER_CLIENT;
+						}
+						_time64(&broadcastEntity.lastComm);
+
+						{
+							char *sockAddrInfo = GET_SOCKADDR_INFO(&broadcastEntity.sockaddr);
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+								, "%s HUB_REPLY_PACKET from %s entityType:%s."
+								, __func__
+								, sockAddrInfo ? sockAddrInfo : "?"
+								, XLLNBroadcastEntity::TYPE_NAMES[broadcastEntity.entityType]
+							);
+							if (sockAddrInfo) {
+								free(sockAddrInfo);
+							}
+						}
+
+						break;
+					}
+				}
+				return 0;
+			}
 			default: {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 					, "%s unknown custom packet type received 0x%02hhx."
@@ -936,8 +1006,8 @@ INT WINAPI XllnSocketSendTo(SOCKET s, const char *buf, int len, int flags, socka
 
 			if (xlive_broadcast_addresses.size()) {
 				broadcastOverriden = true;
-				for (const SOCKADDR_STORAGE &sockAddrExternalListItem : xlive_broadcast_addresses) {
-					memcpy(&sockAddrExternal, &sockAddrExternalListItem, sockAddrExternalLen);
+				for (const XLLNBroadcastEntity::BROADCAST_ENTITY &broadcastEntity : xlive_broadcast_addresses) {
+					memcpy(&sockAddrExternal, &broadcastEntity.sockaddr, sockAddrExternalLen);
 					if (sockAddrExternal.ss_family == AF_INET) {
 						if (ntohs(((sockaddr_in*)&sockAddrExternal)->sin_port) == 0) {
 							((sockaddr_in*)&sockAddrExternal)->sin_port = htons(portHBO);
@@ -1169,10 +1239,12 @@ USHORT WINAPI XSocketHTONS(USHORT hostshort)
 
 BOOL InitXSocket()
 {
+	XLLNKeepAliveStart();
 	return TRUE;
 }
 
 BOOL UninitXSocket()
 {
+	XLLNKeepAliveStop();
 	return TRUE;
 }

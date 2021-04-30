@@ -36,7 +36,8 @@ extern CRITICAL_SECTION xlive_critsec_xnotify;
 extern CRITICAL_SECTION xlive_xfriends_enumerators_lock;
 extern std::map<HANDLE, std::vector<uint32_t>> xlive_xfriends_enumerators;
 
-extern DWORD xlive_title_id;
+extern uint32_t xlive_title_id;
+extern uint32_t xlive_title_version;
 extern CRITICAL_SECTION xlive_critsec_network_adapter;
 extern char* xlive_init_preferred_network_adapter_name;
 extern char* xlive_config_preferred_network_adapter_name;

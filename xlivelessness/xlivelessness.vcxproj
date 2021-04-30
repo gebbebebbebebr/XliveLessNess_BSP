@@ -183,6 +183,7 @@
     <ClCompile Include="xlln\wnd-connections.cpp" />
     <ClCompile Include="xlln\wnd-sockets.cpp" />
     <ClCompile Include="xlln\xlln-config.cpp" />
+    <ClCompile Include="xlln\xlln-keep-alive.cpp" />
     <ClCompile Include="xlln\xlln-modules.cpp" />
     <ClCompile Include="xlln\xlln.cpp" />
   </ItemGroup>
@@ -215,6 +216,7 @@
     <ClInclude Include="xlln\wnd-connections.hpp" />
     <ClInclude Include="xlln\wnd-sockets.hpp" />
     <ClInclude Include="xlln\xlln-config.hpp" />
+    <ClInclude Include="xlln\xlln-keep-alive.hpp" />
     <ClInclude Include="xlln\xlln-modules.hpp" />
     <ClInclude Include="xlln\xlln.hpp" />
   </ItemGroup>

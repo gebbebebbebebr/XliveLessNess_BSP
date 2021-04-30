@@ -102,6 +102,9 @@
     <ClCompile Include="utils\sha256.cpp">
       <Filter>Source Files\utils</Filter>
     </ClCompile>
+    <ClCompile Include="xlln\xlln-keep-alive.cpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -184,6 +187,9 @@
     </ClInclude>
     <ClInclude Include="utils\sha256.hpp">
       <Filter>Source Files\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="xlln\xlln-keep-alive.hpp">
+      <Filter>Source Files\xlln</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

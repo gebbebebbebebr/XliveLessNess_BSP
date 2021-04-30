@@ -5,6 +5,7 @@
 #include "xlln-config.hpp"
 #include "wnd-sockets.hpp"
 #include "wnd-connections.hpp"
+#include "xlln-keep-alive.hpp"
 #include "../utils/utils.hpp"
 #include "../utils/util-checksum.hpp"
 #include "../xlive/xdefs.hpp"
@@ -246,11 +247,6 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn)
 		return ERROR_ALREADY_ASSIGNED;
 
-	if (!dwUserId) {
-		// Not including the null terminator.
-		uint32_t usernameSize = strlen(szUsername);
-		dwUserId = crc32buf((uint8_t*)szUsername, usernameSize);
-	}
 	if (szUsername) {
 		memcpy(xlive_users_info[dwUserIndex]->szUserName, szUsername, XUSER_NAME_SIZE);
 		xlive_users_info[dwUserIndex]->szUserName[XUSER_NAME_SIZE] = 0;
@@ -259,6 +255,12 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 		wchar_t generated_name[XUSER_NAME_SIZE];
 		GetName(generated_name, XUSER_NAME_SIZE);
 		snprintf(xlive_users_info[dwUserIndex]->szUserName, XUSER_NAME_SIZE, "%ls", generated_name);
+	}
+
+	if (!dwUserId) {
+		// Not including the null terminator.
+		uint32_t usernameSize = strlen(szUsername);
+		dwUserId = crc32buf((uint8_t*)szUsername, usernameSize);
 	}
 
 	xlive_users_info[dwUserIndex]->UserSigninState = bLiveEnabled ? eXUserSigninState_SignedInToLive : eXUserSigninState_SignedInLocally;
@@ -471,12 +473,37 @@ void UpdateUserInputBoxes(DWORD dwUserIndex)
 	InvalidateRect(xlln_window_hwnd, NULL, FALSE);
 }
 
+static bool IsBroadcastAddress(const SOCKADDR_STORAGE *sockaddr)
+{
+	if (sockaddr->ss_family != AF_INET) {
+		return false;
+	}
+
+	const uint32_t ipv4NBO = ((struct sockaddr_in*)sockaddr)->sin_addr.s_addr;
+	const uint32_t ipv4HBO = ntohl(ipv4NBO);
+
+	if (ipv4HBO == INADDR_BROADCAST) {
+		return true;
+	}
+	if (ipv4HBO == INADDR_ANY) {
+		return true;
+	}
+
+	for (EligibleAdapter* ea : xlive_eligible_network_adapters) {
+		if (ea->hBroadcast == ipv4HBO) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 /// Mutates the input buffer.
-static void ParseBroadcastAddrInput(char *jlbuffer)
+void ParseBroadcastAddrInput(char *jlbuffer)
 {
 	EnterCriticalSection(&xlive_critsec_broadcast_addresses);
 	xlive_broadcast_addresses.clear();
-	SOCKADDR_STORAGE temp_addr;
+	XLLNBroadcastEntity::BROADCAST_ENTITY broadcastEntity;
 	char *current = jlbuffer;
 	while (1) {
 		char *comma = strchr(current, ',');
@@ -521,20 +548,23 @@ static void ParseBroadcastAddrInput(char *jlbuffer)
 				addrinfo *res;
 				int error = getaddrinfo(current, NULL, &hints, &res);
 				if (!error) {
-					memset(&temp_addr, 0, sizeof(temp_addr));
+					memset(&broadcastEntity.sockaddr, 0, sizeof(broadcastEntity.sockaddr));
+					broadcastEntity.entityType = XLLNBroadcastEntity::TYPE::tUNKNOWN;
+					broadcastEntity.lastComm = 0;
 
 					addrinfo *nextRes = res;
 					while (nextRes) {
 						if (nextRes->ai_family == AF_INET) {
-							memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
-							(*(struct sockaddr_in*)&temp_addr).sin_port = htons(portHBO);
-							xlive_broadcast_addresses.push_back(temp_addr);
+							memcpy(&broadcastEntity.sockaddr, res->ai_addr, res->ai_addrlen);
+							(*(struct sockaddr_in*)&broadcastEntity.sockaddr).sin_port = htons(portHBO);
+							broadcastEntity.entityType = IsBroadcastAddress(&broadcastEntity.sockaddr) ? XLLNBroadcastEntity::TYPE::tBROADCAST_ADDR : XLLNBroadcastEntity::TYPE::tUNKNOWN;
+							xlive_broadcast_addresses.push_back(broadcastEntity);
 							break;
 						}
 						else if (nextRes->ai_family == AF_INET6) {
-							memcpy(&temp_addr, res->ai_addr, res->ai_addrlen);
-							(*(struct sockaddr_in6*)&temp_addr).sin6_port = htons(portHBO);
-							xlive_broadcast_addresses.push_back(temp_addr);
+							memcpy(&broadcastEntity.sockaddr, res->ai_addr, res->ai_addrlen);
+							(*(struct sockaddr_in6*)&broadcastEntity.sockaddr).sin6_port = htons(portHBO);
+							xlive_broadcast_addresses.push_back(broadcastEntity);
 							break;
 						}
 						else {
@@ -667,6 +697,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 		case MYMENU_EXIT: {
 			// Kill any threads and kill the program.
 			LiveOverLanAbort();
+			XLLNKeepAliveAbort();
 			exit(EXIT_SUCCESS);
 			break;
 		}
@@ -1138,12 +1169,6 @@ bool InitXLLN(HMODULE hModule)
 
 	uint32_t errorXllnWndSockets = InitXllnWndSockets();
 	uint32_t errorXllnWndConnections = InitXllnWndConnections();
-
-	if (broadcastAddrInput) {
-		char *temp = CloneString(broadcastAddrInput);
-		ParseBroadcastAddrInput(temp);
-		delete[] temp;
-	}
 
 	xlive_title_id = 0;
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN, "TODO title.cfg not found. Default Title ID set.");
