@@ -890,10 +890,12 @@ VOID LiveOverLanAbort()
 {
 	if (liveoverlan_empty_exit == FALSE) {
 		liveoverlan_empty_exit = TRUE;
+		liveoverlan_cond_empty.notify_all();
 		liveoverlan_empty_thread.detach();
 	}
 	if (liveoverlan_exit == FALSE) {
 		liveoverlan_exit = TRUE;
+		liveoverlan_cond_broadcast.notify_all();
 		liveoverlan_thread.detach();
 	}
 }

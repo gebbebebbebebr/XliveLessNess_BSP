@@ -259,8 +259,8 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 
 	if (!dwUserId) {
 		// Not including the null terminator.
-		uint32_t usernameSize = strlen(szUsername);
-		dwUserId = crc32buf((uint8_t*)szUsername, usernameSize);
+		uint32_t usernameSize = strlen(xlive_users_info[dwUserIndex]->szUserName);
+		dwUserId = crc32buf((uint8_t*)xlive_users_info[dwUserIndex]->szUserName, usernameSize);
 	}
 
 	xlive_users_info[dwUserIndex]->UserSigninState = bLiveEnabled ? eXUserSigninState_SignedInToLive : eXUserSigninState_SignedInLocally;
@@ -1050,7 +1050,7 @@ bool InitXLLN(HMODULE hModule)
 				xlln_debug_pause = TRUE;
 			}
 			else if (wcscmp(lpwszArglist[i], L"-xllndebuglog") == 0) {
-#ifdef _DEBUG
+#ifdef XLLN_DEBUG
 				xlln_debug = TRUE;
 #endif
 			}

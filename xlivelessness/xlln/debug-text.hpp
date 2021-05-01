@@ -4,6 +4,11 @@
 #ifndef DEBUGTEXT
 #define DEBUGTEXT
 
+#ifdef _DEBUG
+// Move this out to enable building with debug logs in release mode.
+#define XLLN_DEBUG
+#endif
+
 // #41143
 typedef DWORD(WINAPI *tXLLNDebugLog)(DWORD logLevel, const char *message);
 // #41144
@@ -59,7 +64,7 @@ VOID XllnDebugBreak(const char* message);
 // Logs related to functionality from other areas of the application.
 #define XLLN_LOG_CONTEXT_OTHER			(0b10000000 << 8)
 
-#ifdef _DEBUG
+#ifdef XLLN_DEBUG
 #define XLLN_DEBUG_LOG(logLevel, format, ...) XLLNDebugLogF(logLevel, format, __VA_ARGS__)
 #define XLLN_DEBUG_LOG_ECODE(error_code, logLevel, format, ...) XLLNDebugLogECodeF(logLevel, error_code, format, __VA_ARGS__)
 #define GET_SOCKADDR_INFO(sockAddrStorage) GetSockAddrInfo(sockAddrStorage)
