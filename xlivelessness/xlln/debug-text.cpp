@@ -324,7 +324,7 @@ uint32_t InitDebugLog()
 	if (errorMkdir) {
 		XLLN_DEBUG_LOG_ECODE(errorMkdir, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "%s EnsureDirectoryExists(...) error on path \"%ls\".", __func__, debugLogPath);
 	}
-	wchar_t *debugLogFilePath = FormMallocString(L"%sxlln-debug-%u.log", debugLogPath, xlln_local_instance_id);
+	wchar_t *debugLogFilePath = FormMallocString(L"%sxlln-debug-%u.log", debugLogPath, xlln_local_instance_index);
 	free(debugLogPath);
 	debugFile = _wfopen(debugLogFilePath, L"w");
 	if (debugFile) {

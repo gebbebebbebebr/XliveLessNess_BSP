@@ -463,27 +463,27 @@ static uint32_t XllnConfig(bool save_config)
 			XLLN_DEBUG_LOG_ECODE(errorEnvVar, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "%s %%LOCALAPPDATA%% path unable to be resolved with error:", __func__);
 		}
 
-		for (uint32_t searchInstanceId = xlln_local_instance_id; searchInstanceId != 0; searchInstanceId--) {
+		for (uint32_t searchInstanceIndex = xlln_local_instance_index; searchInstanceIndex != 0; searchInstanceIndex--) {
 			bool appdataDirectory = false;
 			do {
 				if (configAutoPath) {
 					free(configAutoPath);
 				}
 				if (appdataDirectory) {
-					configAutoPath = FormMallocString(L"%s/XLiveLessNess/xlln-config-%u.ini", appdataPath, searchInstanceId);
+					configAutoPath = FormMallocString(L"%s/XLiveLessNess/xlln-config-%u.ini", appdataPath, searchInstanceIndex);
 					if (!configAutoFallbackPath1) {
 						configAutoFallbackPath1 = CloneString(configAutoPath);
 					}
 				}
 				else {
-					configAutoPath = FormMallocString(L"./XLiveLessNess/xlln-config-%u.ini", searchInstanceId);
+					configAutoPath = FormMallocString(L"./XLiveLessNess/xlln-config-%u.ini", searchInstanceIndex);
 					if (!configAutoFallbackPath2) {
 						configAutoFallbackPath2 = CloneString(configAutoPath);
 					}
 				}
 				errorFopen = _wfopen_s(&fileConfig, configAutoPath, L"rb");
 				if (fileConfig) {
-					searchInstanceId = 0;
+					searchInstanceIndex = 0;
 					break;
 				}
 				if (errorFopen == ENOENT) {
@@ -493,7 +493,7 @@ static uint32_t XllnConfig(bool save_config)
 					XLLN_DEBUG_LOG_ECODE(errorFopen, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file \"%ls\" read error:", configAutoPath);
 				}
 			} while (!errorEnvVar && (appdataDirectory = !appdataDirectory));
-			if (searchInstanceId == 0) {
+			if (searchInstanceIndex == 0) {
 				break;
 			}
 		}

@@ -293,6 +293,16 @@ uint32_t NetterEntityAddAddrByInstanceId_(const uint32_t instanceId, const uint1
 
 		delete sockAddrPortOld;
 	}
+	
+	// Erace existing External Address if one exists.
+	for (auto externalAddrToNetter = xlln_net_entity_external_addr_to_netentity.begin(); externalAddrToNetter != xlln_net_entity_external_addr_to_netentity.end(); ) {
+		if (SockAddrsMatch(externalAddr, externalAddrToNetter->first)) {
+			xlln_net_entity_external_addr_to_netentity.erase(externalAddrToNetter++);
+		}
+		else {
+			++externalAddrToNetter;
+		}
+	}
 
 	PORT_INTERNAL internalPort = std::make_pair(portInternalHBO, portInternalOffsetHBO);
 

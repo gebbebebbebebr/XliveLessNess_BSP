@@ -28,7 +28,7 @@ HINSTANCE xlln_hModule = NULL;
 HWND xlln_window_hwnd = NULL;
 static HMENU xlln_window_hMenu = NULL;
 // 0 - unassigned. Counts from 1.
-uint32_t xlln_local_instance_id = 0;
+uint32_t xlln_local_instance_index = 0;
 HMENU hMenu_network_adapters = 0;
 
 static DWORD xlln_login_player = 0;
@@ -179,7 +179,7 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 		return FALSE;
 	}
 
-	wchar_t *windowTitle = FormMallocString(L"XLLN v%d.%d.%d.%d", DLL_VERSION);
+	wchar_t *windowTitle = FormMallocString(L"XLLN #%d v%d.%d.%d.%d", xlln_local_instance_index, DLL_VERSION);
 
 	HWND hwdParent = NULL;// FindWindowW(L"Window Injected Into ClassName", L"Window Injected Into Caption");
 	xlln_window_hwnd = CreateWindowExW(0, windowclassname, windowTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 500, xlln_debug ? 700 : 225, hwdParent, xlln_window_hMenu, xlln_hModule, NULL);
@@ -402,9 +402,9 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 }
 
 // #41145
-uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *result_local_instance_id, wchar_t *result_storage_path_buffer, size_t *result_storage_path_buffer_size)
+uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *result_local_instance_index, wchar_t *result_storage_path_buffer, size_t *result_storage_path_buffer_size)
 {
-	if (!result_local_instance_id && !result_storage_path_buffer && !result_storage_path_buffer_size) {
+	if (!result_local_instance_index && !result_storage_path_buffer && !result_storage_path_buffer_size) {
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (result_storage_path_buffer && !result_storage_path_buffer_size) {
@@ -413,14 +413,14 @@ uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *resu
 	if (result_storage_path_buffer) {
 		result_storage_path_buffer[0] = 0;
 	}
-	if (result_local_instance_id) {
-		*result_local_instance_id = 0;
+	if (result_local_instance_index) {
+		*result_local_instance_index = 0;
 	}
 	if (!module_handle) {
 		return ERROR_INVALID_PARAMETER;
 	}
-	if (result_local_instance_id) {
-		*result_local_instance_id = xlln_local_instance_id;
+	if (result_local_instance_index) {
+		*result_local_instance_index = xlln_local_instance_index;
 	}
 	if (result_storage_path_buffer_size) {
 		wchar_t *configPath = PathFromFilename(xlln_file_config_path);
@@ -726,7 +726,7 @@ Executable Launch Parameters:\n\
 -xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
 -xllnbroadcastaddr=<string> ? Set the broadcast address.\n\
 -xllnconfig=<string> ? Sets the location of the config file.\n\
--xllnlocalinstanceid=<uint> ? 0 (default) to automatically assign the Local Instance Id."
+-xllnlocalinstanceindex=<uint> ? 0 (default) to automatically assign the Local Instance Index."
 , "About", MB_OK);
 			break;
 		}
@@ -1043,17 +1043,23 @@ bool InitXLLN(HMODULE hModule)
 	BOOL xlln_debug_pause = FALSE;
 
 	int nArgs;
+	// GetCommandLineW() does not need de-allocating but ToArgv does.
 	LPWSTR* lpwszArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
-	if (lpwszArglist != NULL) {
-		for (int i = 1; i < nArgs; i++) {
-			if (wcscmp(lpwszArglist[i], L"-xllndebug") == 0) {
-				xlln_debug_pause = TRUE;
-			}
-			else if (wcscmp(lpwszArglist[i], L"-xllndebuglog") == 0) {
+	if (lpwszArglist == NULL) {
+		uint32_t errorCmdLineToArgv = GetLastError();
+		char *messageDescription = FormMallocString("CommandLineToArgvW(...) error 0x%08x.", errorCmdLineToArgv);
+		MessageBoxA(NULL, messageDescription, "XLLN CommandLineToArgvW(...) Failed", MB_OK);
+		free(messageDescription);
+		return false;
+	}
+	for (int i = 1; i < nArgs; i++) {
+		if (wcscmp(lpwszArglist[i], L"-xllndebug") == 0) {
+			xlln_debug_pause = TRUE;
+		}
+		else if (wcscmp(lpwszArglist[i], L"-xllndebuglog") == 0) {
 #ifdef XLLN_DEBUG
-				xlln_debug = TRUE;
+			xlln_debug = TRUE;
 #endif
-			}
 		}
 	}
 
@@ -1061,65 +1067,36 @@ bool InitXLLN(HMODULE hModule)
 		Sleep(500L);
 	}
 
-	uint32_t setFpsLimit = 0;
-	bool hasChangedFpsLimit = false;
-	char *execFlagBroadcastAddrInput = 0;
-
-	if (lpwszArglist != NULL) {
-		for (int i = 1; i < nArgs; i++) {
-			if (wcsstr(lpwszArglist[i], L"-xlivefps=") != NULL) {
-				uint32_t tempuint32 = 0;
-				if (swscanf_s(lpwszArglist[i], L"-xlivefps=%u", &tempuint32) == 1) {
-					setFpsLimit = tempuint32;
-					hasChangedFpsLimit = true;
-				}
+	for (int i = 1; i < nArgs; i++) {
+		if (wcscmp(lpwszArglist[i], L"-xlivedebug") == 0) {
+			xlive_debug_pause = TRUE;
+		}
+		else if (wcscmp(lpwszArglist[i], L"-xlivenetdisable") == 0) {
+			xlive_netsocket_abort = TRUE;
+		}
+		else if (wcsstr(lpwszArglist[i], L"-xllnconfig=") == lpwszArglist[i]) {
+			wchar_t *configFilePath = &lpwszArglist[i][12];
+			if (xlln_file_config_path) {
+				free(xlln_file_config_path);
 			}
-			else if (wcscmp(lpwszArglist[i], L"-xlivedebug") == 0) {
-				xlive_debug_pause = TRUE;
-			}
-			else if (wcscmp(lpwszArglist[i], L"-xlivenetdisable") == 0) {
-				xlive_netsocket_abort = TRUE;
-			}
-			else if (wcsstr(lpwszArglist[i], L"-xliveportbase=") != NULL) {
-				uint16_t tempuint16 = 0;
-				if (swscanf_s(lpwszArglist[i], L"-xliveportbase=%hu", &tempuint16) == 1) {
-					if (tempuint16 == 0) {
-						tempuint16 = 0xFFFF;
-					}
-					xlive_base_port = tempuint16;
-				}
-			}
-			else if (wcsstr(lpwszArglist[i], L"-xllnbroadcastaddr=") == lpwszArglist[i]) {
-				wchar_t *broadcastAddrInputTemp = &lpwszArglist[i][19];
-				size_t bufferLen = wcslen(broadcastAddrInputTemp) + 1;
-				execFlagBroadcastAddrInput = new char[bufferLen];
-				wcstombs2(execFlagBroadcastAddrInput, broadcastAddrInputTemp, bufferLen);
-			}
-			else if (wcsstr(lpwszArglist[i], L"-xllnconfig=") == lpwszArglist[i]) {
-				wchar_t *configFilePath = &lpwszArglist[i][12];
-				if (xlln_file_config_path) {
-					free(xlln_file_config_path);
-				}
-				xlln_file_config_path = CloneString(configFilePath);
-			}
-			else if (wcsstr(lpwszArglist[i], L"-xllnlocalinstanceid=") != NULL) {
-				uint32_t tempuint32 = 0;
-				if (swscanf_s(lpwszArglist[i], L"-xllnlocalinstanceid=%u", &tempuint32) == 1) {
-					xlln_local_instance_id = tempuint32;
-				}
+			xlln_file_config_path = CloneString(configFilePath);
+		}
+		else if (wcsstr(lpwszArglist[i], L"-xllnlocalinstanceindex=") != NULL) {
+			uint32_t tempuint32 = 0;
+			if (swscanf_s(lpwszArglist[i], L"-xllnlocalinstanceindex=%u", &tempuint32) == 1) {
+				xlln_local_instance_index = tempuint32;
 			}
 		}
 	}
-	LocalFree(lpwszArglist);
 
-	if (xlln_local_instance_id) {
-		wchar_t *mutexName = FormMallocString(L"Global\\XLiveLessNessInstanceId#%u", xlln_local_instance_id);
+	if (xlln_local_instance_index) {
+		wchar_t *mutexName = FormMallocString(L"Global\\XLiveLessNessInstanceIndex#%u", xlln_local_instance_index);
 		HANDLE mutex = CreateMutexW(0, FALSE, mutexName);
 		free(mutexName);
 		DWORD mutex_last_error = GetLastError();
 		if (mutex_last_error != ERROR_SUCCESS) {
-			char *messageDescription = FormMallocString("Failed to get XLiveLessNess Local Instance Id %u.", xlln_local_instance_id);
-			MessageBoxA(NULL, messageDescription, "XLLN Local Instance ID Fail", MB_OK);
+			char *messageDescription = FormMallocString("Failed to get XLiveLessNess Local Instance Index %u.", xlln_local_instance_index);
+			MessageBoxA(NULL, messageDescription, "XLLN Local Instance Index Fail", MB_OK);
 			free(messageDescription);
 			return false;
 		}
@@ -1131,7 +1108,7 @@ bool InitXLLN(HMODULE hModule)
 			if (mutex) {
 				mutex_last_error = CloseHandle(mutex);
 			}
-			wchar_t *mutexName = FormMallocString(L"Global\\XLiveLessNessInstanceId#%u", ++xlln_local_instance_id);
+			wchar_t *mutexName = FormMallocString(L"Global\\XLiveLessNessInstanceIndex#%u", ++xlln_local_instance_index);
 			mutex = CreateMutexW(0, FALSE, mutexName);
 			free(mutexName);
 			mutex_last_error = GetLastError();
@@ -1156,13 +1133,33 @@ bool InitXLLN(HMODULE hModule)
 	WSADATA wsaData;
 	INT result_wsaStartup = WSAStartup(2, &wsaData);
 
-	if (hasChangedFpsLimit) {
-		SetFPSLimit(setFpsLimit);
+	for (int i = 1; i < nArgs; i++) {
+		if (wcsstr(lpwszArglist[i], L"-xlivefps=") != NULL) {
+			uint32_t tempuint32 = 0;
+			if (swscanf_s(lpwszArglist[i], L"-xlivefps=%u", &tempuint32) == 1) {
+				SetFPSLimit(tempuint32);
+			}
+		}
+		else if (wcsstr(lpwszArglist[i], L"-xliveportbase=") != NULL) {
+			uint16_t tempuint16 = 0;
+			if (swscanf_s(lpwszArglist[i], L"-xliveportbase=%hu", &tempuint16) == 1) {
+				if (tempuint16 == 0) {
+					tempuint16 = 0xFFFF;
+				}
+				xlive_base_port = tempuint16;
+			}
+		}
+		else if (wcsstr(lpwszArglist[i], L"-xllnbroadcastaddr=") == lpwszArglist[i]) {
+			wchar_t *broadcastAddrInputTemp = &lpwszArglist[i][19];
+			size_t bufferLen = wcslen(broadcastAddrInputTemp) + 1;
+			if (broadcastAddrInput) {
+				delete[] broadcastAddrInput;
+			}
+			broadcastAddrInput = new char[bufferLen];
+			wcstombs2(broadcastAddrInput, broadcastAddrInputTemp, bufferLen);
+		}
 	}
-	if (execFlagBroadcastAddrInput) {
-		delete[] broadcastAddrInput;
-		broadcastAddrInput = execFlagBroadcastAddrInput;
-	}
+	LocalFree(lpwszArglist);
 
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)NULL, NULL, NULL);

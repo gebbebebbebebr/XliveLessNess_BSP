@@ -1,6 +1,7 @@
 #include <winsock2.h>
 #include <Windows.h>
 #include "../xlive/xdefs.hpp"
+#include "../xlive/xnet.hpp"
 #include "./wnd-sockets.hpp"
 #include "./xlln.hpp"
 #include "../utils/utils.hpp"
@@ -89,21 +90,71 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 {
 	if (message == WM_PAINT) {
 
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(xlln_hwnd_sockets, &ps);
+		SetTextColor(hdc, RGB(0, 0, 0));
+		SetBkColor(hdc, 0x00C8C8C8);
+
+		HBRUSH hBrush = CreateSolidBrush(0x00C8C8C8);
+		SelectObject(hdc, hBrush);
+		RECT bgRect;
+		GetClientRect(hWnd, &bgRect);
+		HRGN bgRgn = CreateRectRgnIndirect(&bgRect);
+		FillRgn(hdc, bgRgn, hBrush);
+		DeleteObject(bgRgn);
+		DeleteObject(hBrush);
+
+		{
+			char *textLabel = FormMallocString(
+				"Local Instance Id: 0x%08x."
+				, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
+			);
+			TextOutA(hdc, 100, 15, textLabel, strlen(textLabel));
+			free(textLabel);
+		}
+
+		EndPaint(xlln_hwnd_sockets, &ps);
+
 		TreeView_DeleteAllItems(hwndTreeView);
 
 		EnterCriticalSection(&xlln_critsec_net_entity);
-		for (auto const &instanceNetEntity : xlln_net_entity_instanceid_to_netentity) {
-			wchar_t *textItemLabel;
+
+		std::map<SOCKADDR_STORAGE*, NET_ENTITY*> externalAddrsToNetter = xlln_net_entity_external_addr_to_netentity;
+
+		wchar_t *textItemLabel;
 #define AddItemToTree2(level, format, ...) textItemLabel = FormMallocString(format, __VA_ARGS__); AddItemToTree(hwndTreeView, (LPTSTR)textItemLabel, level); free(textItemLabel)
 
-			AddItemToTree2(1, L"0x%08x - %hu", instanceNetEntity.second->instanceId, instanceNetEntity.second->portBaseHBO);
+		for (auto const &instanceNetEntity : xlln_net_entity_instanceid_to_netentity) {
+
+			if (IsUsingBasePort(instanceNetEntity.second->portBaseHBO)) {
+				AddItemToTree2(1, L"Instance: 0x%08x, BasePort: %hu", instanceNetEntity.second->instanceId, instanceNetEntity.second->portBaseHBO);
+			}
+			else {
+				AddItemToTree2(1, L"Instance: 0x%08x, BasePort: N/A", instanceNetEntity.second->instanceId);
+			}
 
 			for (auto const &portMap : instanceNetEntity.second->external_addr_to_port_internal) {
+
+				auto const externalAddrToNetter = externalAddrsToNetter.find(portMap.first);
+				const wchar_t *label;
+				if (externalAddrToNetter != externalAddrsToNetter.end() && (*externalAddrToNetter).second == instanceNetEntity.second) {
+					label = L"---> %hu, %hd --> %hs";
+					externalAddrsToNetter.erase(portMap.first);
+				}
+				else {
+					label = L"-/-> %hu, %hd --> %hs";
+				}
+
 				char *sockAddrInfo = GetSockAddrInfo(portMap.first);
-				AddItemToTree2(2, L"%hu, %hd -> %hs", portMap.second.first, portMap.second.second, sockAddrInfo);
+				AddItemToTree2(2, label, portMap.second.first, portMap.second.second, sockAddrInfo);
 				free(sockAddrInfo);
 			}
 		}
+
+		for (auto const &externalAddrToNetter : externalAddrsToNetter) {
+			AddItemToTree2(1, L"ERROR Remainder: &ExternalAddr: 0x%08x, &Netter: 0x%08x", externalAddrToNetter.first, externalAddrToNetter.second);
+		}
+
 		LeaveCriticalSection(&xlln_critsec_net_entity);
 	}
 	else if (message == WM_SYSCOMMAND) {
