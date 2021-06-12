@@ -76,8 +76,4 @@ VOID XllnDebugBreak(const char* message);
 #define TRACE_FX()
 #endif
 
-#define FUNC_STUB() \
-    extern void FUNC_STUB2(const char* func);\
-    FUNC_STUB2(__func__)
-
 #endif

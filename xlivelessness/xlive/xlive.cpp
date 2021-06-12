@@ -10,6 +10,9 @@
 #include "xwsa.hpp"
 #include "xlocator.hpp"
 #include "xsession.hpp"
+#include "xpresence.hpp"
+#include "xmarketplace.hpp"
+#include "xcontent.hpp"
 #include "net-entity.hpp"
 #include "xuser.hpp"
 #include <time.h>
@@ -41,7 +44,9 @@ uint32_t xlive_title_version = 0;
 
 CRITICAL_SECTION xlive_critsec_xnotify;
 
-CRITICAL_SECTION xlive_xfriends_enumerators_lock;
+CRITICAL_SECTION xlive_critsec_xfriends_enumerators;
+// Key: enumerator handle (id).
+// Value: Vector of ??? that have already been returned for that enumerator.
 std::map<HANDLE, std::vector<uint32_t>> xlive_xfriends_enumerators;
 
 CRITICAL_SECTION xlive_critsec_network_adapter;
@@ -53,6 +58,11 @@ std::vector<EligibleAdapter*> xlive_eligible_network_adapters;
 
 BOOL xlive_online_initialized = FALSE;
 static BOOL xlive_initialised = FALSE;
+
+CRITICAL_SECTION xlive_critsec_title_server_enumerators;
+// Key: enumerator handle (id).
+// Value: Vector of ??? that have already been returned for that enumerator.
+std::map<HANDLE, std::vector<uint32_t>> xlive_title_server_enumerators;
 
 static XLIVE_DEBUG_LEVEL xlive_xdlLevel = XLIVE_DEBUG_LEVEL_OFF;
 
@@ -263,7 +273,6 @@ void CreateLocalUser()
 	memcpy((BYTE*)&(pAddr->abOnline) + 17, (BYTE*)&mac_fix + 1, 3);
 }
 
-
 void Check_Overlapped(PXOVERLAPPED pOverlapped)
 {
 	if (!pOverlapped)
@@ -276,56 +285,6 @@ void Check_Overlapped(PXOVERLAPPED pOverlapped)
 	if (pOverlapped->pCompletionRoutine) {
 		pOverlapped->pCompletionRoutine(pOverlapped->InternalLow, pOverlapped->InternalHigh, pOverlapped->dwCompletionContext);
 	}
-}
-
-
-// #472
-VOID WINAPI XCustomSetAction(DWORD dwActionIndex, LPCWSTR lpwszActionText, DWORD dwFlags)
-{
-	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-}
-
-// #473
-BOOL WINAPI XCustomGetLastActionPress(DWORD *pdwUserIndex, DWORD *pdwActionIndex, XUID *pXuid)
-{
-	TRACE_FX();
-	return FALSE;
-}
-
-// #474
-VOID XCustomSetDynamicActions()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #476
-VOID XCustomGetLastActionPressEx()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #477
-VOID XCustomRegisterDynamicActions()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #478
-VOID XCustomUnregisterDynamicActions()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #479
-VOID XCustomGetCurrentGamercard()
-{
-	TRACE_FX();
-	FUNC_STUB();
 }
 
 BOOL XNotifyGetNextHelper(ULONGLONG notificationArea, PDWORD pdwId, PULONG_PTR pParam)
@@ -495,6 +454,8 @@ VOID WINAPI XLiveUninitialize()
 {
 	TRACE_FX();
 
+	xlive_initialised = FALSE;
+
 	INT errorXSession = UninitXSession();
 	INT errorXRender = UninitXRender();
 	INT errorNetEntity = UninitNetEntity();
@@ -535,127 +496,33 @@ HRESULT WINAPI XLiveOnResetDevice(void *pD3DPP)
 }
 
 // #5010: This function is deprecated.
-HRESULT WINAPI XLiveRegisterDataSection(int a1, int a2, int a3)
+HRESULT WINAPI XLiveRegisterDataSection(DWORD a1, DWORD a2, DWORD a3)
 {
 	TRACE_FX();
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return ERROR_SUCCESS;
+	return S_OK;
 	//if (XLivepGetTitleXLiveVersion() < 0x20000000)
 	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
 }
 
 // #5011: This function is deprecated.
-HRESULT WINAPI XLiveUnregisterDataSection(int a1)
+HRESULT WINAPI XLiveUnregisterDataSection(DWORD a1)
 {
 	TRACE_FX();
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return ERROR_SUCCESS;
+	return S_OK;
 	//if (XLivepGetTitleXLiveVersion() < 0x20000000)
 	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
 }
 
-// #5012
-VOID XLiveUpdateHashes()
+// #5012: This function is deprecated.
+HRESULT WINAPI XLiveUpdateHashes(DWORD a1, DWORD a2)
 {
 	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5016
-HRESULT WINAPI XLivePBufferAllocate(DWORD dwSize, XLIVE_PROTECTED_BUFFER **pxebBuffer)
-{
-	TRACE_FX();
-	if (!dwSize) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwSize is NULL.", __func__);
-		return E_INVALIDARG;
-	}
-	if (!pxebBuffer) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxebBuffer is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (dwSize + 4 < dwSize) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwSize + 4 < dwSize) Overflow experienced.", __func__);
-		return E_UNEXPECTED;
-	}
-
-	HANDLE hHeap = GetProcessHeap();
-	*pxebBuffer = (XLIVE_PROTECTED_BUFFER*)HeapAlloc(hHeap, HEAP_ZERO_MEMORY, dwSize + 4);
-	if (!*pxebBuffer) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s *pxebBuffer is NULL.", __func__);
-		return E_OUTOFMEMORY;
-	}
-
-	(*pxebBuffer)->dwSize = dwSize;
-
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
-}
-
-// #5017
-VOID XLivePBufferFree()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5018
-HRESULT WINAPI XLivePBufferGetByte(XLIVE_PROTECTED_BUFFER *xebBuffer, DWORD dwOffset, BYTE *pucValue)
-{
-	TRACE_FX();
-	if (!xebBuffer) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s xebBuffer is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (!pucValue) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pucValue is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (dwOffset + 4 < dwOffset) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwOffset + 4 < dwOffset) Overflow experienced.", __func__);
-		return E_UNEXPECTED;
-	}
-	if (dwOffset >= xebBuffer->dwSize) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwOffset >= xebBuffer->dwSize) Unexpected.", __func__);
-		return E_UNEXPECTED;
-	}
-
-	*pucValue = ((BYTE*)&xebBuffer->bData)[dwOffset];
-	return S_OK;
-}
-
-// #5019
-HRESULT WINAPI XLivePBufferSetByte(XLIVE_PROTECTED_BUFFER *xebBuffer, DWORD dwOffset, BYTE ucValue)
-{
-	TRACE_FX();
-	if (!xebBuffer) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s xebBuffer is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (dwOffset + 4 < dwOffset) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwOffset + 4 < dwOffset) Overflow experienced.", __func__);
-		return E_UNEXPECTED;
-	}
-	if (dwOffset >= xebBuffer->dwSize) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwOffset >= xebBuffer->dwSize) Unexpected.", __func__);
-		return E_UNEXPECTED;
-	}
-
-	((BYTE*)&xebBuffer->bData)[dwOffset] = ucValue;
-
-	return S_OK;
-}
-
-// #5020
-VOID XLivePBufferGetDWORD()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5021
-VOID XLivePBufferSetDWORD()
-{
-	TRACE_FX();
-	FUNC_STUB();
+	//if (XLivepGetTitleXLiveVersion() < 0x20000000)
+	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);// 0x80070032;
 }
 
 // #5022
@@ -686,10 +553,33 @@ HRESULT WINAPI XLiveUpdateSystem(LPCWSTR lpwszRelaunchCmdLine)
 }
 
 // #5025
-VOID XLiveGetLiveIdError()
+HRESULT WINAPI XLiveGetLiveIdError(HRESULT *phrAuthState, HRESULT *phrRequestState, LPWSTR wszWebFlowUrl, DWORD *pdwUrlLen)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!phrAuthState) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phrAuthState is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+	if (!phrRequestState) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phrRequestState is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+	if (!wszWebFlowUrl) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s wszWebFlowUrl is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+	if (!pdwUrlLen) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdwUrlLen is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	*phrAuthState = 0;
+	*phrRequestState = 0;
+	*wszWebFlowUrl = 0;
+	*pdwUrlLen = 0;
+	return S_OK;
+	return HRESULT_FROM_WIN32(ERROR_INSUFFICIENT_BUFFER);
+	return E_UNEXPECTED;
 }
 
 // #5026
@@ -709,10 +599,15 @@ HRESULT WINAPI XLiveSetSponsorToken(LPCWSTR lpwszToken, DWORD dwTitleId)
 }
 
 // #5027
-VOID XLiveUninstallTitle()
+HRESULT WINAPI XLiveUninstallTitle(DWORD dwTitleId)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!dwTitleId) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwTitleId is 0.", __func__);
+		return E_INVALIDARG;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return S_OK;
 }
 
 // #5028
@@ -805,119 +700,15 @@ HRESULT WINAPI XLiveSetDebugLevel(XLIVE_DEBUG_LEVEL xdlLevel, XLIVE_DEBUG_LEVEL 
 }
 
 // #5032
-VOID XLiveVerifyArcadeLicense()
+HRESULT WINAPI XLiveVerifyArcadeLicense(XLIVE_PROTECTED_BUFFER *xebBuffer, ULONG ulOffset)
 {
 	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5034
-HRESULT WINAPI XLiveProtectData(BYTE *pabDataToProtect, DWORD dwSizeOfDataToProtect, BYTE *pabProtectedData, DWORD *pdwSizeOfProtectedData, HANDLE hProtectedData)
-{
-	TRACE_FX();
-	if (!pabDataToProtect) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pabDataToProtect is NULL.", __func__);
+	if (!xebBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s xebBuffer is NULL.", __func__);
 		return E_POINTER;
 	}
-	if (dwSizeOfDataToProtect == 0) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwSizeOfDataToProtect is 0.", __func__);
-		return E_INVALIDARG;
-	}
-	if (!pdwSizeOfProtectedData) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdwSizeOfProtectedData is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (!pabProtectedData && *pdwSizeOfProtectedData != 0) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pabProtectedData is NULL and *pdwSizeOfProtectedData != 0.", __func__);
-		return E_INVALIDARG;
-	}
-	if (!hProtectedData) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hProtectedData is NULL.", __func__);
-		return E_HANDLE;
-	}
-	if (hProtectedData == INVALID_HANDLE_VALUE) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hProtectedData is INVALID_HANDLE_VALUE.", __func__);
-		return E_HANDLE;
-	}
-
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	for (DWORD i = 0; i < *pdwSizeOfProtectedData; i++) {
-		pabProtectedData[i] = 0;
-	}
-
 	return S_OK;
-	return E_NOT_SUFFICIENT_BUFFER;
-}
-
-// #5035
-VOID XLiveUnprotectData()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5036
-HRESULT WINAPI XLiveCreateProtectedDataContext(XLIVE_PROTECTED_DATA_INFORMATION *pProtectedDataInfo, HANDLE *phProtectedData)
-{
-	TRACE_FX();
-	if (!pProtectedDataInfo) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pProtectedDataInfo is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (!phProtectedData) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phProtectedData is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (pProtectedDataInfo->cbSize != sizeof(XLIVE_PROTECTED_DATA_INFORMATION)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pProtectedDataInfo->cbSize != sizeof(XLIVE_PROTECTED_DATA_INFORMATION).", __func__);
-		return HRESULT_FROM_WIN32(ERROR_INVALID_USER_BUFFER);//0x800706F8;
-	}
-	if (pProtectedDataInfo->dwFlags & ~(XLIVE_PROTECTED_DATA_FLAG_OFFLINE_ONLY)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pProtectedDataInfo->dwFlags & ~(XLIVE_PROTECTED_DATA_FLAG_OFFLINE_ONLY).", __func__);
-		return E_INVALIDARG;
-	}
-
-	XLIVE_PROTECTED_DATA_INFORMATION *pd = (XLIVE_PROTECTED_DATA_INFORMATION*)malloc(sizeof(XLIVE_PROTECTED_DATA_INFORMATION));
-	pd->cbSize = sizeof(XLIVE_PROTECTED_DATA_INFORMATION);
-	pd->dwFlags = pProtectedDataInfo->dwFlags;
-	
-	*phProtectedData = pd;
-	return S_OK;
-
-	*phProtectedData = INVALID_HANDLE_VALUE;
-	return E_OUTOFMEMORY;
-}
-
-// #5037
-VOID XLiveQueryProtectedDataInformation()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5038
-HRESULT WINAPI XLiveCloseProtectedDataContext(HANDLE hProtectedData)
-{
-	TRACE_FX();
-	if (!hProtectedData) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hProtectedData is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (hProtectedData == INVALID_HANDLE_VALUE) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hProtectedData is INVALID_HANDLE_VALUE.", __func__);
-		return E_POINTER;
-	}
-
-	free(hProtectedData);
-
-	return S_OK;
-}
-
-// #5039
-VOID XLiveVerifyDataFile()
-{
-	TRACE_FX();
-	FUNC_STUB();
 }
 
 // #5251
@@ -938,34 +729,79 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 	bool foundEnumerator = false;
 	
 	if (!foundEnumerator) {
-		EnterCriticalSection(&xlive_xlocator_enumerators_lock);
+		EnterCriticalSection(&xlive_critsec_xlocator_enumerators);
 		if (xlive_xlocator_enumerators.count(hObject)) {
 			foundEnumerator = true;
 			xlive_xlocator_enumerators.erase(hObject);
 		}
-		LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
+		LeaveCriticalSection(&xlive_critsec_xlocator_enumerators);
 	}
 	
 	if (!foundEnumerator) {
-		EnterCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+		EnterCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
 		if (xlive_xuser_achievement_enumerators.count(hObject)) {
 			foundEnumerator = true;
 			xlive_xuser_achievement_enumerators.erase(hObject);
 		}
-		LeaveCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+		LeaveCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
+	}
+	
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_xuser_stats);
+		if (xlive_xuser_achievement_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_xuser_achievement_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_critsec_xuser_stats);
 	}
 
 	if (!foundEnumerator) {
-		EnterCriticalSection(&xlive_xfriends_enumerators_lock);
+		EnterCriticalSection(&xlive_critsec_xfriends_enumerators);
 		if (xlive_xfriends_enumerators.count(hObject)) {
 			foundEnumerator = true;
 			xlive_xfriends_enumerators.erase(hObject);
 		}
-		LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
+		LeaveCriticalSection(&xlive_critsec_xfriends_enumerators);
 	}
 
 	if (!foundEnumerator) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown handle.", __func__);
+		EnterCriticalSection(&xlive_critsec_title_server_enumerators);
+		if (xlive_title_server_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_title_server_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_critsec_title_server_enumerators);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_presence_enumerators);
+		if (xlive_presence_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_presence_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_critsec_presence_enumerators);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_xmarketplace);
+		if (xlive_xmarketplace_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_xmarketplace_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_critsec_xmarketplace);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_xcontent);
+		if (xlive_xcontent_enumerators.count(hObject)) {
+			foundEnumerator = true;
+			xlive_xcontent_enumerators.erase(hObject);
+		}
+		LeaveCriticalSection(&xlive_critsec_xcontent);
+	}
+
+	if (!foundEnumerator) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown handle 0x%08x.", __func__, (uint32_t)hObject);
 	}
 
 	if (!CloseHandle(hObject)) {
@@ -990,14 +826,38 @@ DWORD WINAPI XCancelOverlapped(XOVERLAPPED *pXOverlapped)
 }
 
 // #5255
-VOID XEnumerateBack()
+DWORD WINAPI XEnumerateBack(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcItemsReturned, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!hEnum) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hEnum is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pvBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pvBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!cbBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cbBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (pcItemsReturned && pXOverlapped) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pcItemsReturned && pXOverlapped).", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pcItemsReturned && !pXOverlapped) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (!pcItemsReturned && !pXOverlapped).", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	if (pcItemsReturned) {
+		*pcItemsReturned = 0;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5256
-DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcItemsReturned, XOVERLAPPED *pXOverlapped)
+DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcItemsReturned, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!hEnum) {
@@ -1024,14 +884,14 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcI
 	bool foundEnumerator = false;
 
 	if (!foundEnumerator) {
-		EnterCriticalSection(&xlive_xlocator_enumerators_lock);
+		EnterCriticalSection(&xlive_critsec_xlocator_enumerators);
 		if (xlive_xlocator_enumerators.count(hEnum)) {
 			foundEnumerator = true;
 
 			DWORD max_result_len = cbBuffer / sizeof(XLOCATOR_SEARCHRESULT);
 			DWORD total_server_count = 0;
 
-			EnterCriticalSection(&liveoverlan_sessions_lock);
+			EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 			for (auto const &session : liveoverlan_sessions) {
 				if (total_server_count >= max_result_len) {
 					break;
@@ -1043,8 +903,8 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcI
 				xlive_xlocator_enumerators[hEnum].push_back(session.first);
 				LiveOverLanClone(&server, session.second->searchresult);
 			}
-			LeaveCriticalSection(&liveoverlan_sessions_lock);
-			LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
+			LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+			LeaveCriticalSection(&xlive_critsec_xlocator_enumerators);
 
 			if (pXOverlapped) {
 				//pXOverlapped->InternalHigh = ERROR_IO_INCOMPLETE;
@@ -1069,15 +929,15 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcI
 				return ERROR_SUCCESS;
 			}
 		}
-		LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
+		LeaveCriticalSection(&xlive_critsec_xlocator_enumerators);
 	}
 
 	if (!foundEnumerator) {
-		EnterCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+		EnterCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
 		if (xlive_xuser_achievement_enumerators.count(hEnum)) {
 			foundEnumerator = true;
 
-			LeaveCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+			LeaveCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
 
 			if (pXOverlapped) {
 				if (true) {
@@ -1098,15 +958,15 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcI
 				return ERROR_SUCCESS;
 			}
 		}
-		LeaveCriticalSection(&xlive_xuser_achievement_enumerators_lock);
+		LeaveCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
 	}
 
 	if (!foundEnumerator) {
-		EnterCriticalSection(&xlive_xfriends_enumerators_lock);
-		if (xlive_xfriends_enumerators.count(hEnum)) {
+		EnterCriticalSection(&xlive_critsec_xuser_stats);
+		if (xlive_xuser_achievement_enumerators.count(hEnum)) {
 			foundEnumerator = true;
 
-			LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
+			LeaveCriticalSection(&xlive_critsec_xuser_stats);
 
 			if (pXOverlapped) {
 				if (true) {
@@ -1127,7 +987,177 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, PVOID pvBuffer, DWORD cbBuffer, DWORD *pcI
 				return ERROR_SUCCESS;
 			}
 		}
-		LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
+		LeaveCriticalSection(&xlive_critsec_xuser_stats);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_xfriends_enumerators);
+		if (xlive_xfriends_enumerators.count(hEnum)) {
+			foundEnumerator = true;
+
+			LeaveCriticalSection(&xlive_critsec_xfriends_enumerators);
+
+			if (pXOverlapped) {
+				if (true) {
+					pXOverlapped->InternalHigh = 0;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
+			}
+			else {
+				*pcItemsReturned = 0;
+				return ERROR_SUCCESS;
+			}
+		}
+		LeaveCriticalSection(&xlive_critsec_xfriends_enumerators);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_title_server_enumerators);
+		if (xlive_title_server_enumerators.count(hEnum)) {
+			foundEnumerator = true;
+
+			LeaveCriticalSection(&xlive_critsec_title_server_enumerators);
+
+			if (pXOverlapped) {
+				if (true) {
+					pXOverlapped->InternalHigh = 0;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
+			}
+			else {
+				*pcItemsReturned = 0;
+				return ERROR_SUCCESS;
+			}
+		}
+		LeaveCriticalSection(&xlive_critsec_title_server_enumerators);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_presence_enumerators);
+		if (xlive_presence_enumerators.count(hEnum)) {
+			foundEnumerator = true;
+			auto xuidSet = xlive_presence_enumerators[hEnum];
+			uint32_t maxResults = cbBuffer / sizeof(XONLINE_PRESENCE);
+			uint32_t numberOfResults = 0;
+
+			while (xuidSet.size() && numberOfResults < maxResults) {
+				XUID xuid = *xuidSet.begin();
+				xuidSet.erase(xuid);
+
+				XONLINE_PRESENCE* userPresence = &((XONLINE_PRESENCE*)pvBuffer)[numberOfResults++];
+				userPresence->xuid = xuid;
+				userPresence->dwState = XONLINE_FRIENDSTATE_ENUM_ONLINE | XONLINE_FRIENDSTATE_FLAG_ONLINE;
+				userPresence->dwTitleID = DASHBOARD_TITLE_ID;
+
+				memset(&userPresence->sessionID, 0, sizeof(userPresence->sessionID));
+
+				const wchar_t rpText[] = L"Using XLiveLessNess";
+				memcpy(userPresence->wszRichPresence, rpText, sizeof(rpText));
+				userPresence->cchRichPresence = sizeof(rpText) / sizeof(wchar_t);
+
+				SYSTEMTIME systemTime;
+				GetSystemTime(&systemTime);
+				FILETIME fileTime;
+				SystemTimeToFileTime(&systemTime, &fileTime);
+				userPresence->ftUserTime = fileTime;
+			}
+
+			LeaveCriticalSection(&xlive_critsec_presence_enumerators);
+
+			if (pXOverlapped) {
+				if (numberOfResults) {
+					pXOverlapped->InternalHigh = numberOfResults;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
+			}
+			else {
+				*pcItemsReturned = numberOfResults;
+				return ERROR_SUCCESS;
+			}
+		}
+		LeaveCriticalSection(&xlive_critsec_presence_enumerators);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_xmarketplace);
+		if (xlive_xmarketplace_enumerators.count(hEnum)) {
+			foundEnumerator = true;
+
+			LeaveCriticalSection(&xlive_critsec_xmarketplace);
+
+			if (pXOverlapped) {
+				if (true) {
+					pXOverlapped->InternalHigh = 0;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
+			}
+			else {
+				*pcItemsReturned = 0;
+				return ERROR_SUCCESS;
+			}
+		}
+		LeaveCriticalSection(&xlive_critsec_xmarketplace);
+	}
+
+	if (!foundEnumerator) {
+		EnterCriticalSection(&xlive_critsec_xcontent);
+		if (xlive_xcontent_enumerators.count(hEnum)) {
+			foundEnumerator = true;
+
+			LeaveCriticalSection(&xlive_critsec_xcontent);
+
+			if (pXOverlapped) {
+				if (true) {
+					pXOverlapped->InternalHigh = 0;
+					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
+					XCloseHandle(hEnum);
+				}
+				Check_Overlapped(pXOverlapped);
+
+				return ERROR_IO_PENDING;
+			}
+			else {
+				*pcItemsReturned = 0;
+				return ERROR_SUCCESS;
+			}
+		}
+		LeaveCriticalSection(&xlive_critsec_xcontent);
 	}
 
 	if (!foundEnumerator) {
@@ -1305,27 +1335,6 @@ HANDLE WINAPI XNotifyCreateListener(ULONGLONG qwAreas)
 	return g_dwFakeListener;
 }
 
-// #5294
-VOID XLivePBufferGetByteArray()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5295
-VOID XLivePBufferSetByteArray()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5296
-VOID XLiveGetLocalOnlinePort()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
 // #5297
 HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLiveVersion)
 {
@@ -1393,13 +1402,6 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 
 	xlive_initialised = TRUE;
 	return S_OK;
-}
-
-// #5298
-VOID XLiveGetGuideKey()
-{
-	TRACE_FX();
-	FUNC_STUB();
 }
 
 // #5303
@@ -1522,18 +1524,11 @@ DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, 
 
 	*pcbBuffer = dwFriendsToReturn * sizeof(XCONTENT_DATA);
 	*ph = CreateMutex(NULL, NULL, NULL);
-	EnterCriticalSection(&xlive_xfriends_enumerators_lock);
+	EnterCriticalSection(&xlive_critsec_xfriends_enumerators);
 	xlive_xfriends_enumerators[*ph];
-	LeaveCriticalSection(&xlive_xfriends_enumerators_lock);
+	LeaveCriticalSection(&xlive_critsec_xfriends_enumerators);
 
 	return ERROR_SUCCESS;
-}
-
-// #5313
-VOID XPresenceInitialize()
-{
-	TRACE_FX();
-	FUNC_STUB();
 }
 
 // #5315
@@ -1643,279 +1638,64 @@ XONLINE_NAT_TYPE WINAPI XOnlineGetNatType()
 }
 
 // #5334
-VOID XOnlineGetServiceInfo()
+DWORD WINAPI XOnlineGetServiceInfo(DWORD dwServiceID, XONLINE_SERVICE_INFO *pServiceInfo)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pServiceInfo) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pServiceInfo is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return ERROR_SERVICE_NOT_FOUND;
+	return ERROR_SUCCESS;
+	return ERROR_FUNCTION_FAILED;
+	return ERROR_CONNECTION_INVALID;
 }
 
 // #5335
-VOID XTitleServerCreateEnumerator()
+DWORD WINAPI XTitleServerCreateEnumerator(LPCSTR pszServerInfo, DWORD cItem, DWORD *pcbBuffer, HANDLE *phEnum)
 {
 	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5338
-VOID XPresenceSubscribe()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5340
-VOID XPresenceCreateEnumerator()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5341
-VOID XPresenceUnsubscribe()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5347
-VOID XLiveProtectedLoadLibrary()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5348
-VOID XLiveProtectedCreateFile()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5349
-VOID XLiveProtectedVerifyFile()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5350
-VOID XLiveContentCreateAccessHandle()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5351
-VOID XLiveContentInstallPackage()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5352
-VOID XLiveContentUninstall()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5354
-VOID XLiveContentVerifyInstalledPackage()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5355
-VOID XLiveContentGetPath()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5356
-VOID XLiveContentGetDisplayName()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5357
-VOID XLiveContentGetThumbnail()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5358
-VOID XLiveContentInstallLicense()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5359
-VOID XLiveGetUPnPState()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5360
-DWORD WINAPI XLiveContentCreateEnumerator(DWORD cItems, XLIVE_CONTENT_RETRIEVAL_INFO *pContentRetrievalInfo, DWORD *pcbBuffer, HANDLE *phContent)
-{
-	TRACE_FX();
-	if (!cItems) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems is NULL.", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (cItems > 100) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems (%u) is greater than 100.", __func__, cItems);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (!pcbBuffer) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbBuffer is NULL.", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (!phContent) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phContent is NULL.", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (!pContentRetrievalInfo) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pContentRetrievalInfo is NULL.", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (pContentRetrievalInfo->dwContentAPIVersion != 1) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pContentRetrievalInfo->dwContentAPIVersion (%u) is not 1.", __func__, pContentRetrievalInfo->dwContentAPIVersion);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (pContentRetrievalInfo->dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, pContentRetrievalInfo->dwUserIndex);
-		return ERROR_NO_SUCH_USER;
-	}
-	if (xlive_users_info[pContentRetrievalInfo->dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, pContentRetrievalInfo->dwUserIndex);
-		return ERROR_NOT_LOGGED_ON;
-	}
-	if ((pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS) && (pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ((pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS) && (pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID)).", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (pContentRetrievalInfo->dwContentType != XCONTENTTYPE_MARKETPLACE) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pContentRetrievalInfo->dwContentType (%u) is not XCONTENTTYPE_MARKETPLACE.", __func__, pContentRetrievalInfo->dwContentType);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (!(pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_CONTENT_TYPES)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s !(pContentRetrievalInfo->dwRetrievalMask & XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_CONTENT_TYPES).", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (!(pContentRetrievalInfo->dwRetrievalMask & (XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS | XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID))) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s !(pContentRetrievalInfo->dwRetrievalMask & (XLIVE_CONTENT_FLAG_RETRIEVE_FOR_ALL_USERS | XLIVE_CONTENT_FLAG_RETRIEVE_BY_XUID)).", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-
-	*pcbBuffer = cItems * sizeof(XCONTENT_DATA);
-	*phContent = CreateMutex(NULL, NULL, NULL);
-
-	return ERROR_SUCCESS;
-}
-
-// #5361
-VOID XLiveContentRetrieveOffersByDate()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5362
-VOID XLiveMarketplaceDoesContentIdMatch()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5363
-VOID XLiveContentGetLicensePath()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5367
-VOID XContentGetMarketplaceCounts()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5370
-VOID XMarketplaceConsumeAssets()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5371
-VOID XMarketplaceCreateAssetEnumerator()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
-
-// #5372
-DWORD WINAPI XMarketplaceCreateOfferEnumerator(DWORD dwUserIndex, DWORD dwOfferType, DWORD dwContentCategories, DWORD cItem, DWORD *pcbBuffer, HANDLE *phEnum)
-{
-	TRACE_FX();
-	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
-		return ERROR_NO_SUCH_USER;
-	}
-	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
-		return ERROR_NOT_LOGGED_ON;
-	}
-	if (!dwOfferType) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwOfferType is NULL.", __func__);
+	if (pszServerInfo && strnlen_s(pszServerInfo, XTITLE_SERVER_MAX_SERVER_INFO_SIZE) > XTITLE_SERVER_MAX_SERVER_INFO_LEN) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s length of pszServerInfo is > XTITLE_SERVER_MAX_SERVER_INFO_LEN (%u).", __func__, XTITLE_SERVER_MAX_SERVER_INFO_LEN);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!cItem) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItem is NULL.", __func__);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItem is 0.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (cItem > XTITLE_SERVER_MAX_LSP_INFO) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItem (%u) is greater than XTITLE_SERVER_MAX_LSP_INFO (%u).", __func__, cItem, XTITLE_SERVER_MAX_LSP_INFO);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (!phEnum) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phEnum is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
-	if (cItem > 0x64) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItem (%u) is greater than 0x64.", __func__, cItem);
-		return ERROR_INVALID_PARAMETER;
-	}
 
 	if (pcbBuffer) {
-		*pcbBuffer = 2524 * cItem;
+		*pcbBuffer = sizeof(XTITLE_SERVER_INFO) * cItem;
 	}
+
 	*phEnum = CreateMutex(NULL, NULL, NULL);
+	EnterCriticalSection(&xlive_critsec_title_server_enumerators);
+	xlive_title_server_enumerators[*phEnum];
+	LeaveCriticalSection(&xlive_critsec_title_server_enumerators);
 
 	return ERROR_SUCCESS;
 }
 
-// #5374
-VOID XMarketplaceGetDownloadStatus()
+// #5359
+HRESULT WINAPI XLiveGetUPnPState(DWORD *peState)
 {
 	TRACE_FX();
-	FUNC_STUB();
-}
+	if (!peState) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s peState is NULL.", __func__);
+		return E_INVALIDARG;
+	}
 
-// #5375
-VOID XMarketplaceGetImageUrl()
-{
-	TRACE_FX();
-	FUNC_STUB();
-}
+	// FIXME not sure the type of this variable or the correct values.
+	*peState = XONLINE_NAT_OPEN;
 
-// #5376
-VOID XMarketplaceCreateOfferEnumeratorByOffering()
-{
-	TRACE_FX();
-	FUNC_STUB();
+	return S_OK;
 }

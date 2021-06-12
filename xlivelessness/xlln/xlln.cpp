@@ -16,6 +16,10 @@
 #include "../xlive/net-entity.hpp"
 #include "../xlive/xuser.hpp"
 #include "../xlive/xsession.hpp"
+#include "../xlive/xcustom.hpp"
+#include "../xlive/xpresence.hpp"
+#include "../xlive/xmarketplace.hpp"
+#include "../xlive/xcontent.hpp"
 #include "rand-name.hpp"
 #include "../resource.h"
 #include <ws2tcpip.h>
@@ -264,10 +268,8 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 	}
 
 	xlive_users_info[dwUserIndex]->UserSigninState = bLiveEnabled ? eXUserSigninState_SignedInToLive : eXUserSigninState_SignedInLocally;
-	//0x0009000000000000 - online xuid?
-	//0x0009000006F93463
 	//xlive_users_info[dwUserIndex]->xuid = 0xE000007300000000 + dwUserId;
-	xlive_users_info[dwUserIndex]->xuid = (bLiveEnabled ? 0x0009000000000000 : 0xE000000000000000) + dwUserId;
+	xlive_users_info[dwUserIndex]->xuid = (bLiveEnabled ? XUID_LIVE_ENABLED_FLAG : 0xE000000000000000) + dwUserId;
 	xlive_users_info[dwUserIndex]->dwInfoFlags = bLiveEnabled ? XUSER_INFO_FLAG_LIVE_ENABLED : 0;
 
 	xlive_users_info_changed[dwUserIndex] = TRUE;
@@ -1006,13 +1008,19 @@ void InitCriticalSections()
 	InitializeCriticalSection(&xlive_critsec_network_adapter);
 	InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	InitializeCriticalSection(&xlln_critsec_net_entity);
-	InitializeCriticalSection(&xlive_xlocator_enumerators_lock);
-	InitializeCriticalSection(&xlive_xuser_achievement_enumerators_lock);
-	InitializeCriticalSection(&xlive_xfriends_enumerators_lock);
+	InitializeCriticalSection(&xlive_critsec_xlocator_enumerators);
+	InitializeCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
+	InitializeCriticalSection(&xlive_critsec_xuser_stats);
+	InitializeCriticalSection(&xlive_critsec_xfriends_enumerators);
+	InitializeCriticalSection(&xlive_critsec_custom_actions);
+	InitializeCriticalSection(&xlive_critsec_title_server_enumerators);
+	InitializeCriticalSection(&xlive_critsec_presence_enumerators);
 	InitializeCriticalSection(&xlive_critsec_xnotify);
 	InitializeCriticalSection(&xlive_critsec_xsession);
-	InitializeCriticalSection(&liveoverlan_broadcast_lock);
-	InitializeCriticalSection(&liveoverlan_sessions_lock);
+	InitializeCriticalSection(&xlive_critsec_xmarketplace);
+	InitializeCriticalSection(&xlive_critsec_xcontent);
+	InitializeCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+	InitializeCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	InitializeCriticalSection(&xlive_critsec_fps_limit);
 	InitializeCriticalSection(&xlive_critsec_sockets);
 	InitializeCriticalSection(&xlive_critsec_broadcast_addresses);
@@ -1025,13 +1033,19 @@ void UninitCriticalSections()
 	DeleteCriticalSection(&xlive_critsec_network_adapter);
 	DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	DeleteCriticalSection(&xlln_critsec_net_entity);
-	DeleteCriticalSection(&xlive_xlocator_enumerators_lock);
-	DeleteCriticalSection(&xlive_xuser_achievement_enumerators_lock);
-	DeleteCriticalSection(&xlive_xfriends_enumerators_lock);
+	DeleteCriticalSection(&xlive_critsec_xlocator_enumerators);
+	DeleteCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
+	DeleteCriticalSection(&xlive_critsec_xuser_stats);
+	DeleteCriticalSection(&xlive_critsec_xfriends_enumerators);
+	DeleteCriticalSection(&xlive_critsec_custom_actions);
+	DeleteCriticalSection(&xlive_critsec_title_server_enumerators);
+	DeleteCriticalSection(&xlive_critsec_presence_enumerators);
 	DeleteCriticalSection(&xlive_critsec_xnotify);
 	DeleteCriticalSection(&xlive_critsec_xsession);
-	DeleteCriticalSection(&liveoverlan_broadcast_lock);
-	DeleteCriticalSection(&liveoverlan_sessions_lock);
+	DeleteCriticalSection(&xlive_critsec_xmarketplace);
+	DeleteCriticalSection(&xlive_critsec_xcontent);
+	DeleteCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+	DeleteCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	DeleteCriticalSection(&xlive_critsec_fps_limit);
 	DeleteCriticalSection(&xlive_critsec_sockets);
 	DeleteCriticalSection(&xlive_critsec_broadcast_addresses);

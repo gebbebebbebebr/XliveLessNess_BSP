@@ -1191,10 +1191,72 @@ INT WINAPI XSocketSendTo(SOCKET s, const char *buf, int len, int flags, sockaddr
 }
 
 // #26
-VOID XSocketInet_Addr()
+long WINAPI XSocketInet_Addr(const char FAR *cp)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	uint8_t iIpParts = 0;
+	char *ipStr = CloneString(cp);
+	char* ipParts[4];
+	ipParts[0] = ipStr;
+	for (char *iIpStr = ipStr; *iIpStr != 0; iIpStr++) {
+		if (*iIpStr == '.') {
+			if (++iIpParts == 4) {
+				delete[] ipStr;
+				return htonl(INADDR_NONE);
+			}
+			ipParts[iIpParts] = iIpStr + 1;
+			*iIpStr = 0;
+			continue;
+		}
+		if (!(
+				(*iIpStr >= '0' && *iIpStr <= '9')
+				|| (*iIpStr >= 'a' && *iIpStr <= 'f')
+				|| (*iIpStr >= 'A' && *iIpStr <= 'F')
+				|| *iIpStr == 'x'
+				|| *iIpStr == 'X'
+			)
+		) {
+			delete[] ipStr;
+			return htonl(INADDR_NONE);
+		}
+	}
+	if (iIpParts != 3) {
+		delete[] ipStr;
+		return htonl(INADDR_NONE);
+	}
+
+	uint32_t result = 0;
+
+	for (iIpParts = 0; iIpParts < 4; iIpParts++) {
+		size_t partLen = strlen(ipParts[iIpParts]);
+		if (partLen == 0 || partLen > 4) {
+			delete[] ipStr;
+			return htonl(INADDR_NONE);
+		}
+		uint32_t partValue = 0;
+		if (ipParts[iIpParts][0] == '0' && (ipParts[iIpParts][1] == 'x' || ipParts[iIpParts][1] == 'X') && ipParts[iIpParts][2] != 0) {
+			if (sscanf_s(ipParts[iIpParts], "%x", &partValue) != 1) {
+				continue;
+			}
+		}
+		if (ipParts[iIpParts][0] == '0' && ipParts[iIpParts][1] != 0) {
+			if (sscanf_s(ipParts[iIpParts], "%o", &partValue) != 1) {
+				continue;
+			}
+		}
+		else {
+			if (sscanf_s(ipParts[iIpParts], "%u", &partValue) != 1) {
+				continue;
+			}
+		}
+		if (partValue > 0xFF) {
+			continue;
+		}
+		result |= (partValue << ((3 - iIpParts) * 8));
+	}
+
+	delete[] ipStr;
+	return htonl(result);
 }
 
 // #27

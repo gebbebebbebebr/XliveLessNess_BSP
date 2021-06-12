@@ -17,7 +17,7 @@
 
 static BOOL xlive_xlocator_initialized = FALSE;
 
-CRITICAL_SECTION xlive_xlocator_enumerators_lock;
+CRITICAL_SECTION xlive_critsec_xlocator_enumerators;
 // Key: enumerator handle (id).
 // Value: Vector of InstanceIds that have already been returned for that enumerator.
 std::map<HANDLE, std::vector<uint32_t>> xlive_xlocator_enumerators;
@@ -27,12 +27,12 @@ VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = 0;
 
 // Key: InstanceId.
 std::map<uint32_t, XLOCATOR_SESSION*> liveoverlan_sessions;
-CRITICAL_SECTION liveoverlan_sessions_lock;
+CRITICAL_SECTION xlln_critsec_liveoverlan_sessions;
 static std::condition_variable liveoverlan_cond_empty;
 static std::thread liveoverlan_empty_thread;
 static std::atomic<bool> liveoverlan_empty_exit = TRUE;
 
-CRITICAL_SECTION liveoverlan_broadcast_lock;
+CRITICAL_SECTION xlln_critsec_liveoverlan_broadcast;
 static std::condition_variable liveoverlan_cond_broadcast;
 static std::thread liveoverlan_thread;
 static BOOL liveoverlan_running = FALSE;
@@ -140,7 +140,7 @@ static VOID LiveOverLanBroadcast()
 {
 	std::mutex mutexPause;
 	while (1) {
-		EnterCriticalSection(&liveoverlan_broadcast_lock);
+		EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 		if (local_session_details) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
 				, "LiveOverLan Advertise Broadcast."
@@ -181,7 +181,7 @@ static VOID LiveOverLanBroadcast()
 				}
 			}
 		}
-		LeaveCriticalSection(&liveoverlan_broadcast_lock);
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 
 		std::unique_lock<std::mutex> lock(mutexPause);
 		liveoverlan_cond_broadcast.wait_for(lock, std::chrono::seconds(10), []() { return liveoverlan_exit == TRUE || liveoverlan_break_sleep == TRUE; });
@@ -663,12 +663,12 @@ static VOID LiveOverLanBroadcastData(XUID *xuid,
 
 	new_local_sd->HEAD.bCustomPacketType = XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE;
 
-	EnterCriticalSection(&liveoverlan_broadcast_lock);
+	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	if (local_session_details) {
 		free(local_session_details);
 	}
 	local_session_details = new_local_sd;
-	LeaveCriticalSection(&liveoverlan_broadcast_lock);
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 }
 VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, const LIVE_SERVER_DETAILS *session_details, INT &len)
 {
@@ -713,9 +713,9 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 			free(sockAddrInfo);
 		}
 
-		EnterCriticalSection(&liveoverlan_sessions_lock);
+		EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 		liveoverlan_sessions.erase(instanceId);
-		LeaveCriticalSection(&liveoverlan_sessions_lock);
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	}
 	else {
 		// It can be larger than this.
@@ -759,7 +759,7 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 				, __func__
 				, instanceId
 			);
-			EnterCriticalSection(&liveoverlan_sessions_lock);
+			EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 			// Delete the old entry if there already is one.
 			if (liveoverlan_sessions.count(instanceId)) {
 				XLOCATOR_SESSION *oldsession = liveoverlan_sessions[instanceId];
@@ -784,7 +784,7 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 			time(&ltime);
 			newsession->broadcastTime = (unsigned long)ltime;
 			liveoverlan_sessions[instanceId] = newsession;
-			LeaveCriticalSection(&liveoverlan_sessions_lock);
+			LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 		}
 		else {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
@@ -797,7 +797,7 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 }
 static VOID LiveOverLanStartBroadcast()
 {
-	EnterCriticalSection(&liveoverlan_broadcast_lock);
+	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 
 	if (liveoverlan_running) {
 		liveoverlan_break_sleep = TRUE;
@@ -809,11 +809,11 @@ static VOID LiveOverLanStartBroadcast()
 		liveoverlan_thread = std::thread(LiveOverLanBroadcast);
 	}
 
-	LeaveCriticalSection(&liveoverlan_broadcast_lock);
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 }
 static VOID LiveOverLanStopBroadcast()
 {
-	EnterCriticalSection(&liveoverlan_broadcast_lock);
+	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	if (local_session_details) {
 		free(local_session_details);
 	}
@@ -821,7 +821,7 @@ static VOID LiveOverLanStopBroadcast()
 
 	if (liveoverlan_running) {
 		liveoverlan_running = FALSE;
-		LeaveCriticalSection(&liveoverlan_broadcast_lock);
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 		if (liveoverlan_exit == FALSE) {
 			liveoverlan_exit = TRUE;
 			liveoverlan_cond_broadcast.notify_all();
@@ -829,7 +829,7 @@ static VOID LiveOverLanStopBroadcast()
 		}
 	}
 	else {
-		LeaveCriticalSection(&liveoverlan_broadcast_lock);
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	}
 }
 
@@ -838,7 +838,7 @@ static VOID LiveOverLanEmpty()
 	std::mutex mymutex;
 	while (1) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO, "LiveOverLAN Remove Old Entries.");
-		EnterCriticalSection(&liveoverlan_sessions_lock);
+		EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 		
 		std::vector<uint32_t> removesessions;
 		time_t ltime;
@@ -856,7 +856,7 @@ static VOID LiveOverLanEmpty()
 			liveoverlan_sessions.erase(session);
 		}
 
-		LeaveCriticalSection(&liveoverlan_sessions_lock);
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 
 		std::unique_lock<std::mutex> lock(mymutex);
 		liveoverlan_cond_empty.wait_for(lock, std::chrono::seconds(10), []() { return liveoverlan_empty_exit == TRUE; });
@@ -872,13 +872,13 @@ static VOID LiveOverLanStartEmpty()
 }
 static VOID LiveOverLanStopEmpty()
 {
-	EnterCriticalSection(&liveoverlan_sessions_lock);
+	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	for (auto const &session : liveoverlan_sessions) {
 		LiveOverLanDelete(session.second->searchresult);
 		delete session.second;
 	}
 	liveoverlan_sessions.clear();
-	LeaveCriticalSection(&liveoverlan_sessions_lock);
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	if (liveoverlan_empty_exit == FALSE) {
 		liveoverlan_empty_exit = TRUE;
 		liveoverlan_cond_empty.notify_all();
@@ -1098,7 +1098,7 @@ HRESULT WINAPI XLocatorGetServiceProperty(DWORD dwUserIndex, DWORD cNumPropertie
 		return E_FAIL;
 	}
 
-	EnterCriticalSection(&liveoverlan_sessions_lock);
+	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL) {
 		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL].value.nData = liveoverlan_sessions.size();
 	}
@@ -1111,7 +1111,7 @@ HRESULT WINAPI XLocatorGetServiceProperty(DWORD dwUserIndex, DWORD cNumPropertie
 	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_PEER) {
 		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_PEER].value.nData = -1;
 	}
-	LeaveCriticalSection(&liveoverlan_sessions_lock);
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 
 	if (pXOverlapped) {
 		//asynchronous
@@ -1141,13 +1141,14 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 	DWORD dwUserIndex,
 	DWORD cItems,
 	DWORD cRequiredPropertyIDs,
-	DWORD *pRequiredPropertyIDs,
+	const DWORD *pRequiredPropertyIDs,
 	DWORD cFilterGroupItems,
-	XLOCATOR_FILTER_GROUP *pxlFilterGroups,
+	const XLOCATOR_FILTER_GROUP *pxlFilterGroups,
 	DWORD cSorterItems,
-	struct _XLOCATOR_SORTER *pxlSorters,
-	PDWORD pcbBuffer,
-	PHANDLE phEnum)
+	const struct _XLOCATOR_SORTER *pxlSorters,
+	DWORD *pcbBuffer,
+	HANDLE *phEnum
+)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
@@ -1159,7 +1160,7 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 		return ERROR_NOT_LOGGED_ON;
 	}
 	if (!cItems) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems is NULL.", __func__);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems is 0.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (cItems > INT_MAX) {
@@ -1191,7 +1192,7 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 		return ERROR_INVALID_PARAMETER;
 	}
 	if (cFilterGroupItems) {
-		XLOCATOR_FILTER_GROUP *list = pxlFilterGroups;
+		const XLOCATOR_FILTER_GROUP *list = pxlFilterGroups;
 		for (unsigned int i = 0; i < cFilterGroupItems; i++) {
 			if (!list[i].ukn1) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s list[%u].ukn1 is NULL.", __func__, i);
@@ -1251,18 +1252,93 @@ DWORD WINAPI XLocatorCreateServerEnumerator(
 	}
 	*pcbBuffer = (cItems) * sizeof(XLOCATOR_SEARCHRESULT);
 	*phEnum = CreateMutex(NULL, NULL, NULL);
-	EnterCriticalSection(&xlive_xlocator_enumerators_lock);
+	EnterCriticalSection(&xlive_critsec_xlocator_enumerators);
 	xlive_xlocator_enumerators[*phEnum];
-	LeaveCriticalSection(&xlive_xlocator_enumerators_lock);
+	LeaveCriticalSection(&xlive_critsec_xlocator_enumerators);
 
 	return S_OK;
 }
 
 // #5235
-VOID XLocatorCreateServerEnumeratorByIDs()
+DWORD WINAPI XLocatorCreateServerEnumeratorByIDs(
+	DWORD dwUserIndex,
+	DWORD cItems,
+	DWORD cRequiredPropertyIDs,
+	const DWORD *pRequiredPropertyIDs,
+	DWORD cIDs,
+	const uint64_t *pIDs,
+	DWORD *pcbBuffer,
+	HANDLE *phEnum
+)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+	if (!cItems) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems is 0.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (cItems > INT_MAX) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cItems (0x%08x) is bigger than INT_MAX.", __func__, cItems);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (cRequiredPropertyIDs > INT_MAX) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cRequiredPropertyIDs (0x%08x) is bigger than INT_MAX.", __func__, cRequiredPropertyIDs);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (cRequiredPropertyIDs && !pRequiredPropertyIDs) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (cRequiredPropertyIDs && !pRequiredPropertyIDs).", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (cRequiredPropertyIDs) {
+		for (unsigned int i = 0; i < cRequiredPropertyIDs; i++) {
+			if (!pRequiredPropertyIDs[i]) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pRequiredPropertyIDs[%u] is NULL.", __func__, i);
+				return ERROR_INVALID_PARAMETER;
+			}
+		}
+	}
+	if (!cIDs) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cIDs is 0.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (cIDs > INT_MAX) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cIDs (0x%08x) is bigger than INT_MAX.", __func__, cIDs);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pIDs) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pIDs is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pcbBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!phEnum) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phEnum is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!xlive_net_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive NetSocket is disabled.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+
+	if (cItems > 200) {
+		cItems = 200;
+	}
+	*pcbBuffer = (cItems) * sizeof(XLOCATOR_SEARCHRESULT);
+	*phEnum = CreateMutex(NULL, NULL, NULL);
+	EnterCriticalSection(&xlive_critsec_xlocator_enumerators);
+	xlive_xlocator_enumerators[*phEnum];
+	LeaveCriticalSection(&xlive_critsec_xlocator_enumerators);
+
+	return S_OK;
 }
 
 typedef struct {
@@ -1333,7 +1409,15 @@ HRESULT WINAPI XLocatorServiceUnInitialize(HANDLE hLocatorService)
 HRESULT WINAPI XLocatorCreateKey(XNKID *pxnkid, XNKEY *pxnkey)
 {
 	TRACE_FX();
-	HRESULT result = XNetCreateKey(pxnkid, pxnkey);
+	if (!pxnkid) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid is NULL.", __func__);
+		return E_POINTER;
+	}
+	if (!pxnkey) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkey is NULL.", __func__);
+		return E_POINTER;
+	}
+	INT result = XNetCreateKey(pxnkid, pxnkey);
 	if (result == S_OK && pxnkid) {
 		pxnkid->ab[0] &= ~XNET_XNKID_MASK;
 		pxnkid->ab[0] |= XNET_XNKID_ONLINE_PEER;

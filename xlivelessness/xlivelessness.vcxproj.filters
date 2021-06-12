@@ -105,6 +105,24 @@
     <ClCompile Include="xlln\xlln-keep-alive.cpp">
       <Filter>Source Files\xlln</Filter>
     </ClCompile>
+    <ClCompile Include="xlive\xpresence.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
+    <ClCompile Include="xlive\xpbuffer.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
+    <ClCompile Include="xlive\xcontent.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
+    <ClCompile Include="xlive\xmarketplace.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
+    <ClCompile Include="xlive\xprotect.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
+    <ClCompile Include="xlive\xcustom.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -190,6 +208,24 @@
     </ClInclude>
     <ClInclude Include="xlln\xlln-keep-alive.hpp">
       <Filter>Source Files\xlln</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xpresence.hpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xpbuffer.hpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xcontent.hpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xmarketplace.hpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xprotect.hpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xcustom.hpp">
+      <Filter>Source Files\xlive</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

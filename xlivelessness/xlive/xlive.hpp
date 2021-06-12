@@ -33,7 +33,7 @@ struct EligibleAdapter {
 
 extern CRITICAL_SECTION xlive_critsec_xnotify;
 
-extern CRITICAL_SECTION xlive_xfriends_enumerators_lock;
+extern CRITICAL_SECTION xlive_critsec_xfriends_enumerators;
 extern std::map<HANDLE, std::vector<uint32_t>> xlive_xfriends_enumerators;
 
 extern uint32_t xlive_title_id;
@@ -45,5 +45,7 @@ extern bool xlive_ignore_title_network_adapter;
 extern EligibleAdapter *xlive_network_adapter;
 extern std::vector<EligibleAdapter*> xlive_eligible_network_adapters;
 extern BOOL xlive_online_initialized;
+
+extern CRITICAL_SECTION xlive_critsec_title_server_enumerators;
 
 INT RefreshNetworkAdapters();

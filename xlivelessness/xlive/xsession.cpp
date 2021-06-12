@@ -8,6 +8,8 @@
 #include "net-entity.hpp"
 
 CRITICAL_SECTION xlive_critsec_xsession;
+// Key: session handle (id).
+// Value: the details of the session.
 std::map<HANDLE, XSESSION_LOCAL_DETAILS*> xlive_xsessions;
 
 BOOL xlive_xsession_initialised = FALSE;
@@ -39,7 +41,7 @@ INT UninitXSession()
 }
 
 // #5300
-DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicSlots, DWORD dwMaxPrivateSlots, ULONGLONG *pqwSessionNonce, XSESSION_INFO *pSessionInfo, PXOVERLAPPED pXOverlapped, PHANDLE phEnum)
+DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicSlots, DWORD dwMaxPrivateSlots, ULONGLONG *pqwSessionNonce, XSESSION_INFO *pSessionInfo, XOVERLAPPED *pXOverlapped, HANDLE *phEnum)
 {
 	TRACE_FX();
 	if (!xlive_xsession_initialised) {
@@ -186,14 +188,48 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 }
 
 // #5317
-VOID XSessionWriteStats()
+DWORD WINAPI XSessionWriteStats(HANDLE hSession, XUID xuid, DWORD dwNumViews, CONST XSESSION_VIEW_PROPERTIES *pViews, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!dwNumViews) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwNumViews is 0.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pViews) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pViews is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5318
-DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!xlive_xsession_initialised) {
@@ -225,24 +261,164 @@ DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, PXOVERLAPPED pXOverla
 }
 
 // #5319
-VOID XSessionSearchEx()
+DWORD WINAPI XSessionSearchEx(
+	DWORD dwProcedureIndex,
+	DWORD dwUserIndex,
+	DWORD dwNumResults,
+	DWORD dwNumUsers,
+	WORD wNumProperties,
+	WORD wNumContexts,
+	XUSER_PROPERTY *pSearchProperties,
+	XUSER_CONTEXT *pSearchContexts,
+	DWORD *pcbResultsBuffer,
+	XSESSION_SEARCHRESULT_HEADER *pSearchResults,
+	XOVERLAPPED *pXOverlapped
+)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+	if (!dwNumResults) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwNumResults is 0.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!dwNumUsers) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwNumUsers is 0.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (wNumProperties) {
+		if (!pSearchProperties) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pSearchProperties is NULL.", __func__);
+			return ERROR_INVALID_PARAMETER;
+		}
+		if (wNumProperties > 0x40) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (wNumProperties > 0x40) (0x%08x > 0x40).", __func__, wNumProperties);
+			return ERROR_INVALID_PARAMETER;
+		}
+	}
+	else if (pSearchProperties) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pSearchProperties is not NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (wNumContexts) {
+		if (!pSearchContexts) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pSearchContexts is NULL.", __func__);
+			return ERROR_INVALID_PARAMETER;
+		}
+	}
+	else if (pSearchContexts) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pSearchContexts is not NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pcbResultsBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbResultsBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	uint32_t requiredResultsBufferSize = 1326 * dwNumResults + 8;
+	if (*pcbResultsBuffer < requiredResultsBufferSize || !pSearchResults) {
+		*pcbResultsBuffer = requiredResultsBufferSize;
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+
+	pSearchResults->dwSearchResults = 0;
+	pSearchResults->pResults = 0;
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5320
-VOID XSessionSearchByID()
+DWORD WINAPI XSessionSearchByID(XNKID sessionID, DWORD dwUserIndex, DWORD *pcbResultsBuffer, XSESSION_SEARCHRESULT_HEADER *pSearchResults, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+	if (!pcbResultsBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbResultsBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	if (*pcbResultsBuffer < 0x536 || !pSearchResults) {
+		*pcbResultsBuffer = 0x536;
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+
+	pSearchResults->dwSearchResults = 0;
+	pSearchResults->pResults = 0;
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }
 
 // #5321
-VOID XSessionSearch()
+DWORD WINAPI XSessionSearch(
+	DWORD dwProcedureIndex,
+	DWORD dwUserIndex,
+	DWORD dwNumResults,
+	WORD wNumProperties,
+	WORD wNumContexts,
+	XUSER_PROPERTY *pSearchProperties,
+	XUSER_CONTEXT *pSearchContexts,
+	DWORD *pcbResultsBuffer,
+	XSESSION_SEARCHRESULT_HEADER *pSearchResults,
+	XOVERLAPPED *pXOverlapped
+)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	return XSessionSearchEx(dwProcedureIndex, dwUserIndex, dwNumResults, 1, wNumProperties, wNumContexts, pSearchProperties, pSearchContexts, pcbResultsBuffer, pSearchResults, pXOverlapped);
 }
 
 // #5322
@@ -267,6 +443,7 @@ DWORD WINAPI XSessionModify(HANDLE hSession, DWORD dwFlags, DWORD dwMaxPublicSlo
 	}
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -286,14 +463,54 @@ DWORD WINAPI XSessionModify(HANDLE hSession, DWORD dwFlags, DWORD dwMaxPublicSlo
 }
 
 // #5323
-VOID XSessionMigrateHost()
+DWORD WINAPI XSessionMigrateHost(HANDLE hSession, DWORD dwUserIndex, XSESSION_INFO *pSessionInfo, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+	if (!pSessionInfo) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pSessionInfo is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	uint32_t result = ERROR_FUNCTION_FAILED;
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = result;
+		pXOverlapped->InternalHigh = result;
+		pXOverlapped->dwExtendedError = result;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return result;
 }
 
 // #5325
-DWORD WINAPI XSessionLeaveLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *pdwUserIndexes, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XSessionLeaveLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *pdwUserIndexes, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!xlive_xsession_initialised) {
@@ -318,6 +535,7 @@ DWORD WINAPI XSessionLeaveLocal(HANDLE hSession, DWORD dwUserCount, const DWORD 
 	}
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -337,7 +555,7 @@ DWORD WINAPI XSessionLeaveLocal(HANDLE hSession, DWORD dwUserCount, const DWORD 
 }
 
 // #5326
-DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *pXuids, const BOOL *pfPrivateSlots, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *pXuids, const BOOL *pfPrivateSlots, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!xlive_xsession_initialised) {
@@ -484,7 +702,7 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 }
 
 // #5327
-DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *pdwUserIndexes, const BOOL *pfPrivateSlots, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *pdwUserIndexes, const BOOL *pfPrivateSlots, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!xlive_xsession_initialised) {
@@ -635,10 +853,59 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 }
 
 // #5328
-VOID XSessionGetDetails()
+DWORD WINAPI XSessionGetDetails(HANDLE hSession, DWORD *pcbResultsBuffer, XSESSION_LOCAL_DETAILS *pSessionDetails, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pcbResultsBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbResultsBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (*pcbResultsBuffer < sizeof(XSESSION_LOCAL_DETAILS)) {
+		*pcbResultsBuffer = sizeof(XSESSION_LOCAL_DETAILS);
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+	if (!pSessionDetails) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pSessionDetails is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	uint32_t result = ERROR_FUNCTION_FAILED;
+	{
+		EnterCriticalSection(&xlive_critsec_xsession);
+		if (xlive_xsessions.count(hSession)) {
+			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
+			*pSessionDetails = *xsessionDetails;
+			// TODO need to copy this in to buffer if there is enough space.
+			pSessionDetails->pSessionMembers = 0;
+			result = ERROR_SUCCESS;
+		}
+		LeaveCriticalSection(&xlive_critsec_xsession);
+	}
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = result;
+		pXOverlapped->InternalHigh = result;
+		pXOverlapped->dwExtendedError = result;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return result;
 }
 
 // #5329
@@ -738,10 +1005,56 @@ DWORD WINAPI XSessionEnd(HANDLE hSession, PXOVERLAPPED pXOverlapped)
 }
 
 // #5333
-VOID XSessionArbitrationRegister()
+DWORD WINAPI XSessionArbitrationRegister(HANDLE hSession, DWORD dwFlags, ULONGLONG qwSessionNonce, DWORD *pcbResultsBuffer, XSESSION_REGISTRATION_RESULTS *pRegistrationResults, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!xlive_xsession_initialised) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
+		return ERROR_FUNCTION_FAILED;
+	}
+	if (!hSession) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (dwFlags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwFlags (0x%08x) is not 0.", __func__, dwFlags);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pcbResultsBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbResultsBuffer is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (*pcbResultsBuffer < 3592) {
+		*pcbResultsBuffer = 3592;
+		//*pcbResultsBuffer = sizeof(XSESSION_REGISTRATION_RESULTS) + sizeof(XSESSION_REGISTRANT) + sizeof(XUID);
+		return ERROR_INSUFFICIENT_BUFFER;
+	}
+	if (!pRegistrationResults) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pRegistrationResults is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	uint32_t result = ERROR_FUNCTION_FAILED;
+	pRegistrationResults->wNumRegistrants = 0;
+	pRegistrationResults->rgRegistrants = 0;
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = result;
+		pXOverlapped->InternalHigh = result;
+		pXOverlapped->dwExtendedError = result;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return result;
 }
 
 // #5336
@@ -825,8 +1138,34 @@ DWORD WINAPI XSessionModifySkill(HANDLE hSession, DWORD dwXuidCount, const XUID 
 }
 
 // #5343
-VOID XSessionCalculateSkill()
+uint32_t WINAPI XSessionCalculateSkill(uint32_t dwNumSkills, double *rgMu, double *rgSigma, double *pdblAggregateMu, double *pdblAggregateSigma)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!rgMu) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s rgMu is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!rgSigma) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s rgSigma is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pdblAggregateMu) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdblAggregateMu is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pdblAggregateSigma) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdblAggregateSigma is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	*pdblAggregateMu = 0.0;
+	*pdblAggregateSigma = 0.0;
+	if (dwNumSkills) {
+		for (uint32_t i = dwNumSkills; i < dwNumSkills; i++) {
+			*pdblAggregateMu += rgMu[i];
+			*pdblAggregateSigma += rgSigma[i] * rgSigma[i];
+		}
+		*pdblAggregateMu /= dwNumSkills;
+		*pdblAggregateSigma = sqrt(*pdblAggregateSigma / dwNumSkills);
+	}
+	return ERROR_SUCCESS;
 }

@@ -38,12 +38,24 @@ BOOL WINAPI XWSAGetOverlappedResult(SOCKET s, LPWSAOVERLAPPED lpOverlapped, LPDW
 }
 
 // #17
-int WINAPI XWSACancelOverlappedIO(SOCKET s)
+int WINAPI XWSACancelOverlappedIO(SOCKET socket)
 {
 	TRACE_FX();
-	FUNC_STUB();
-	//return WSACancelAsyncRequest ?
-	return 0;
+	if (!socket) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s socket is NULL.", __func__);
+		WSASetLastError(WSAENOTSOCK);
+		return SOCKET_ERROR;
+	}
+	if (socket == INVALID_SOCKET) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s socket is INVALID_SOCKET.", __func__);
+		WSASetLastError(WSAENOTSOCK);
+		return SOCKET_ERROR;
+	}
+	
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	//return WSACancelAsyncRequest(socket);
+	WSASetLastError(WSASYSCALLFAILURE);
+	return SOCKET_ERROR;
 }
 
 // #19

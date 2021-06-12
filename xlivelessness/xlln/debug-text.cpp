@@ -185,13 +185,6 @@ VOID XllnDebugBreak(const char* message)
 	XllnDebugBreak((char*)message);
 }
 
-void FUNC_STUB2(const char* func)
-{
-	char errMsg[200];
-	snprintf(errMsg, sizeof(errMsg), "Incomplete XLIVE Stubbed Function: %s", func);
-	XllnDebugBreak(errMsg);
-}
-
 // #41143
 DWORD WINAPI XLLNDebugLog(DWORD logLevel, const char *message)
 {

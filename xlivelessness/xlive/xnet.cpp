@@ -6,6 +6,8 @@
 #include "../xlln/debug-text.hpp"
 #include "xsocket.hpp"
 #include "net-entity.hpp"
+#include <WS2tcpip.h>
+#include <iptypes.h>
 
 BOOL xlive_net_initialized = FALSE;
 
@@ -51,7 +53,7 @@ INT WINAPI XNetRandom(BYTE *pb, UINT cb)
 	TRACE_FX();
 	if (!pb) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pb is NULL.", __func__);
-		return E_INVALIDARG;
+		return WSAEFAULT;
 	}
 
 	for (DWORD i = 0; i < cb; i++) {
@@ -62,16 +64,16 @@ INT WINAPI XNetRandom(BYTE *pb, UINT cb)
 }
 
 // #54
-HRESULT WINAPI XNetCreateKey(XNKID *pxnkid, XNKEY *pxnkey)
+INT WINAPI XNetCreateKey(XNKID *pxnkid, XNKEY *pxnkey)
 {
 	TRACE_FX();
 	if (!pxnkid) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid is NULL.", __func__);
-		return E_POINTER;
+		return WSAEFAULT;
 	}
 	if (!pxnkey) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkey is NULL.", __func__);
-		return E_POINTER;
+		return WSAEFAULT;
 	}
 
 	memset(pxnkid, 0x8B, sizeof(XNKID));
@@ -86,12 +88,20 @@ HRESULT WINAPI XNetCreateKey(XNKID *pxnkid, XNKEY *pxnkey)
 }
 
 // #55
-INT WINAPI XNetRegisterKey(XNKID *pxnkid, XNKEY *pxnkey)
+INT WINAPI XNetRegisterKey(const XNKID *pxnkid, const XNKEY *pxnkey)
 {
 	TRACE_FX();
 	if (!xlive_net_initialized) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
 		return E_UNEXPECTED;
+	}
+	if (!pxnkid) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	if (!pxnkey) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkey is NULL.", __func__);
+		return WSAEFAULT;
 	}
 	// These checks break creating a Halo 2 LAN lobby.
 	//if (!XNetXnKidIsOnlinePeer(pxnkid) && !XNetXnKidIsOnlineTitleServer(pxnkid) && !XNetXnKidIsSystemLinkXPlat(pxnkid)) {
@@ -108,6 +118,10 @@ INT WINAPI XNetUnregisterKey(const XNKID* pxnkid)
 	if (!xlive_net_initialized) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
 		return E_UNEXPECTED;
+	}
+	if (!pxnkid) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid is NULL.", __func__);
+		return WSAEFAULT;
 	}
 	return S_OK;
 }
@@ -147,17 +161,33 @@ INT WINAPI XNetXnAddrToInAddr(XNADDR *pxna, XNKID *pnkid, IN_ADDR *pina)
 }
 
 // #58
-VOID XNetServerToInAddr()
+INT WINAPI XNetServerToInAddr(const IN_ADDR ina, DWORD dwServiceId, IN_ADDR *pina)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pina) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pina is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	// actually look up the xlln instance.
+	pina->s_addr = 0;
+	return WSAEHOSTUNREACH;
+	return ERROR_SUCCESS;
 }
 
 // #59
-VOID XNetTsAddrToInAddr()
+INT WINAPI XNetTsAddrToInAddr(const TSADDR *ptsa, DWORD dwServiceId, const XNKID *pxnkid, IN_ADDR *pina)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pina) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pina is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	// actually look up the xlln instance / title server.
+	pina->s_addr = 0;
+	return WSAEHOSTUNREACH;
+	return ERROR_SUCCESS;
 }
 
 // #60
@@ -186,17 +216,60 @@ INT WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR *pxna, XNKID *pxnkid)
 }
 
 // #61
-VOID XNetInAddrToServer()
+INT WINAPI XNetInAddrToServer(const IN_ADDR ina, IN_ADDR *pina)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pina) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pina is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	// actually look up the xlln instance.
+	pina->s_addr = 0;
+	return WSAEHOSTUNREACH;
+	return ERROR_SUCCESS;
 }
 
 // #62
-VOID XNetInAddrToString()
+INT WINAPI XNetInAddrToString(const IN_ADDR ina, char *pchBuf, INT cchBuf)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pchBuf) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pchBuf is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	if (!cchBuf) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cchBuf is 0.", __func__);
+		return WSAEINVAL;
+	}
+	if (cchBuf < 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cchBuf is negative.", __func__);
+		return WSAEINVAL;
+	}
+
+	pchBuf[0] = 0;
+
+	SOCKADDR_IN sockAddr;
+	sockAddr.sin_family = AF_INET;
+	sockAddr.sin_port = 0;
+	sockAddr.sin_addr = ina;
+
+	// Maximum length of full domain name + sentinel.
+	char namebuf[253 + 1];
+	int errorGetNameInfo = getnameinfo((const sockaddr*)&sockAddr, sizeof(SOCKADDR_IN), namebuf, sizeof(namebuf), NULL, 0, NI_NUMERICHOST);
+	if (errorGetNameInfo) {
+		XLLN_DEBUG_LOG_ECODE(errorGetNameInfo, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s getnameinfo error:", __func__);
+		return errorGetNameInfo;
+	}
+	size_t nameLen = strnlen(namebuf, sizeof(namebuf));
+	if ((int32_t)nameLen >= cchBuf) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (nameLen >= cchBuf) (%zu >= %d).", __func__, nameLen, cchBuf);
+		return WSAEMSGSIZE;
+	}
+	memcpy(pchBuf, namebuf, nameLen);
+	pchBuf[nameLen] = 0;
+
+	return ERROR_SUCCESS;
 }
 
 // #63
@@ -311,10 +384,11 @@ DWORD WINAPI XNetGetTitleXnAddr(XNADDR *pAddr)
 }
 
 // #74
-VOID XNetGetDebugXnAddr()
+DWORD WINAPI XNetGetDebugXnAddr(XNADDR *pAddr)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO verify that this works.", __func__);
+	return XNetGetTitleXnAddr(pAddr);
 }
 
 // #75
@@ -345,38 +419,201 @@ DWORD WINAPI XNetGetBroadcastVersionStatus(BOOL fReset)
 }
 
 // #78
-VOID XNetGetOpt()
+INT WINAPI XNetGetOpt(DWORD dwOptId, BYTE *pbValue, DWORD *pdwValueSize)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pbValue) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pbValue is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	if (!pdwValueSize) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdwValueSize is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	if (!*pdwValueSize) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s *pdwValueSize is 0.", __func__);
+		return WSAEINVAL;
+	}
+
+	uint32_t requiredSize = 0;
+	switch (dwOptId) {
+		default: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown dwOptId (0x%08x).", __func__, dwOptId);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_STARTUP_PARAMS: {
+			requiredSize = sizeof(XNetStartupParams);
+			break;
+		}
+		case XNET_OPTID_NIC_XMIT_BYTES:
+		case XNET_OPTID_NIC_RECV_BYTES:
+		case XNET_OPTID_CALLER_XMIT_BYTES:
+		case XNET_OPTID_CALLER_RECV_BYTES: {
+			requiredSize = sizeof(ULONGLONG);
+			break;
+		}
+		case XNET_OPTID_NIC_XMIT_FRAMES:
+		case XNET_OPTID_NIC_RECV_FRAMES:
+		case XNET_OPTID_CALLER_XMIT_FRAMES:
+		case XNET_OPTID_CALLER_RECV_FRAMES: {
+			requiredSize = sizeof(DWORD);
+			break;
+		}
+	}
+
+	if (requiredSize > *pdwValueSize) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (requiredSize > *pdwValueSize) (%u > %u).", __func__, requiredSize, *pdwValueSize);
+		*pdwValueSize = requiredSize;
+		return WSAEMSGSIZE;
+	}
+
+	*pdwValueSize = requiredSize;
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+
+	switch (dwOptId) {
+		case XNET_OPTID_STARTUP_PARAMS: {
+			memset(pbValue, 0, sizeof(XNetStartupParams));
+			break;
+		}
+		case XNET_OPTID_NIC_XMIT_BYTES: {
+			*(ULONGLONG*)pbValue = 0;
+			break;
+		}
+		case XNET_OPTID_NIC_XMIT_FRAMES: {
+			*(DWORD*)pbValue = 0;
+			break;
+		}
+		case XNET_OPTID_NIC_RECV_BYTES: {
+			*(ULONGLONG*)pbValue = 0;
+			break;
+		}
+		case XNET_OPTID_NIC_RECV_FRAMES: {
+			*(DWORD*)pbValue = 0;
+			break;
+		}
+		case XNET_OPTID_CALLER_XMIT_BYTES: {
+			*(ULONGLONG*)pbValue = 0;
+			break;
+		}
+		case XNET_OPTID_CALLER_XMIT_FRAMES: {
+			*(DWORD*)pbValue = 0;
+			break;
+		}
+		case XNET_OPTID_CALLER_RECV_BYTES: {
+			*(ULONGLONG*)pbValue = 0;
+			break;
+		}
+		case XNET_OPTID_CALLER_RECV_FRAMES: {
+			*(DWORD*)pbValue = 0;
+			break;
+		}
+	}
+
+	return ERROR_SUCCESS;
 }
 
 // #79
-VOID XNetSetOpt()
+INT WINAPI XNetSetOpt(DWORD dwOptId, BYTE *pbValue, DWORD *pdwValueSize)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pbValue) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pbValue is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	if (!pdwValueSize) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdwValueSize is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	if (!*pdwValueSize) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s *pdwValueSize is 0.", __func__);
+		return WSAEINVAL;
+	}
+
+	switch (dwOptId) {
+		default: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown dwOptId (0x%08x).", __func__, dwOptId);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_STARTUP_PARAMS: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_STARTUP_PARAMS cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_NIC_XMIT_BYTES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_NIC_XMIT_BYTES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_NIC_XMIT_FRAMES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_NIC_XMIT_FRAMES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_NIC_RECV_BYTES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_NIC_RECV_BYTES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_NIC_RECV_FRAMES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_NIC_RECV_FRAMES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_CALLER_XMIT_BYTES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_CALLER_XMIT_BYTES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_CALLER_XMIT_FRAMES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_CALLER_XMIT_FRAMES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_CALLER_RECV_BYTES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_CALLER_RECV_BYTES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+		case XNET_OPTID_CALLER_RECV_FRAMES: {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNET_OPTID_CALLER_RECV_FRAMES cannot be set.", __func__);
+			return WSAEINVAL;
+		}
+	}
+
+	return ERROR_SUCCESS;
 }
 
 // #80
-VOID XNetStartupEx()
+// FIXME this is my guess at the function signature.
+INT WINAPI XNetStartupEx(const XNetStartupParams *pxnsp, BOOL a2)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	INT result = XNetStartup(pxnsp);
+	return result;
 }
 
 // #81
-VOID XNetReplaceKey()
+INT WINAPI XNetReplaceKey(const XNKID *pxnkidUnregister, const XNKID *pxnkidReplace)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pxnkidUnregister) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkidUnregister is NULL.", __func__);
+		return WSAEFAULT;
+	}
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return ERROR_SUCCESS;
 }
 
 // #82
-VOID XNetGetXnAddrPlatform()
+INT WINAPI XNetGetXnAddrPlatform(const XNADDR *pxnaddr, DWORD *pdwPlatform)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pdwPlatform) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pdwPlatform is NULL.", __func__);
+		return WSAEFAULT;
+	}
+	*pdwPlatform = XNET_XNADDR_PLATFORM_XBOX1;
+	if (*(uint32_t*)&pxnaddr->abEnet[0] == 0 && *(uint16_t*)&pxnaddr->abEnet[4] == 0) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnaddr->abEnet is all 0.", __func__);
+		return WSAEINVAL;
+	}
+	*pdwPlatform = XNET_XNADDR_PLATFORM_WINPC;
+	return ERROR_SUCCESS;
 }
 
 // #83
@@ -409,8 +646,57 @@ INT WINAPI XNetSetSystemLinkPort(WORD wSystemLinkPort)
 }
 
 // #5023
-VOID XNetGetCurrentAdapter()
+HRESULT WINAPI XNetGetCurrentAdapter(CHAR *pszAdapter, ULONG *pcchBuffer)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pcchBuffer) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcchBuffer is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+	if (!xlive_net_initialized) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Net is not initialised.", __func__);
+		*pcchBuffer = 0;
+		return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+	}
+
+	if (pszAdapter) {
+		pszAdapter[0] = 0;
+	}
+
+	{
+		EnterCriticalSection(&xlive_critsec_network_adapter);
+
+		if (!xlive_network_adapter || !xlive_network_adapter->name) {
+			LeaveCriticalSection(&xlive_critsec_network_adapter);
+			*pcchBuffer = 0;
+			return HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+		}
+
+		uint32_t nameLen = strnlen(xlive_network_adapter->name, MAX_ADAPTER_NAME_LENGTH + 4);
+		if (nameLen >= *pcchBuffer) {
+			*pcchBuffer = nameLen + 1;
+		}
+		else if (pszAdapter) {
+			memcpy(pszAdapter, xlive_network_adapter->name, nameLen);
+			pszAdapter[nameLen] = 0;
+		}
+
+		LeaveCriticalSection(&xlive_critsec_network_adapter);
+	}
+
+	return S_OK;
+}
+
+// #5296
+// assuming pwPort - network byte (big-endian) order
+HRESULT WINAPI XLiveGetLocalOnlinePort(WORD *pwPort)
+{
+	TRACE_FX();
+	if (!pwPort) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pwPort is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	*pwPort = 0;
+	return S_OK;
 }

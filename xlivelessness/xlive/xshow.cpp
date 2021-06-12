@@ -292,10 +292,20 @@ DWORD WINAPI XShowKeyboardUI(DWORD dwUserIndex, DWORD dwFlags, LPCWSTR wseDefaul
 }
 
 // #5218
-VOID XShowArcadeUI()
+DWORD WINAPI XShowArcadeUI(DWORD dwUserIndex)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+
+	ShowXLLN(XLLN_SHOW_HOME);
+	return ERROR_SUCCESS;
 }
 
 // #5250
@@ -476,23 +486,143 @@ DWORD WINAPI XShowFriendsUI(DWORD dwUserIndex)
 	return ERROR_SUCCESS;
 }
 
-// #5299
-VOID XShowGuideKeyRemapUI()
+// #5298
+DWORD WINAPI XLiveGetGuideKey(XINPUT_KEYSTROKE *pKeystroke)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pKeystroke) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pKeystroke is NULL.", __func__);
+		return E_INVALIDARG;
+	}
+	pKeystroke->VirtualKey = VK_HOME;
+	pKeystroke->Unicode = 0;
+	return S_OK;
+}
+
+// #5299
+DWORD WINAPI XShowGuideKeyRemapUI(DWORD dwUserIndex)
+{
+	TRACE_FX();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_NotSignedIn) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+
+	ShowXLLN(XLLN_SHOW_HOME);
+	return ERROR_SUCCESS;
 }
 
 // #5365
-VOID XShowMarketplaceUI()
+DWORD WINAPI XShowMarketplaceUI(DWORD dwUserIndex, DWORD dwEntryPoint, ULONGLONG qwOfferID, DWORD dwContentCategories)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_SignedInToLive) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in to LIVE.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+	if (dwEntryPoint >= XSHOWMARKETPLACEUI_ENTRYPOINT_MAX) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown dwEntryPoint enum (0x%08x).", __func__, dwEntryPoint);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (dwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_MEMBERSHIPLIST) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%sdwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_MEMBERSHIPLIST.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (dwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_MEMBERSHIPITEM) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%sdwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_MEMBERSHIPITEM.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (qwOfferID) {
+		if (dwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTLIST) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s qwOfferID (0x%08x) should be 0 when XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTLIST.", __func__, qwOfferID);
+			return ERROR_INVALID_PARAMETER;
+		}
+		if (dwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTLIST_BACKGROUND) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s qwOfferID (0x%08x) should be 0 when XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTLIST_BACKGROUND.", __func__, qwOfferID);
+			return ERROR_INVALID_PARAMETER;
+		}
+	}
+	else {
+		if (dwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTITEM) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s qwOfferID must not be 0 when XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTITEM.", __func__);
+			return ERROR_INVALID_PARAMETER;
+		}
+		if (dwEntryPoint == XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTITEM_BACKGROUND) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s qwOfferID must not be 0 when XSHOWMARKETPLACEUI_ENTRYPOINT_CONTENTITEM_BACKGROUND.", __func__);
+			return ERROR_INVALID_PARAMETER;
+		}
+	}
+
+	ShowXLLN(XLLN_SHOW_HOME);
+	return ERROR_SUCCESS;
 }
 
 // #5366
-VOID XShowMarketplaceDownloadItemsUI()
+DWORD XShowMarketplaceDownloadItemsUI(DWORD dwUserIndex, DWORD dwEntryPoint, CONST ULONGLONG *pOfferIDs, DWORD dwOfferIdCount, HRESULT *phrResult, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User 0x%08x does not exist.", __func__, dwUserIndex);
+		return ERROR_NO_SUCH_USER;
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_SignedInToLive) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in to LIVE.", __func__, dwUserIndex);
+		return ERROR_NOT_LOGGED_ON;
+	}
+	if (dwEntryPoint >= XSHOWMARKETPLACEUI_ENTRYPOINT_MAX) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown dwEntryPoint enum (0x%08x).", __func__, dwEntryPoint);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (dwEntryPoint != XSHOWMARKETPLACEDOWNLOADITEMS_ENTRYPOINT_FREEITEMS && dwEntryPoint != XSHOWMARKETPLACEDOWNLOADITEMS_ENTRYPOINT_PAIDITEMS) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwEntryPoint enum (0x%08x) is not XSHOWMARKETPLACEDOWNLOADITEMS_ENTRYPOINT_FREEITEMS or XSHOWMARKETPLACEDOWNLOADITEMS_ENTRYPOINT_PAIDITEMS.", __func__, dwEntryPoint);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!pOfferIDs) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pOfferIDs is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!dwOfferIdCount) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwOfferIdCount is 0.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (dwOfferIdCount > XMARKETPLACE_MAX_OFFERIDS) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (dwOfferIdCount > XMARKETPLACE_MAX_OFFERIDS) (0x%08x > 0x%08x).", __func__, dwOfferIdCount, XMARKETPLACE_MAX_OFFERIDS);
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!phrResult) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phrResult is NULL.", __func__);
+		return ERROR_INVALID_PARAMETER;
+	}
+
+	*phrResult = MPDI_E_INVALIDARG;
+	*phrResult = MPDI_E_OPERATION_FAILED;
+	*phrResult = S_OK;
+	*phrResult = MPDI_E_CANCELLED;
+
+	ShowXLLN(XLLN_SHOW_HOME);
+
+	if (pXOverlapped) {
+		//asynchronous
+
+		pXOverlapped->InternalLow = ERROR_SUCCESS;
+		pXOverlapped->InternalHigh = ERROR_SUCCESS;
+		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+
+		Check_Overlapped(pXOverlapped);
+
+		return ERROR_IO_PENDING;
+	}
+	else {
+		//synchronous
+		//return result;
+	}
+	return ERROR_SUCCESS;
 }

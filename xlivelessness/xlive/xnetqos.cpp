@@ -9,8 +9,7 @@ INT WINAPI XNetQosListen(XNKID *pxnkid, PBYTE pb, UINT cb, DWORD dwBitsPerSec, D
 	TRACE_FX();
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return ERROR_FUNCTION_FAILED;
-	//DO STUFF
+	return WSASYSCALLFAILURE;
 	return S_OK;
 }
 
@@ -95,15 +94,15 @@ INT WINAPI XNetQosServiceLookup(DWORD dwFlags, WSAEVENT hEvent, XNQOS **ppxnqos)
 	TRACE_FX();
 	if (dwFlags & ~(XNET_QOS_SERVICE_LOOKUP_RESERVED)) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s No dwFlags (0x%08x) are officially supported.", __func__, dwFlags);
-		return E_INVALIDARG;
+		return WSAEINVAL;
 	}
 	if (!ppxnqos) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ppxnqos is NULL.", __func__);
-		return E_INVALIDARG;
+		return WSAEINVAL;
 	}
 	if (!*ppxnqos) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s *ppxnqos is NULL.", __func__);
-		return E_INVALIDARG;
+		return WSAEINVAL;
 	}
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
@@ -119,7 +118,7 @@ INT WINAPI XNetQosRelease(XNQOS* pxnqos)
 	TRACE_FX();
 	if (!pxnqos) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnqos is NULL.", __func__);
-		return E_INVALIDARG;
+		return WSAEINVAL;
 	}
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	return S_OK;
@@ -138,8 +137,22 @@ INT WINAPI XNetQosRelease(XNQOS* pxnqos)
 }
 
 // #77
-VOID XNetQosGetListenStats()
+INT WINAPI XNetQosGetListenStats(XNKID *pxnKid, XNQOSLISTENSTATS *pQosListenStats)
 {
 	TRACE_FX();
-	FUNC_STUB();
+	if (!pxnKid) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnKid is NULL.", __func__);
+		return WSAEINVAL;
+	}
+	if (!pQosListenStats) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pQosListenStats is NULL.", __func__);
+		return WSAEINVAL;
+	}
+	if (pQosListenStats->dwSizeOfStruct != sizeof(XNQOSLISTENSTATS)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pQosListenStats->dwSizeOfStruct != sizeof(XNQOSLISTENSTATS)) (0x%08x != 0x%08x).", __func__, pQosListenStats->dwSizeOfStruct, sizeof(XNQOSLISTENSTATS));
+		return WSAEINVAL;
+	}
+
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return WSASYSCALLFAILURE;
 }
