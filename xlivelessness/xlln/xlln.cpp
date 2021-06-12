@@ -25,6 +25,7 @@
 #include <ws2tcpip.h>
 #include <time.h>
 #include <CommCtrl.h>
+#include "../third-party/rapidxml/rapidxml.hpp"
 
 static LRESULT CALLBACK DLLWindowProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -1002,6 +1003,64 @@ uint32_t ShowXLLN(DWORD dwShowType)
 	return ERROR_SUCCESS;
 }
 
+static void ReadTitleConfig(const wchar_t *titleExecutableFilePath)
+{
+	wchar_t *liveConfig = FormMallocString(L"%s.cfg", titleExecutableFilePath);
+	FILE *fpLiveConfig;
+	errno_t errorFileOpen = _wfopen_s(&fpLiveConfig, liveConfig, L"r");
+	if (errorFileOpen) {
+		XLLN_DEBUG_LOG_ECODE(errorFileOpen, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Live Config fopen(\"%ls\", \"r\") error:", __func__, liveConfig);
+		free(liveConfig);
+	}
+	else {
+		free(liveConfig);
+
+		fseek(fpLiveConfig, (long)0, SEEK_END);
+		uint32_t fileSize = ftell(fpLiveConfig);
+		fseek(fpLiveConfig, (long)0, SEEK_SET);
+		fileSize -= ftell(fpLiveConfig);
+		// Add a null sentinel to make the buffer a valid c string.
+		fileSize += 1;
+
+		uint8_t *buffer = (uint8_t*)malloc(sizeof(uint8_t) * fileSize);
+		size_t readC = fread(buffer, sizeof(uint8_t), fileSize / sizeof(uint8_t), fpLiveConfig);
+
+		buffer[readC] = 0;
+
+		fclose(fpLiveConfig);
+
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "Parsing TITLE.exe.cfg.");
+		rapidxml::xml_document<> liveConfigXml;
+		liveConfigXml.parse<0>((char*)buffer);
+
+		rapidxml::xml_node<> *rootNode = liveConfigXml.first_node();
+		while (rootNode) {
+			if (strcmp(rootNode->name(), "Liveconfig") == 0) {
+				rapidxml::xml_node<> *configNode = rootNode->first_node();
+				while (configNode) {
+					if (strcmp(configNode->name(), "titleid") == 0) {
+						if (sscanf_s(configNode->value(), "%x", &xlive_title_id) == 1) {
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "Title ID: %X.", xlive_title_id);
+						}
+					}
+					else if (strcmp(configNode->name(), "titleversion") == 0) {
+						if (sscanf_s(configNode->value(), "%x", &xlive_title_version) == 1) {
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "Title Version: 0x%08x.", xlive_title_version);
+						}
+					}
+					configNode = configNode->next_sibling();
+				}
+				break;
+			}
+			rootNode = rootNode->next_sibling();
+		}
+
+		liveConfigXml.clear();
+
+		free(buffer);
+	}
+}
+
 void InitCriticalSections()
 {
 	InitializeCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
@@ -1147,6 +1206,8 @@ bool InitXLLN(HMODULE hModule)
 	WSADATA wsaData;
 	INT result_wsaStartup = WSAStartup(2, &wsaData);
 
+	ReadTitleConfig(lpwszArglist[0]);
+
 	for (int i = 1; i < nArgs; i++) {
 		if (wcsstr(lpwszArglist[i], L"-xlivefps=") != NULL) {
 			uint32_t tempuint32 = 0;
@@ -1180,9 +1241,6 @@ bool InitXLLN(HMODULE hModule)
 
 	uint32_t errorXllnWndSockets = InitXllnWndSockets();
 	uint32_t errorXllnWndConnections = InitXllnWndConnections();
-
-	xlive_title_id = 0;
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN, "TODO title.cfg not found. Default Title ID set.");
 
 	return true;
 }

@@ -22,6 +22,12 @@
     <Filter Include="Source Files\utils">
       <UniqueIdentifier>{6076c36e-f8b1-481d-99fe-77a80455bfdd}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\third-party">
+      <UniqueIdentifier>{e896a5d4-e9a1-4795-8912-abb0125a9532}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\third-party\rapidxml">
+      <UniqueIdentifier>{67dc282b-6c8e-45cd-85d0-455c427fbd3c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -226,6 +232,18 @@
     </ClInclude>
     <ClInclude Include="xlive\xcustom.hpp">
       <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="third-party\rapidxml\rapidxml.hpp">
+      <Filter>Source Files\third-party\rapidxml</Filter>
+    </ClInclude>
+    <ClInclude Include="third-party\rapidxml\rapidxml_iterators.hpp">
+      <Filter>Source Files\third-party\rapidxml</Filter>
+    </ClInclude>
+    <ClInclude Include="third-party\rapidxml\rapidxml_print.hpp">
+      <Filter>Source Files\third-party\rapidxml</Filter>
+    </ClInclude>
+    <ClInclude Include="third-party\rapidxml\rapidxml_utils.hpp">
+      <Filter>Source Files\third-party\rapidxml</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

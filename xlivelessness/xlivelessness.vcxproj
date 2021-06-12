@@ -199,6 +199,10 @@
   <ItemGroup>
     <ClInclude Include="dllmain.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="third-party\rapidxml\rapidxml.hpp" />
+    <ClInclude Include="third-party\rapidxml\rapidxml_iterators.hpp" />
+    <ClInclude Include="third-party\rapidxml\rapidxml_print.hpp" />
+    <ClInclude Include="third-party\rapidxml\rapidxml_utils.hpp" />
     <ClInclude Include="utils\sha256.hpp" />
     <ClInclude Include="utils\util-checksum.hpp" />
     <ClInclude Include="utils\util-hook.hpp" />
