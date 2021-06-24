@@ -941,7 +941,7 @@ DWORD WINAPI XSessionFlushStats(HANDLE hSession, XOVERLAPPED *pXOverlapped)
 }
 
 // #5330
-DWORD WINAPI XSessionDelete(HANDLE hSession, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XSessionDelete(HANDLE hSession, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!xlive_xsession_initialised) {
@@ -973,7 +973,7 @@ DWORD WINAPI XSessionDelete(HANDLE hSession, PXOVERLAPPED pXOverlapped)
 }
 
 // #5332
-DWORD WINAPI XSessionEnd(HANDLE hSession, PXOVERLAPPED pXOverlapped)
+DWORD WINAPI XSessionEnd(HANDLE hSession, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!xlive_xsession_initialised) {

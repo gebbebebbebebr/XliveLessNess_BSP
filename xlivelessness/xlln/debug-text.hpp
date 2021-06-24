@@ -55,7 +55,7 @@ VOID XllnDebugBreak(const char* message);
 #define XLLN_LOG_LEVEL_FATAL	0b00100000
 
 #define XLLN_LOG_CONTEXT_MASK			(0b10000111 << 8)
-// Logs related to Xlive functionality.
+// Logs related to Xlive(GFWL) functionality.
 #define XLLN_LOG_CONTEXT_XLIVE			(0b00000001 << 8)
 // Logs related to XLiveLessNess functionality.
 #define XLLN_LOG_CONTEXT_XLIVELESSNESS	(0b00000010 << 8)

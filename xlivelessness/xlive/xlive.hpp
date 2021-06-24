@@ -17,7 +17,7 @@ extern BOOL xlive_users_live_enabled[XLIVE_LOCAL_USER_COUNT];
 extern CHAR xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
 extern XUSER_SIGNIN_INFO* xlive_users_info[XLIVE_LOCAL_USER_COUNT];
 
-void Check_Overlapped(PXOVERLAPPED pOverlapped);
+void Check_Overlapped(XOVERLAPPED *pXOverlapped);
 
 struct EligibleAdapter {
 	// Can be null.
@@ -47,5 +47,7 @@ extern std::vector<EligibleAdapter*> xlive_eligible_network_adapters;
 extern BOOL xlive_online_initialized;
 
 extern CRITICAL_SECTION xlive_critsec_title_server_enumerators;
+
+extern bool xlive_auto_login_on_xliveinitialize;
 
 INT RefreshNetworkAdapters();

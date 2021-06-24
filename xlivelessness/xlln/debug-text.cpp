@@ -303,6 +303,8 @@ uint32_t InitDebugLog()
 		return ERROR_FUNCTION_FAILED;
 	}
 
+#ifdef XLLN_DEBUG
+
 	blacklist_len_max = 50;
 	blacklist = (char**)malloc(sizeof(char*) * blacklist_len_max);
 
@@ -329,6 +331,8 @@ uint32_t InitDebugLog()
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "Failed to initialise config: \"%ls\".", debugLogFilePath);
 	}
 	free(debugLogFilePath);
+
+#endif
 
 	return ERROR_SUCCESS;
 }

@@ -200,6 +200,17 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 						broadcastAddrInput = CloneString(value);
 					}
 				}
+				else if (SettingNameMatches("xlive_auto_login_on_xliveinitialize")) {
+					uint32_t tempuint32;
+					if (sscanf_s(value, "%u", &tempuint32) == 1) {
+						if (configContext.saveValuesRead) {
+							xlive_auto_login_on_xliveinitialize = tempuint32 > 0;
+						}
+					}
+					else {
+						incorrect = true;
+					}
+				}
 				else if (_strnicmp("xlive_username_p", settingName, 16) == 0) {
 					uint32_t iUser;
 					if (sscanf_s(&settingName[16], "%u", &iUser) == 1 || iUser == 0 || iUser > XLIVE_LOCAL_USER_COUNT) {
@@ -339,7 +350,23 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n");
 
 	WriteText("\n# xlln_debuglog_level:");
-	WriteText("\n# Saves the log level from last use.");
+	WriteText("\n# Saves the log level from last use (stored in Hexadecimal).");
+	WriteText("\n# DEFAULT value: 0x873F.");
+	WriteText("\n# Binary to Hexadecimal:");
+	WriteText("\n# 0b1000011100111111 == 0x873F.");
+	WriteText("\n# 0bO0000MXG00FEWIDT - Bit Mask Legend.");
+	WriteText("\n# Context Options:");
+	WriteText("\n# - O - Other - Logs related to functionality from other areas of the application.");
+	WriteText("\n# - M - XLLN-Module - Logs related to XLLN-Module functionality.");
+	WriteText("\n# - X - XLiveLessNess - Logs related to XLiveLessNess functionality.");
+	WriteText("\n# - G - XLive - Logs related to XLive(GFWL) functionality.");
+	WriteText("\n# Log Level Options:");
+	WriteText("\n# - F - Fatal - Errors that will terminate the application.");
+	WriteText("\n# - E - Error - Any error which is fatal to the operation, but not the service or application (can't open a required file, missing data, etc.).");
+	WriteText("\n# - W - Warning - Anything that can potentially cause application oddities, but is being handled adequately.");
+	WriteText("\n# - I - Info - Generally useful information to log (service start/stop, configuration assumptions, etc).");
+	WriteText("\n# - D - Debug - Function, variable and operation logging.");
+	WriteText("\n# - T - Trace - Function call tracing.");
 	WriteText("\n");
 
 	WriteText("\n# xlive_network_adapter:");
@@ -361,6 +388,13 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# If an address is specified with port number 0, it will use the port that the Title tried to broadcast to instead of overwriting that part also.");
 	WriteText("\n# So an example of a comma separated list of a domain name, IPv4 (local address broadcast) and an IPv6 address is as follows:");
 	WriteText("\n# glitchyscripts.com:1100,192.168.0.255:1100,[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:1100");
+	WriteText("\n");
+
+	WriteText("\n# xlive_auto_login_on_xliveinitialize:");
+	WriteText("\n# Valid values:");
+	WriteText("\n#   0 - (DEFAULT) No action.");
+	WriteText("\n#   1 - Any users set with xlive_user_auto_login_p? will always be logged in automatically, otherwise if none set then the XLLN window will open.");
+	WriteText("\n# This property triggers when the TITLE calls XLiveInitialize/Ex(...) which is generally very early in any TITLE initialisation sequence.");
 	WriteText("\n");
 
 	WriteText("\n# xlive_username_p1...:");
@@ -403,6 +437,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteTextF("\nxlive_network_adapter = %s", xlive_config_preferred_network_adapter_name ? xlive_config_preferred_network_adapter_name : "");
 	WriteTextF("\nxlive_ignore_title_network_adapter = %u", xlive_ignore_title_network_adapter ? 1 : 0);
 	WriteTextF("\nxlive_broadcast_address = %s", broadcastAddrInput);
+	WriteTextF("\nxlive_auto_login_on_xliveinitialize = %u", xlive_auto_login_on_xliveinitialize ? 1 : 0);
 	for (uint32_t iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
 		WriteTextF("\nxlive_username_p%u = %s", iUser + 1, xlive_users_username[iUser]);
 		WriteTextF("\nxlive_user_live_enabled_p%u = %u", iUser + 1, xlive_users_live_enabled[iUser] ? 1 : 0);

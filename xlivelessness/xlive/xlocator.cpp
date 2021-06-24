@@ -911,8 +911,8 @@ HRESULT WINAPI XLocatorServerAdvertise(
 	DWORD dwFilledPublicSlots,
 	DWORD dwFilledPrivateSlots,
 	DWORD cProperties,
-	PXUSER_PROPERTY pProperties,
-	PXOVERLAPPED pXOverlapped)
+	XUSER_PROPERTY *pProperties,
+	XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
@@ -990,7 +990,7 @@ HRESULT WINAPI XLocatorServerAdvertise(
 }
 
 // #5231
-HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverlapped)
+HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
@@ -1070,7 +1070,7 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, PXOVERLAPPED pXOverl
 }
 
 // #5233
-HRESULT WINAPI XLocatorGetServiceProperty(DWORD dwUserIndex, DWORD cNumProperties, PXUSER_PROPERTY pProperties, PXOVERLAPPED pXOverlapped)
+HRESULT WINAPI XLocatorGetServiceProperty(DWORD dwUserIndex, DWORD cNumProperties, XUSER_PROPERTY *pProperties, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
@@ -1349,7 +1349,7 @@ typedef struct {
 } XLOCATOR_INIT_INFO;
 
 // #5236
-HRESULT WINAPI XLocatorServiceInitialize(XLOCATOR_INIT_INFO *pXii, PHANDLE phLocatorService)
+HRESULT WINAPI XLocatorServiceInitialize(XLOCATOR_INIT_INFO *pXii, HANDLE *phLocatorService)
 {
 	TRACE_FX();
 	if (!pXii) {

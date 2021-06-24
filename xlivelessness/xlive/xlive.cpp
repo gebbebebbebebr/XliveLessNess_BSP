@@ -62,9 +62,11 @@ static BOOL xlive_initialised = FALSE;
 CRITICAL_SECTION xlive_critsec_title_server_enumerators;
 // Key: enumerator handle (id).
 // Value: Vector of ??? that have already been returned for that enumerator.
-std::map<HANDLE, std::vector<uint32_t>> xlive_title_server_enumerators;
+static std::map<HANDLE, std::vector<uint32_t>> xlive_title_server_enumerators;
 
 static XLIVE_DEBUG_LEVEL xlive_xdlLevel = XLIVE_DEBUG_LEVEL_OFF;
+
+bool xlive_auto_login_on_xliveinitialize = false;
 
 INT RefreshNetworkAdapters()
 {
@@ -273,17 +275,17 @@ void CreateLocalUser()
 	memcpy((BYTE*)&(pAddr->abOnline) + 17, (BYTE*)&mac_fix + 1, 3);
 }
 
-void Check_Overlapped(PXOVERLAPPED pOverlapped)
+void Check_Overlapped(XOVERLAPPED *pXOverlapped)
 {
-	if (!pOverlapped)
+	if (!pXOverlapped)
 		return;
 
-	if (pOverlapped->hEvent) {
-		SetEvent(pOverlapped->hEvent);
+	if (pXOverlapped->hEvent) {
+		SetEvent(pXOverlapped->hEvent);
 	}
 
-	if (pOverlapped->pCompletionRoutine) {
-		pOverlapped->pCompletionRoutine(pOverlapped->InternalLow, pOverlapped->InternalHigh, pOverlapped->dwCompletionContext);
+	if (pXOverlapped->pCompletionRoutine) {
+		pXOverlapped->pCompletionRoutine(pXOverlapped->InternalLow, pXOverlapped->InternalHigh, pXOverlapped->dwCompletionContext);
 	}
 }
 
@@ -385,36 +387,36 @@ DWORD WINAPI XNotifyDelayUI(ULONG ulMilliSeconds)
 }
 
 // #1082
-DWORD WINAPI XGetOverlappedExtendedError(PXOVERLAPPED pOverlapped)
+DWORD WINAPI XGetOverlappedExtendedError(XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
-	if (!pOverlapped) {
+	if (!pXOverlapped) {
 		return GetLastError();
 	}
-	if (pOverlapped->InternalLow != ERROR_IO_PENDING) {
-		return pOverlapped->dwExtendedError;
+	if (pXOverlapped->InternalLow != ERROR_IO_PENDING) {
+		return pXOverlapped->dwExtendedError;
 	}
 	return ERROR_IO_INCOMPLETE;
 }
 
 // #1083
-DWORD WINAPI XGetOverlappedResult(PXOVERLAPPED pOverlapped, LPDWORD pdwResult, BOOL bWait)
+DWORD WINAPI XGetOverlappedResult(XOVERLAPPED *pXOverlapped, LPDWORD pdwResult, BOOL bWait)
 {
 	TRACE_FX();
-	if (!pOverlapped) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pOverlapped is NULL.", __func__);
+	if (!pXOverlapped) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pXOverlapped is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
-	if (pOverlapped->InternalLow == ERROR_IO_PENDING) {
+	if (pXOverlapped->InternalLow == ERROR_IO_PENDING) {
 		DWORD waitResult;
-		if (bWait && pOverlapped->hEvent != 0) {
-			waitResult = WaitForSingleObject(pOverlapped->hEvent, 0xFFFFFFFF);
+		if (bWait && pXOverlapped->hEvent != 0) {
+			waitResult = WaitForSingleObject(pXOverlapped->hEvent, 0xFFFFFFFF);
 		}
 		else {
 			waitResult = WAIT_TIMEOUT;
 		}
 		if (waitResult == WAIT_TIMEOUT) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Handle %08x is incomplete.", __func__, pOverlapped->hEvent);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Handle %08x is incomplete.", __func__, pXOverlapped->hEvent);
 			return ERROR_IO_INCOMPLETE;
 		}
 		if (waitResult) {
@@ -423,10 +425,10 @@ DWORD WINAPI XGetOverlappedResult(PXOVERLAPPED pOverlapped, LPDWORD pdwResult, B
 	}
 
 	if (pdwResult) {
-		*pdwResult = pOverlapped->InternalHigh;
+		*pdwResult = pXOverlapped->InternalHigh;
 	}
 
-	return pOverlapped->InternalLow;
+	return pXOverlapped->InternalLow;
 }
 
 // #5000
@@ -748,9 +750,9 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 	
 	if (!foundEnumerator) {
 		EnterCriticalSection(&xlive_critsec_xuser_stats);
-		if (xlive_xuser_achievement_enumerators.count(hObject)) {
+		if (xlive_xuser_stats_enumerators.count(hObject)) {
 			foundEnumerator = true;
-			xlive_xuser_achievement_enumerators.erase(hObject);
+			xlive_xuser_stats_enumerators.erase(hObject);
 		}
 		LeaveCriticalSection(&xlive_critsec_xuser_stats);
 	}
@@ -963,7 +965,7 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 
 	if (!foundEnumerator) {
 		EnterCriticalSection(&xlive_critsec_xuser_stats);
-		if (xlive_xuser_achievement_enumerators.count(hEnum)) {
+		if (xlive_xuser_stats_enumerators.count(hEnum)) {
 			foundEnumerator = true;
 
 			LeaveCriticalSection(&xlive_critsec_xuser_stats);
@@ -1186,7 +1188,7 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 }
 
 // #5257
-HRESULT WINAPI XLiveManageCredentials(LPCWSTR lpwszLiveIdName, LPCWSTR lpszLiveIdPassword, DWORD dwCredFlags, PXOVERLAPPED pXOverlapped)
+HRESULT WINAPI XLiveManageCredentials(LPCWSTR lpwszLiveIdName, LPCWSTR lpszLiveIdPassword, DWORD dwCredFlags, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwCredFlags & XLMGRCREDS_FLAG_SAVE && dwCredFlags & XLMGRCREDS_FLAG_DELETE) {
@@ -1236,7 +1238,7 @@ HRESULT WINAPI XLiveManageCredentials(LPCWSTR lpwszLiveIdName, LPCWSTR lpszLiveI
 }
 
 // #5258
-HRESULT WINAPI XLiveSignout(PXOVERLAPPED pXOverlapped)
+HRESULT WINAPI XLiveSignout(XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 
@@ -1261,7 +1263,7 @@ HRESULT WINAPI XLiveSignout(PXOVERLAPPED pXOverlapped)
 }
 
 // #5259
-HRESULT WINAPI XLiveSignin(PWSTR pszLiveIdName, PWSTR pszLiveIdPassword, DWORD dwFlags, PXOVERLAPPED pXOverlapped)
+HRESULT WINAPI XLiveSignin(PWSTR pszLiveIdName, PWSTR pszLiveIdPassword, DWORD dwFlags, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!pszLiveIdName) {
@@ -1400,6 +1402,10 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	INT errorXRender = InitXRender(pPii);
 	INT errorXSession = InitXSession();
 
+	if (xlive_auto_login_on_xliveinitialize) {
+		ShowXLLN(XLLN_SHOW_LOGIN);
+	}
+
 	xlive_initialised = TRUE;
 	return S_OK;
 }
@@ -1486,7 +1492,7 @@ DWORD WINAPI XOnlineCleanup()
 }
 
 // #5312
-DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, DWORD dwFriendsToReturn, DWORD *pcbBuffer, HANDLE *ph)
+DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, DWORD dwFriendsToReturn, DWORD *pcbBuffer, HANDLE *phEnum)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
@@ -1517,15 +1523,15 @@ DWORD WINAPI XFriendsCreateEnumerator(DWORD dwUserIndex, DWORD dwStartingIndex, 
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbBuffer is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
-	if (!ph) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s ph is NULL.", __func__);
+	if (!phEnum) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s phEnum is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
 
 	*pcbBuffer = dwFriendsToReturn * sizeof(XCONTENT_DATA);
-	*ph = CreateMutex(NULL, NULL, NULL);
+	*phEnum = CreateMutex(NULL, NULL, NULL);
 	EnterCriticalSection(&xlive_critsec_xfriends_enumerators);
-	xlive_xfriends_enumerators[*ph];
+	xlive_xfriends_enumerators[*phEnum];
 	LeaveCriticalSection(&xlive_critsec_xfriends_enumerators);
 
 	return ERROR_SUCCESS;
