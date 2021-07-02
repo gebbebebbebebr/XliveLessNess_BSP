@@ -26,7 +26,7 @@ static void ThreadKeepAlive()
 	hubRequest->titleId = xlive_title_id;
 	hubRequest->titleVersion = xlive_title_version;
 
-	std::mutex mymutex;
+	std::mutex mutexPause;
 	while (1) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO, "LiveOverLAN Remove Old Entries.");
 		EnterCriticalSection(&xlive_critsec_broadcast_addresses);
@@ -66,7 +66,7 @@ static void ThreadKeepAlive()
 
 		LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
 
-		std::unique_lock<std::mutex> lock(mymutex);
+		std::unique_lock<std::mutex> lock(mutexPause);
 		xlln_keep_alive_cond.wait_for(lock, std::chrono::seconds(5), []() { return xlln_keep_alive_exit == TRUE; });
 		if (xlln_keep_alive_exit) {
 			break;
@@ -76,6 +76,7 @@ static void ThreadKeepAlive()
 
 void XLLNKeepAliveStart()
 {
+	XLLNKeepAliveStop();
 	xlln_keep_alive_exit = FALSE;
 	xlln_keep_alive_thread = std::thread(ThreadKeepAlive);
 }

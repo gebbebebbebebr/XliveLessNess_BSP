@@ -99,7 +99,29 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 						free(blacklist);
 					}
 				}
-				else if (SettingNameMatches("XLiveRender_fps_limit")) {
+				else if (SettingNameMatches("xlln_debuglog_level")) {
+					uint32_t tempuint32;
+					if (sscanf_s(value, "0x%x", &tempuint32) == 1) {
+						if (configContext.saveValuesRead) {
+							xlln_debuglog_level = tempuint32;
+						}
+					}
+					else {
+						incorrect = true;
+					}
+				}
+				else if (SettingNameMatches("xlive_hotkey_id_guide")) {
+					uint16_t tempuint16;
+					if (sscanf_s(value, "0x%hx", &tempuint16) == 1) {
+						if (configContext.saveValuesRead) {
+							xlive_hotkey_id_guide = tempuint16;
+						}
+					}
+					else {
+						incorrect = true;
+					}
+				}
+				else if (SettingNameMatches("xlive_fps_limit")) {
 					uint32_t tempuint32;
 					if (sscanf_s(value, "%u", &tempuint32) == 1) {
 						if (configContext.saveValuesRead) {
@@ -140,17 +162,6 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 					if (sscanf_s(value, "%u", &tempuint32) == 1) {
 						if (configContext.saveValuesRead) {
 							xlive_xhv_engine_enabled = tempuint32 > 0;
-						}
-					}
-					else {
-						incorrect = true;
-					}
-				}
-				else if (SettingNameMatches("xlln_debuglog_level")) {
-					uint32_t tempuint32;
-					if (sscanf_s(value, "0x%x", &tempuint32) == 1) {
-						if (configContext.saveValuesRead) {
-							xlln_debuglog_level = tempuint32;
 						}
 					}
 					else {
@@ -314,7 +325,37 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# A comma separated list of trace function names to ignore in the logging to reduce spam.");
 	WriteText("\n");
 
-	WriteText("\n# XLiveRender_fps_limit:");
+	WriteText("\n# xlln_debuglog_level:");
+	WriteText("\n# Saves the log level from last use (stored in Hexadecimal).");
+	WriteText("\n# DEFAULT value: 0x873F.");
+	WriteText("\n# Binary to Hexadecimal:");
+	WriteText("\n# 0b1000011100111111 == 0x873F.");
+	WriteText("\n# 0bO0000MXG00FEWIDT - Bit Mask Legend.");
+	WriteText("\n# Context Options:");
+	WriteText("\n# - O - Other - Logs related to functionality from other areas of the application.");
+	WriteText("\n# - M - XLLN-Module - Logs related to XLLN-Module functionality.");
+	WriteText("\n# - X - XLiveLessNess - Logs related to XLiveLessNess functionality.");
+	WriteText("\n# - G - XLive - Logs related to XLive(GFWL) functionality.");
+	WriteText("\n# Log Level Options:");
+	WriteText("\n# - F - Fatal - Errors that will terminate the application.");
+	WriteText("\n# - E - Error - Any error which is fatal to the operation, but not the service or application (can't open a required file, missing data, etc.).");
+	WriteText("\n# - W - Warning - Anything that can potentially cause application oddities, but is being handled adequately.");
+	WriteText("\n# - I - Info - Generally useful information to log (service start/stop, configuration assumptions, etc).");
+	WriteText("\n# - D - Debug - Function, variable and operation logging.");
+	WriteText("\n# - T - Trace - Function call tracing.");
+	WriteText("\n");
+
+	WriteText("\n# xlive_hotkey_id_guide:");
+	WriteText("\n# Valid values: 0x0 to 0xFFFF.");
+	WriteText("\n#   0x0 - Turns off the hotkey.");
+	WriteText("\n#   0x24 - (DEFAULT) - VK_HOME");
+	WriteText("\n# This hotkey will open the Guide menu when pressed on (usually) the active Title screen/window.");
+	WriteText("\n# If the Title does not use Direct3D (such as in dedicated servers) then the Guide hotkey will not work.");
+	WriteText("\n# The following link documents the keyboard Virtual-Key (VK) codes available for use:");
+	WriteText("\n# https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes");
+	WriteText("\n");
+
+	WriteText("\n# xlive_fps_limit:");
 	WriteText("\n# Valid values: 0 to (2^32 - 1).");
 	WriteText("\n#   0 - Disables the built in limiter.");
 	WriteText("\n#   60 - (DEFAULT)");
@@ -347,26 +388,6 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n#   0 - (DEFAULT) The XHV Engine will not run.");
 	WriteText("\n#   1 - The XHV Engine is enabled for use.");
 	WriteText("\n# Allows activating the XHV Engine which is used for voice chat.");
-	WriteText("\n");
-
-	WriteText("\n# xlln_debuglog_level:");
-	WriteText("\n# Saves the log level from last use (stored in Hexadecimal).");
-	WriteText("\n# DEFAULT value: 0x873F.");
-	WriteText("\n# Binary to Hexadecimal:");
-	WriteText("\n# 0b1000011100111111 == 0x873F.");
-	WriteText("\n# 0bO0000MXG00FEWIDT - Bit Mask Legend.");
-	WriteText("\n# Context Options:");
-	WriteText("\n# - O - Other - Logs related to functionality from other areas of the application.");
-	WriteText("\n# - M - XLLN-Module - Logs related to XLLN-Module functionality.");
-	WriteText("\n# - X - XLiveLessNess - Logs related to XLiveLessNess functionality.");
-	WriteText("\n# - G - XLive - Logs related to XLive(GFWL) functionality.");
-	WriteText("\n# Log Level Options:");
-	WriteText("\n# - F - Fatal - Errors that will terminate the application.");
-	WriteText("\n# - E - Error - Any error which is fatal to the operation, but not the service or application (can't open a required file, missing data, etc.).");
-	WriteText("\n# - W - Warning - Anything that can potentially cause application oddities, but is being handled adequately.");
-	WriteText("\n# - I - Info - Generally useful information to log (service start/stop, configuration assumptions, etc).");
-	WriteText("\n# - D - Debug - Function, variable and operation logging.");
-	WriteText("\n# - T - Trace - Function call tracing.");
 	WriteText("\n");
 
 	WriteText("\n# xlive_network_adapter:");
@@ -429,11 +450,12 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 		WriteText(blacklist[i]);
 	}
 	LeaveCriticalSection(&xlln_critsec_debug_log);
-	WriteTextF("\nXLiveRender_fps_limit = %u", (uint32_t)xlive_fps_limit);
+	WriteTextF("\nxlln_debuglog_level = 0x%08x", xlln_debuglog_level);
+	WriteTextF("\nxlive_hotkey_id_guide = 0x%04x", (uint16_t)xlive_hotkey_id_guide);
+	WriteTextF("\nxlive_fps_limit = %u", (uint32_t)xlive_fps_limit);
 	WriteTextF("\nxlive_base_port = %hu", xlive_base_port == 0xFFFF ? 0 : xlive_base_port);
 	WriteTextF("\nxlive_net_disable = %u", xlive_netsocket_abort ? 1 : 0);
 	WriteTextF("\nxlive_xhv_engine_enabled = %u", xlive_xhv_engine_enabled ? 1 : 0);
-	WriteTextF("\nxlln_debuglog_level = 0x%08x", xlln_debuglog_level);
 	WriteTextF("\nxlive_network_adapter = %s", xlive_config_preferred_network_adapter_name ? xlive_config_preferred_network_adapter_name : "");
 	WriteTextF("\nxlive_ignore_title_network_adapter = %u", xlive_ignore_title_network_adapter ? 1 : 0);
 	WriteTextF("\nxlive_broadcast_address = %s", broadcastAddrInput);

@@ -18,6 +18,7 @@
 #define IPPROTO_VDP 254
 
 WORD xlive_base_port = 0;
+HANDLE xlive_base_port_mutex = 0;
 BOOL xlive_netsocket_abort = FALSE;
 
 CRITICAL_SECTION xlive_critsec_sockets;

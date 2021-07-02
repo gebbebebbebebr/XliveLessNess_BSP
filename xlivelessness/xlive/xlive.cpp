@@ -16,7 +16,6 @@
 #include "net-entity.hpp"
 #include "xuser.hpp"
 #include <time.h>
-#include <d3d9.h>
 #include <string>
 #include <vector>
 // Link with iphlpapi.lib
@@ -464,39 +463,6 @@ VOID WINAPI XLiveUninitialize()
 	INT errorXSocket = UninitXSocket();
 }
 
-// #5005
-HRESULT WINAPI XLiveOnCreateDevice(IUnknown *pD3D, VOID *pD3DPP)
-{
-	TRACE_FX();
-	if (!pD3D) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pD3D is NULL.", __func__);
-		return E_POINTER;
-	}
-	if (!pD3DPP) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pD3DPP is NULL.", __func__);
-		return E_POINTER;
-	}
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return S_OK;
-}
-
-// #5006
-HRESULT WINAPI XLiveOnDestroyDevice()
-{
-	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return S_OK;
-}
-
-// #5007
-HRESULT WINAPI XLiveOnResetDevice(void *pD3DPP)
-{
-	TRACE_FX();
-	D3DPRESENT_PARAMETERS *pD3DPP2 = (D3DPRESENT_PARAMETERS*)pD3DPP;
-	//ID3D10Device *pD3DPP2 = (ID3D10Device*)pD3DPP;
-	return S_OK;
-}
-
 // #5010: This function is deprecated.
 HRESULT WINAPI XLiveRegisterDataSection(DWORD a1, DWORD a2, DWORD a3)
 {
@@ -804,10 +770,12 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 
 	if (!foundEnumerator) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown handle 0x%08x.", __func__, (uint32_t)hObject);
+		SetLastError(ERROR_INVALID_HANDLE);
+		return FALSE;
 	}
 
 	if (!CloseHandle(hObject)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Failed to close handle %08x.", __func__, hObject);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Failed to close handle 0x%08x.", __func__, (uint32_t)hObject);
 		SetLastError(ERROR_INVALID_HANDLE);
 		return FALSE;
 	}
@@ -1357,6 +1325,9 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 
 	EnterCriticalSection(&xlive_critsec_network_adapter);
 	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
+		if (xlive_init_preferred_network_adapter_name) {
+			delete[] xlive_init_preferred_network_adapter_name;
+		}
 		xlive_init_preferred_network_adapter_name = CloneString(pPii->pszAdapterName);
 	}
 	LeaveCriticalSection(&xlive_critsec_network_adapter);
@@ -1370,13 +1341,14 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	}
 
 	if (IsUsingBasePort(xlive_base_port)) {
-		wchar_t mutex_name[40];
-		DWORD mutex_last_error;
-		HANDLE mutex = NULL;
+		wchar_t mutexName[40];
+		DWORD errorMutex;
+		HANDLE mutex = xlive_base_port_mutex;
 		xlive_base_port -= 1000;
 		do {
 			if (mutex) {
-				mutex_last_error = CloseHandle(mutex);
+				errorMutex = CloseHandle(mutex);
+				mutex = 0;
 			}
 			xlive_base_port += 1000;
 			if (xlive_base_port > 65000) {
@@ -1384,10 +1356,12 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 				xlive_base_port = 1000;
 				break;
 			}
-			swprintf(mutex_name, 40, L"Global\\XLiveLessNessBasePort#%hu", xlive_base_port);
-			mutex = CreateMutexW(0, TRUE, mutex_name);
-			mutex_last_error = GetLastError();
-		} while (mutex_last_error != ERROR_SUCCESS);
+			swprintf(mutexName, 40, L"Global\\XLiveLessNessBasePort#%hu", xlive_base_port);
+			mutex = CreateMutexW(0, TRUE, mutexName);
+			errorMutex = GetLastError();
+		} while (errorMutex != ERROR_SUCCESS);
+
+		xlive_base_port_mutex = mutex;
 
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
 			, "XLive Base Port %hu."
@@ -1398,9 +1372,16 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	INT errorXSocket = InitXSocket();
 	CreateLocalUser();
 	INT errorNetEntity = InitNetEntity();
-	//TODO If the title's graphics system has not yet been initialized, D3D will be passed in XLiveOnCreateDevice(...).
-	INT errorXRender = InitXRender(pPii);
+	INT errorXRender = InitXRender();
 	INT errorXSession = InitXSession();
+
+	HRESULT errorD3D = S_OK;
+	if (pPii->pD3D) {
+		errorD3D = D3DOnCreateDevice(pPii->pD3D, pPii->pD3DPP);
+	}
+	if (FAILED(errorD3D)) {
+		return errorD3D;
+	}
 
 	if (xlive_auto_login_on_xliveinitialize) {
 		ShowXLLN(XLLN_SHOW_LOGIN);

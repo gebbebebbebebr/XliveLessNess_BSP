@@ -5,6 +5,7 @@
 
 #define IsUsingBasePort(base_port) (base_port != 0 && base_port != 0xFFFF)
 extern WORD xlive_base_port;
+extern HANDLE xlive_base_port_mutex;
 extern BOOL xlive_netsocket_abort;
 
 struct SOCKET_MAPPING_INFO {

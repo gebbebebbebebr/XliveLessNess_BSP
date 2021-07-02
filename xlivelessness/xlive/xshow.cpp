@@ -3,6 +3,7 @@
 #include "../xlln/debug-text.hpp"
 #include "xlive.hpp"
 #include "../xlln/xlln.hpp"
+#include "xrender.hpp"
 
 // #5206
 DWORD WINAPI XShowMessagesUI(DWORD dwUserIndex)
@@ -494,7 +495,7 @@ DWORD WINAPI XLiveGetGuideKey(XINPUT_KEYSTROKE *pKeystroke)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pKeystroke is NULL.", __func__);
 		return E_INVALIDARG;
 	}
-	pKeystroke->VirtualKey = VK_HOME;
+	pKeystroke->VirtualKey = xlive_hotkey_id_guide;
 	pKeystroke->Unicode = 0;
 	return S_OK;
 }

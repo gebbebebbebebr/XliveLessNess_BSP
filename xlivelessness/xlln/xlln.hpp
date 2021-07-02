@@ -47,6 +47,7 @@ void InitCriticalSections();
 void UninitCriticalSections();
 bool InitXLLN(HMODULE hModule);
 bool UninitXLLN();
+uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId);
 uint32_t ShowXLLN(DWORD dwShowType);
 void UpdateUserInputBoxes(DWORD dwUserIndex);
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);

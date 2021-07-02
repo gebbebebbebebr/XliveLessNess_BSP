@@ -699,6 +699,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 		switch (wParam) {
 		case MYMENU_EXIT: {
 			// Kill any threads and kill the program.
+			StopThreadHotkeys();
 			LiveOverLanAbort();
 			XLLNKeepAliveAbort();
 			exit(EXIT_SUCCESS);
@@ -963,7 +964,7 @@ static DWORD WINAPI ThreadShowXlln(LPVOID lpParam)
 	return ERROR_SUCCESS;
 }
 
-uint32_t ShowXLLN(DWORD dwShowType)
+uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId)
 {
 	if (dwShowType == XLLN_SHOW_LOGIN) {
 		bool anyGotAutoLogged = false;
@@ -997,10 +998,15 @@ uint32_t ShowXLLN(DWORD dwShowType)
 		}
 	}
 
-	DWORD *threadArgs = new DWORD[2]{ GetCurrentThreadId(), dwShowType };
+	DWORD *threadArgs = new DWORD[2]{ threadId, dwShowType };
 	CreateThread(0, NULL, ThreadShowXlln, (LPVOID)threadArgs, NULL, NULL);
 
 	return ERROR_SUCCESS;
+}
+
+uint32_t ShowXLLN(DWORD dwShowType)
+{
+	return ShowXLLN(dwShowType, GetCurrentThreadId());
 }
 
 static void ReadTitleConfig(const wchar_t *titleExecutableFilePath)
