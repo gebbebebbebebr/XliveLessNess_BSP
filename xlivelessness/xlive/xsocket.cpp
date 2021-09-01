@@ -588,214 +588,309 @@ INT WINAPI XSocketRecv(SOCKET s, char * buf, int len, int flags)
 	return result;
 }
 
-// TODO rewrite so it is not recursive.
-INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int flags, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, sockaddr *sockAddrXlive, int *sockAddrXliveLen)
+INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, char *dataBuffer, const int dataBufferSize, const int flags, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, sockaddr *sockAddrXlive, int *sockAddrXliveLen)
 {
-	if (result > 0) {
-		TRACE_FX();
-
-		bool allowedToRequestWhoDisInReaction = true;
-
-		const int cpHeaderLen = sizeof(XLLNNetPacketType::TYPE);
-		if (result < cpHeaderLen) {
-			return 0;
+	TRACE_FX();
+	
+	const int packetSizeHeaderType = sizeof(XLLNNetPacketType::TYPE);
+	const int packetSizeTypeForwarded = sizeof(XLLNNetPacketType::PACKET_FORWARDED);
+	const int packetSizeTypeUnknownUser = sizeof(XLLNNetPacketType::UNKNOWN_USER);
+	const int packetSizeTypeHubRequest = sizeof(XLLNNetPacketType::HUB_REQUEST_PACKET);
+	const int packetSizeTypeHubReply = sizeof(XLLNNetPacketType::HUB_REPLY_PACKET);
+	
+	int packetSizeAlreadyProcessedOffset = 0;
+	int resultDataRecvSize = 0;
+	// In use if packetForwardedSockAddrSize is set.
+	SOCKADDR_STORAGE packetForwardedSockAddr;
+	// In use if packetForwardedSockAddrSize is set.
+	XLLNNetPacketType::NET_USER_PACKET packetForwardedNetter;
+	int packetForwardedSockAddrSize = 0;
+	bool canSendUnknownUserAsk = true;
+	XLLNNetPacketType::TYPE priorPacketType = XLLNNetPacketType::tUNKNOWN;
+	
+	while (dataRecvSize > packetSizeAlreadyProcessedOffset) {
+		if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeHeaderType) {
+			packetSizeAlreadyProcessedOffset = dataRecvSize;
+			break;
 		}
-		XLLNNetPacketType::TYPE &packetType = *(XLLNNetPacketType::TYPE*)buf;
-		XLLNNetPacketType::TYPE packetTypeLatest = packetType;
+		
+		XLLNNetPacketType::TYPE &packetType = *(XLLNNetPacketType::TYPE*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+		packetSizeAlreadyProcessedOffset += packetSizeHeaderType;
+		
+		priorPacketType = packetType;
 		switch (packetType) {
 			case XLLNNetPacketType::tTITLE_BROADCAST_PACKET:
 			case XLLNNetPacketType::tTITLE_PACKET: {
-				CustomMemCpy(buf, (void*)((DWORD)buf + cpHeaderLen), result - cpHeaderLen, true);
-				result -= cpHeaderLen;
+				const int dataSizeToShift = dataRecvSize - packetSizeAlreadyProcessedOffset;
+				CustomMemCpy(dataBuffer, (void*)((int)dataBuffer + packetSizeAlreadyProcessedOffset), dataSizeToShift, true);
+				
+				resultDataRecvSize = dataSizeToShift;
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
 				break;
 			}
 			case XLLNNetPacketType::tPACKET_FORWARDED: {
-				const int packetHeader = cpHeaderLen + sizeof(XLLNNetPacketType::PACKET_FORWARDED);
-				if (result < packetHeader) {
+				if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeForwarded) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "%s INVALID PACKET_FORWARDED Recieved."
+						, "%s Invalid %s received (insufficient size)."
 						, __func__
+						, XLLNNetPacketType::TYPE_NAMES[packetType]
 					);
-					return 0;
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
 				}
-
-				SOCKADDR_STORAGE packetForwardSocketData;
-				int altFromLen = sizeof(SOCKADDR_STORAGE);
-				memcpy(&packetForwardSocketData, &buf[cpHeaderLen], altFromLen);
-
-				CustomMemCpy(buf, (void*)((uint32_t)buf + packetHeader), (result -= packetHeader), true);
-
-				// TODO We don't need to always send this.
-				SendUnknownUserAskRequest(s, 0, 0, &packetForwardSocketData, altFromLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
-
-				result = XSocketRecvFromHelper(result, s, buf, len, flags, &packetForwardSocketData, altFromLen, sockAddrXlive, sockAddrXliveLen);
-				return result;
+				
+				XLLNNetPacketType::PACKET_FORWARDED &packetForwarded = *(XLLNNetPacketType::PACKET_FORWARDED*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+				packetSizeAlreadyProcessedOffset += packetSizeTypeForwarded;
+				
+				packetForwardedSockAddrSize = sizeof(SOCKADDR_STORAGE);
+				memcpy(&packetForwardedSockAddr, &packetForwarded.originSockAddr, packetForwardedSockAddrSize);
+				memcpy(&packetForwardedNetter, &packetForwarded.netter, sizeof(XLLNNetPacketType::NET_USER_PACKET));
+				
+				break;
 			}
 			case XLLNNetPacketType::tCUSTOM_OTHER: {
-				// TODO this probably needs reworking a little after this whole function gets refactored without recursion.
-				int sockAddrTempLen = sockAddrExternalLen;
-				result = XSocketRecvFromCustomHelper(result, s, buf, len, flags, (sockaddr*)sockAddrExternal, &sockAddrTempLen);
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s Unsupported %s received (unimplemented)."
+					, __func__
+					, XLLNNetPacketType::TYPE_NAMES[packetType]
+				);
+				
+				// TODO re-implement this.
+				//XSocketRecvFromCustomHelper();
+				
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
 				break;
 			}
 			case XLLNNetPacketType::tUNKNOWN_USER_ASK:
 			case XLLNNetPacketType::tUNKNOWN_USER_REPLY: {
-				allowedToRequestWhoDisInReaction = false;
-				// Less than since there is likely another packet pushed onto the end of this one.
-				if (result < cpHeaderLen + sizeof(XLLNNetPacketType::NET_USER_PACKET)) {
+				if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeUnknownUser) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "%s INVALID UNKNOWN_USER_<?> Recieved."
+						, "%s Invalid %s received (insufficient size)."
 						, __func__
+						, XLLNNetPacketType::TYPE_NAMES[packetType]
 					);
-					return 0;
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
 				}
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-					, "%s UNKNOWN_USER_<?> Recieved."
-					, __func__
-				);
 				
-				XLLNNetPacketType::NET_USER_PACKET &nea = *(XLLNNetPacketType::NET_USER_PACKET*)&buf[cpHeaderLen];
-				uint32_t resultNetter = NetterEntityEnsureExists(nea.instanceId, nea.portBaseHBO);
+				canSendUnknownUserAsk = false;
+				
+				XLLNNetPacketType::UNKNOWN_USER &packetUnknownUser = *(XLLNNetPacketType::UNKNOWN_USER*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+				packetSizeAlreadyProcessedOffset += packetSizeTypeUnknownUser;
+				
+				uint32_t resultNetter = NetterEntityEnsureExists(packetUnknownUser.netter.instanceId, packetUnknownUser.netter.portBaseHBO);
 				if (resultNetter) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "%s INVALID UNKNOWN_USER_<?> Recieved. Failed to create Net Entity: 0x%08x:%hu with error 0x%08x."
+						, "%s Error on received %s. Failed to create Net Entity: 0x%08x:%hu with error 0x%08x."
 						, __func__
-						, nea.instanceId
-						, nea.portBaseHBO
+						, XLLNNetPacketType::TYPE_NAMES[packetType]
+						, packetUnknownUser.netter.instanceId
+						, packetUnknownUser.netter.portBaseHBO
 						, resultNetter
 					);
-					return 0;
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
 				}
-
-				resultNetter = NetterEntityAddAddrByInstanceId(nea.instanceId, nea.socketInternalPortHBO, nea.socketInternalPortOffsetHBO, sockAddrExternal);
+				
+				resultNetter = NetterEntityAddAddrByInstanceId(
+					packetUnknownUser.netter.instanceId
+					, packetUnknownUser.netter.socketInternalPortHBO
+					, packetUnknownUser.netter.socketInternalPortOffsetHBO
+					, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
+				);
 				if (resultNetter) {
-					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
+					char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "%s UNKNOWN_USER_<?>. Failed to add addr (0x%04x:%hu %s) to Net Entity 0x%08x:%hu with error 0x%08x."
+						, "%s Error on received %s. Failed to add addr (0x%04x:%hu %s) to Net Entity 0x%08x:%hu with error 0x%08x."
 						, __func__
-						, nea.socketInternalPortHBO
-						, nea.socketInternalPortOffsetHBO
+						, XLLNNetPacketType::TYPE_NAMES[packetType]
+						, packetUnknownUser.netter.socketInternalPortHBO
+						, packetUnknownUser.netter.socketInternalPortOffsetHBO
 						, sockAddrInfo ? sockAddrInfo : ""
-						, nea.instanceId
-						, nea.portBaseHBO
+						, packetUnknownUser.netter.instanceId
+						, packetUnknownUser.netter.portBaseHBO
 						, resultNetter
 					);
 					if (sockAddrInfo) {
 						free(sockAddrInfo);
 					}
-					return 0;
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
 				}
-
+				
+				const int dataSizeRemaining = dataRecvSize - packetSizeAlreadyProcessedOffset;
+				uint32_t instanceIdConsumeRemaining = packetUnknownUser.netter.instanceIdConsumeRemaining;
+				
+				// Mutate/reuse the incomming packet buffer so we do not need to allocate a new one temporarily.
 				if (packetType == XLLNNetPacketType::tUNKNOWN_USER_ASK) {
 					packetType = XLLNNetPacketType::tUNKNOWN_USER_REPLY;
-
-					nea.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
-					nea.portBaseHBO = xlive_base_port;
+					
+					packetUnknownUser.netter.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
+					packetUnknownUser.netter.portBaseHBO = xlive_base_port;
 					{
 						EnterCriticalSection(&xlive_critsec_sockets);
-						SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[s];
-						nea.socketInternalPortHBO = socketMappingInfo->portOgHBO;
-						nea.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
+						SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
+						packetUnknownUser.netter.socketInternalPortHBO = socketMappingInfo->portOgHBO;
+						packetUnknownUser.netter.socketInternalPortOffsetHBO = socketMappingInfo->portOffsetHBO;
 						LeaveCriticalSection(&xlive_critsec_sockets);
 					}
-
-					int32_t sendBufLen = result;
-					if (nea.instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
-						nea.instanceIdConsumeRemaining = 0;
-						sendBufLen = cpHeaderLen + sizeof(XLLNNetPacketType::NET_USER_PACKET);
+					
+					int newPacketSize = packetSizeHeaderType + packetSizeTypeUnknownUser;
+					bool withExtraPayload = false;
+					// If the packet was only meant for this instance then discard the additional data.
+					if (instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
+						packetUnknownUser.netter.instanceIdConsumeRemaining = 0;
 					}
-
-					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-						, "%s UNKNOWN_USER_ASK Sending REPLY to Net Entity (0x%08x:%hu %s)%s."
-						, __func__
-						, nea.instanceId
-						, nea.portBaseHBO
-						, sockAddrInfo ? sockAddrInfo : ""
-						, sendBufLen == result ? " with extra payload" : ""
-					);
-					if (sockAddrInfo) {
-						free(sockAddrInfo);
+					else {
+						newPacketSize += dataSizeRemaining;
+						withExtraPayload = true;
 					}
-
-					int32_t bytesSent = sendto(s, buf, sendBufLen, 0, (const sockaddr*)sockAddrExternal, sockAddrExternalLen);
-				}
-
-				if (nea.instanceIdConsumeRemaining == 0 || nea.instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
-					// Remove the custom packet stuff from the front of the buffer.
-					result -= cpHeaderLen + sizeof(XLLNNetPacketType::NET_USER_PACKET);
-					if (result) {
-						CustomMemCpy(
-							buf
-							, (void*)((uint8_t*)buf + cpHeaderLen + sizeof(XLLNNetPacketType::NET_USER_PACKET))
-							, result
-							, true
-						);
-
+					
+					{
+						char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-							, "%s UNKNOWN_USER_<?> passing data back into recvfrom helper."
+							, "%s Sending %s to Net Entity (0x%08x:%hu %s)%s."
 							, __func__
+							, XLLNNetPacketType::TYPE_NAMES[packetType]
+							, packetUnknownUser.netter.instanceId
+							, packetUnknownUser.netter.portBaseHBO
+							, sockAddrInfo ? sockAddrInfo : ""
+							, withExtraPayload ? " with extra payload" : ""
 						);
-
-						return XSocketRecvFromHelper(result, s, buf, len, flags, sockAddrExternal, sockAddrExternalLen, sockAddrXlive, sockAddrXliveLen);
+						if (sockAddrInfo) {
+							free(sockAddrInfo);
+						}
 					}
+					
+					int bytesSent = sendto(
+						socket
+						, (char*)&packetType
+						, newPacketSize
+						, 0
+						, (const sockaddr*)(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal)
+						, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
+					);
+					
+					packetType = XLLNNetPacketType::tUNKNOWN_USER_ASK;
 				}
-				return 0;
+				
+				// If the packet was not meant for this instance then discard the additional data.
+				if (!(instanceIdConsumeRemaining == 0 || instanceIdConsumeRemaining == ntohl(xlive_local_xnAddr.inaOnline.s_addr))) {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+						, "%s Received %s."
+						, __func__
+						, XLLNNetPacketType::TYPE_NAMES[packetType]
+					);
+					
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
+				}
+				
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+					, "%s Consuming %s extra payload data (size %d)."
+					, __func__
+					, XLLNNetPacketType::TYPE_NAMES[packetType]
+					, dataSizeRemaining
+				);
+				
+				break;
 			}
 			case XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE:
 			case XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE: {
-				LiveOverLanRecieve(s, sockAddrExternal, sockAddrExternalLen, (const LIVE_SERVER_DETAILS*)buf, result);
-				return 0;
+				canSendUnknownUserAsk = false;
+				int dataSizeRemaining = dataRecvSize - packetSizeAlreadyProcessedOffset + 1;
+				
+				// FIXME This function assumes the buffer includes the packet type.
+				LiveOverLanRecieve(
+					socket
+					, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
+					, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
+					, (const LIVE_SERVER_DETAILS*)&dataBuffer[packetSizeAlreadyProcessedOffset - 1]
+					, dataSizeRemaining
+				);
+				
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
 			}
 			case XLLNNetPacketType::tHUB_REQUEST: {
-				if (result < cpHeaderLen + sizeof(XLLNNetPacketType::HUB_REQUEST_PACKET)) {
+				if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeHubRequest) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-						, "%s INVALID HUB_REQUEST_PACKET Recieved."
+						, "%s Invalid %s received (insufficient size)."
 						, __func__
+						, XLLNNetPacketType::TYPE_NAMES[packetType]
 					);
-					return 0;
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
 				}
-
-				const int altBufferSize = sizeof(XLLNNetPacketType::TYPE) + sizeof(XLLNNetPacketType::HUB_REPLY_PACKET);
-				uint8_t *altBuf = new uint8_t[altBufferSize];
-				altBuf[0] = XLLNNetPacketType::tHUB_REPLY;
-				XLLNNetPacketType::HUB_REPLY_PACKET *replyPacket = (XLLNNetPacketType::HUB_REPLY_PACKET*)&altBuf[sizeof(XLLNNetPacketType::TYPE)];
-				replyPacket->isHubServer = false;
-				replyPacket->xllnVersion = (DLL_VERSION_MAJOR << 24) + (DLL_VERSION_MINOR << 16) + (DLL_VERSION_REVISION << 8) + DLL_VERSION_BUILD;
+				
+				XLLNNetPacketType::HUB_REQUEST_PACKET &packetHubRequest = *(XLLNNetPacketType::HUB_REQUEST_PACKET*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+				packetSizeAlreadyProcessedOffset += packetSizeTypeHubRequest;
+				
+				int newPacketBufferHubReplySize = packetSizeHeaderType + packetSizeTypeHubReply;
+				uint8_t *newPacketBufferHubReply = new uint8_t[newPacketBufferHubReplySize];
+				int newPacketBufferHubReplyAlreadyProcessedOffset = 0;
+				
+				XLLNNetPacketType::TYPE &newPacketHubReplyType = *(XLLNNetPacketType::TYPE*)&newPacketBufferHubReply[newPacketBufferHubReplyAlreadyProcessedOffset];
+				newPacketBufferHubReplyAlreadyProcessedOffset += packetSizeHeaderType;
+				newPacketHubReplyType = XLLNNetPacketType::tHUB_REPLY;
+				
+				XLLNNetPacketType::HUB_REPLY_PACKET &newPacketHubReplyReply = *(XLLNNetPacketType::HUB_REPLY_PACKET*)&newPacketBufferHubReply[newPacketBufferHubReplyAlreadyProcessedOffset];
+				newPacketBufferHubReplyAlreadyProcessedOffset += packetSizeTypeHubReply;
+				newPacketHubReplyReply.isHubServer = false;
+				newPacketHubReplyReply.xllnVersion = (DLL_VERSION_MAJOR << 24) + (DLL_VERSION_MINOR << 16) + (DLL_VERSION_REVISION << 8) + DLL_VERSION_BUILD;
+				
+				if (newPacketBufferHubReplyAlreadyProcessedOffset != newPacketBufferHubReplySize) {
+					__debugbreak();
+				}
 				
 				{
-					char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
-						, "HUB_REQUEST REPLY to %s length:%d."
+					char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+						, "%s Sending %s to %s."
+						, __func__
+						, XLLNNetPacketType::TYPE_NAMES[XLLNNetPacketType::tHUB_REPLY]
 						, sockAddrInfo ? sockAddrInfo : ""
-						, altBufferSize
 					);
 					if (sockAddrInfo) {
 						free(sockAddrInfo);
 					}
 				}
 				
-				sendto(s, (const char*)altBuf, altBufferSize, 0, (const sockaddr*)sockAddrExternal, sockAddrExternalLen);
-
-				delete[] altBuf;
-				return 0;
+				int bytesSent = sendto(
+					socket
+					, (char*)newPacketBufferHubReply
+					, newPacketBufferHubReplySize
+					, 0
+					, (const sockaddr*)(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal)
+					, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
+				);
+				
+				delete[] newPacketBufferHubReply;
+				
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
 			}
 			case XLLNNetPacketType::tHUB_REPLY: {
+				EnterCriticalSection(&xlive_critsec_broadcast_addresses);
 				for (XLLNBroadcastEntity::BROADCAST_ENTITY &broadcastEntity : xlive_broadcast_addresses) {
-					if (SockAddrsMatch(&broadcastEntity.sockaddr, sockAddrExternal)) {
-						if (result < cpHeaderLen + sizeof(XLLNNetPacketType::HUB_REPLY_PACKET)) {
+					if (SockAddrsMatch(&broadcastEntity.sockaddr, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal)) {
+						if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeHubReply) {
 							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-								, "%s INVALID HUB_REPLY_PACKET Recieved."
+								, "%s Invalid %s received (insufficient size)."
 								, __func__
+								, XLLNNetPacketType::TYPE_NAMES[packetType]
 							);
-							return 0;
+							break;
 						}
-
-						XLLNNetPacketType::HUB_REPLY_PACKET &replyPacket = *(XLLNNetPacketType::HUB_REPLY_PACKET*)&buf[cpHeaderLen];
+						
+						XLLNNetPacketType::HUB_REPLY_PACKET &packetHubReply = *(XLLNNetPacketType::HUB_REPLY_PACKET*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+						packetSizeAlreadyProcessedOffset += packetSizeTypeHubReply;
+						
 						if (broadcastEntity.entityType != XLLNBroadcastEntity::TYPE::tBROADCAST_ADDR) {
-							broadcastEntity.entityType = replyPacket.isHubServer != 0 ? XLLNBroadcastEntity::TYPE::tHUB_SERVER : XLLNBroadcastEntity::TYPE::tOTHER_CLIENT;
+							broadcastEntity.entityType = packetHubReply.isHubServer != 0 ? XLLNBroadcastEntity::TYPE::tHUB_SERVER : XLLNBroadcastEntity::TYPE::tOTHER_CLIENT;
 						}
 						_time64(&broadcastEntity.lastComm);
-
+						
 						{
 							char *sockAddrInfo = GET_SOCKADDR_INFO(&broadcastEntity.sockaddr);
 							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
@@ -808,99 +903,112 @@ INT WINAPI XSocketRecvFromHelper(INT result, SOCKET s, char *buf, int len, int f
 								free(sockAddrInfo);
 							}
 						}
-
+						
 						break;
 					}
 				}
-				return 0;
+				LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
+				
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
 			}
 			default: {
+				const int dataSizeRemaining = dataRecvSize - packetSizeAlreadyProcessedOffset;
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s unknown custom packet type received 0x%02hhx."
+					, "%s Unknown packet (0x%02hhx) received with data content size (%d)."
 					, __func__
 					, packetType
+					, dataSizeRemaining
 				);
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
 				break;
 			}
 		}
+	}
+	
+	if (resultDataRecvSize < 0) {
+		__debugbreak();
+	}
+	if (resultDataRecvSize == 0) {
+		return 0;
+	}
+	
+	uint32_t instanceId = 0;
+	uint16_t portHBO = 0;
+	uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+	if (resultNetter) {
+		char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+			, __func__
+			, sockAddrInfo ? sockAddrInfo : ""
+			, resultNetter
+		);
+		if (sockAddrInfo) {
+			free(sockAddrInfo);
+		}
 		
-		if (result <= 0) {
-			if (result < 0) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_FATAL
-					, "%s result became less than 0! It is 0x%08x."
-					, __func__
-					, result
-				);
-			}
-			return 0;
-		}
-
-		uint32_t instanceId = 0;
-		uint16_t portHBO = 0;
-		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
-		if (resultNetter) {
-			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
-				, __func__
-				, sockAddrInfo ? sockAddrInfo : ""
-				, resultNetter
+		if (canSendUnknownUserAsk) {
+			int newPacketBufferUnknownUserSize = packetSizeHeaderType + resultDataRecvSize;
+			uint8_t *newPacketBufferUnknownUser = new uint8_t[newPacketBufferUnknownUserSize];
+			int newPacketBufferUnknownUserAlreadyProcessedOffset = 0;
+			
+			XLLNNetPacketType::TYPE &newPacketUnknownUserType = *(XLLNNetPacketType::TYPE*)&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset];
+			newPacketBufferUnknownUserAlreadyProcessedOffset += packetSizeHeaderType;
+			newPacketUnknownUserType = XLLNNetPacketType::tTITLE_BROADCAST_PACKET ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
+			
+			memcpy(&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset], dataBuffer, resultDataRecvSize);
+			
+			SendUnknownUserAskRequest(
+				socket
+				, (char*)newPacketBufferUnknownUser
+				, newPacketBufferUnknownUserSize
+				, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
+				, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
+				, true
+				, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
 			);
-			if (sockAddrInfo) {
-				free(sockAddrInfo);
-			}
-
-			if (allowedToRequestWhoDisInReaction) {
-				const int altBufHeaderLen = sizeof(XLLNNetPacketType::TYPE);
-				uint8_t *altBuf = new uint8_t[altBufHeaderLen + result];
-				memcpy(altBuf + altBufHeaderLen, buf, result);
-				altBuf[0] = XLLNNetPacketType::tTITLE_PACKET;
-
-				SendUnknownUserAskRequest(s, (char*)altBuf, altBufHeaderLen + result, sockAddrExternal, sockAddrExternalLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
-
-				delete[] altBuf;
-			}
-
-			if (packetTypeLatest == XLLNNetPacketType::tTITLE_BROADCAST_PACKET) {
-				// TODO fix broadcast reply so it tells other instances this instance info.
-				sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
-				sockAddrIpv4Xlive->sin_family = AF_INET;
-				sockAddrIpv4Xlive->sin_addr.s_addr = htonl(0x00FFFF00);
-				sockAddrIpv4Xlive->sin_port = htons(GetSockAddrPort(sockAddrExternal));
-				*sockAddrXliveLen = sizeof(sockaddr_in);
-
-				result = 0;
-			}
-			else {
-				// We don't want whatever this was being passed to the Title.
-				result = 0;
-			}
+			
+			delete[] newPacketBufferUnknownUser;
 		}
-		else {
-			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "%s NetterEntityGetInstanceIdPortByExternalAddr found external addr %s as instanceId:0x%08x port:%hu."
-				, __func__
-				, sockAddrInfo ? sockAddrInfo : ""
-				, instanceId
-				, portHBO
-			);
-			if (sockAddrInfo) {
-				free(sockAddrInfo);
-			}
-
+		
+		if (packetForwardedSockAddrSize && packetForwardedNetter.instanceId) {
 			sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
 			sockAddrIpv4Xlive->sin_family = AF_INET;
-			sockAddrIpv4Xlive->sin_addr.s_addr = htonl(instanceId);
-			sockAddrIpv4Xlive->sin_port = htons(portHBO);
+			sockAddrIpv4Xlive->sin_addr.s_addr = htonl(packetForwardedNetter.instanceId);
+			sockAddrIpv4Xlive->sin_port = htons(packetForwardedNetter.socketInternalPortHBO);
 			*sockAddrXliveLen = sizeof(sockaddr_in);
 		}
+		else {
+			// We do not want whatever this was being passed to the Title.
+			return 0;
+		}
 	}
-	return result;
+	else {
+		char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+			, "%s NetterEntityGetInstanceIdPortByExternalAddr found external addr %s as instanceId:0x%08x port:%hu."
+			, __func__
+			, sockAddrInfo ? sockAddrInfo : ""
+			, instanceId
+			, portHBO
+		);
+		if (sockAddrInfo) {
+			free(sockAddrInfo);
+		}
+		
+		sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
+		sockAddrIpv4Xlive->sin_family = AF_INET;
+		sockAddrIpv4Xlive->sin_addr.s_addr = htonl(instanceId);
+		sockAddrIpv4Xlive->sin_port = htons(portHBO);
+		*sockAddrXliveLen = sizeof(sockaddr_in);
+	}
+	
+	return resultDataRecvSize;
 }
 
 // #20
-INT WINAPI XSocketRecvFrom(SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen)
+INT WINAPI XSocketRecvFrom(SOCKET socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen)
 {
 	TRACE_FX();
 	if (flags) {
@@ -910,30 +1018,14 @@ INT WINAPI XSocketRecvFrom(SOCKET s, char *buf, int len, int flags, sockaddr *fr
 	}
 	SOCKADDR_STORAGE sockAddrExternal;
 	int sockAddrExternalLen = sizeof(sockAddrExternal);
-	INT result_recvfrom = recvfrom(s, buf, len, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
-	INT result = XSocketRecvFromHelper(result_recvfrom, s, buf, len, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
-	if (result > 0)
-	{
-		char *sockAddrInfo1 = GET_SOCKADDR_INFO(&sockAddrExternal);
-		char *sockAddrInfo2 = GET_SOCKADDR_INFO((sockaddr_storage*)from);
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "%s receiving on socket (0x%08x) from %s as (0x%08x) %s."
-			, __func__
-			, s
-			, sockAddrInfo1 ? sockAddrInfo1 : ""
-			, from->sa_family == AF_INET ? ntohl(((sockaddr_in*)from)->sin_addr.s_addr) : 0
-			, sockAddrInfo2 ? sockAddrInfo2 : ""
-		);
-		if (sockAddrInfo1) {
-			free(sockAddrInfo1);
-		}
-		if (sockAddrInfo2) {
-			free(sockAddrInfo2);
-		}
+	INT resultDataRecvSize = recvfrom(socket, dataBuffer, dataBufferSize, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+	if (resultDataRecvSize <= 0) {
+		return resultDataRecvSize;
 	}
-	if (result_recvfrom > 0 && result == 0) {
-		result = SOCKET_ERROR;
+	INT result = XSocketRecvFromHelper(resultDataRecvSize, socket, dataBuffer, dataBufferSize, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
+	if (result == 0) { // && resultDataRecvSize > 0
 		WSASetLastError(WSAEWOULDBLOCK);
+		return SOCKET_ERROR;
 	}
 	return result;
 }

@@ -38,6 +38,23 @@ char* GetPESha256Sum(HMODULE hModule)
 	return checksumStr;
 }
 
+// new'ly[] allocate checksum string.
+char* GetSha256Sum(uint8_t *buffer, size_t buf_size)
+{
+	uint8_t *checksum = new uint8_t[32];
+	mbedtls_sha256(buffer, buf_size, checksum, 0);
+
+	char *checksumStr = new char[65];
+	for (uint8_t i = 0; i < 32; i++) {
+		sprintf_s(&checksumStr[i * 2], 3, "%02hhx", checksum[i]);
+	}
+	checksumStr[64] = 0;
+
+	delete[] checksum;
+
+	return checksumStr;
+}
+
 //Copyright (C) 1986 Gary S. Brown.  You may use this program, or
 // code or tables extracted from it, as desired without restriction.
 typedef DWORD UNS_32_BITS;

@@ -722,7 +722,7 @@ VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal,
 		if (len < sizeof(*session_details)) {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s INVALID Broadcast Advertise on socket 0x08x from %s."
+				, "%s INVALID Broadcast Advertise on socket 0x%08x from %s."
 				, __func__
 				, socket
 				, sockAddrInfo ? sockAddrInfo : ""

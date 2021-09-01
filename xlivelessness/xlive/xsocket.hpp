@@ -76,8 +76,6 @@ namespace XLLNNetPacketType {
 	} TYPE;
 #pragma pack(push, 1) // Save then set byte alignment setting.
 
-	typedef SOCKADDR_STORAGE PACKET_FORWARDED;
-
 	typedef struct {
 		char *Identifier;
 		DWORD *FuncPtr;
@@ -90,6 +88,17 @@ namespace XLLNNetPacketType {
 		int16_t socketInternalPortOffsetHBO = 0;
 		uint32_t instanceIdConsumeRemaining = 0; // the instanceId that should be consuming the rest of the data on this packet.
 	} NET_USER_PACKET;
+
+	typedef struct {
+		SOCKADDR_STORAGE originSockAddr;
+		NET_USER_PACKET netter;
+		// The data following this is the forwarded packet data.
+	} PACKET_FORWARDED;
+	
+	typedef struct {
+		NET_USER_PACKET netter;
+		// The data following this is the forwarded packet data.
+	} UNKNOWN_USER;
 
 	typedef struct {
 		uint32_t xllnVersion = 0; // version of the requester.

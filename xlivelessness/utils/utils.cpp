@@ -115,38 +115,71 @@ int FindLineStart(FILE* fp, int lineStrLen)
 	return fp_offset_orig - lineStrLen;
 }
 
+// new'ly[] allocates fileLine.
 bool GetFileLine(FILE* fp, char* &fileLine)
 {
-	bool moretogo = true;
-	int fileLineLen = 256;
-	fileLine = (char*)malloc(fileLineLen);
-	int fileLineCursor = 0;
-	int c;
-	while (c = fgetc(fp)) {
-		if (c == EOF) {
-			moretogo = false;
-			break;
-		}
-		else if (c == '\r') {
+	fileLine = 0;
+	int resultErr;
 
-		}
-		else if (c == '\n') {
+	fpos_t startPos;
+	resultErr = fgetpos(fp, &startPos);
+	if (resultErr) {
+		return false;
+	}
+
+	int currentChar;
+	while (currentChar = fgetc(fp)) {
+		if (currentChar == EOF) {
 			break;
 		}
-		else {
-			fileLine[fileLineCursor++] = c;
+		else if (currentChar == '\r') {
+			break;
 		}
-		if (fileLineCursor >= fileLineLen - 2) {
-			fileLineLen += 256;
-			fileLine = (char*)realloc(fileLine, fileLineLen);
+		else if (currentChar == '\n') {
+			break;
 		}
 	}
-	fileLine[fileLineCursor++] = 0;
-	if (strlen(fileLine) == 0) {
-		free(fileLine);
+
+	fpos_t endPos;
+	resultErr = fgetpos(fp, &endPos);
+	if (resultErr) {
+		return false;
+	}
+
+	size_t lineBufLen = (size_t)(endPos - startPos);
+	if (lineBufLen <= 0) {
+		return false;
+	}
+
+	// find any extra line ending char.
+	bool removeExtra = false;
+	if (currentChar != EOF) {
+		int nextChar = fgetc(fp);
+		if (
+			(nextChar == '\r' && currentChar == '\n')
+			|| (nextChar == '\n' && currentChar == '\r')
+			) {
+			removeExtra = true;
+		}
+	}
+
+	fsetpos(fp, &startPos);
+
+	fileLine = new char[lineBufLen];
+
+	if (!fread(fileLine, sizeof(char), lineBufLen, fp)) {
+		if (removeExtra) {
+			fgetc(fp);
+		}
+		delete[] fileLine;
 		fileLine = 0;
+		return false;
 	}
-	return moretogo || fileLine != 0;
+	fileLine[lineBufLen - 1] = 0;
+	if (removeExtra) {
+		fgetc(fp);
+	}
+	return true;
 }
 
 bool GetNTStringLine(char* text, int lineNum, char* &line)
