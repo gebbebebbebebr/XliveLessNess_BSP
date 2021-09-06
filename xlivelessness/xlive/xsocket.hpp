@@ -102,6 +102,7 @@ namespace XLLNNetPacketType {
 
 	typedef struct {
 		uint32_t xllnVersion = 0; // version of the requester.
+		uint32_t instanceId = 0; // Instance ID of the requester.
 		uint32_t titleId = 0;
 		uint32_t titleVersion = 0;
 	} HUB_REQUEST_PACKET;
@@ -109,6 +110,7 @@ namespace XLLNNetPacketType {
 	typedef struct {
 		uint8_t isHubServer = 0; // boolean.
 		uint32_t xllnVersion = 0; // version of the replier.
+		uint32_t recommendedInstanceId = 0; // the Instance ID that should be used instead (in case of collisions).
 	} HUB_REPLY_PACKET;
 
 #pragma pack(pop) // Return to original alignment setting.

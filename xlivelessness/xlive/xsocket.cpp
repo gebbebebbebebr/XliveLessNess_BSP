@@ -838,6 +838,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 				newPacketBufferHubReplyAlreadyProcessedOffset += packetSizeTypeHubReply;
 				newPacketHubReplyReply.isHubServer = false;
 				newPacketHubReplyReply.xllnVersion = (DLL_VERSION_MAJOR << 24) + (DLL_VERSION_MINOR << 16) + (DLL_VERSION_REVISION << 8) + DLL_VERSION_BUILD;
+				newPacketHubReplyReply.recommendedInstanceId = 0;
 				
 				if (newPacketBufferHubReplyAlreadyProcessedOffset != newPacketBufferHubReplySize) {
 					__debugbreak();
@@ -890,6 +891,18 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 							broadcastEntity.entityType = packetHubReply.isHubServer != 0 ? XLLNBroadcastEntity::TYPE::tHUB_SERVER : XLLNBroadcastEntity::TYPE::tOTHER_CLIENT;
 						}
 						_time64(&broadcastEntity.lastComm);
+						
+						if (packetHubReply.recommendedInstanceId && packetHubReply.recommendedInstanceId != ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
+							char *sockAddrInfo = GetSockAddrInfo(&broadcastEntity.sockaddr);
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+								, "%s HUB_REPLY_PACKET from %s recommends a different Instance ID (from 0x%08x to 0x%08x)."
+								, __func__
+								, sockAddrInfo ? sockAddrInfo : "?"
+								, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
+								, packetHubReply.recommendedInstanceId
+							);
+							free(sockAddrInfo);
+						}
 						
 						{
 							char *sockAddrInfo = GET_SOCKADDR_INFO(&broadcastEntity.sockaddr);
