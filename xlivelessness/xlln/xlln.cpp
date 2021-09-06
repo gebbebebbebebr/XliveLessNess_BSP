@@ -12,6 +12,7 @@
 #include "../xlive/xlive.hpp"
 #include "../xlive/xlocator.hpp"
 #include "../xlive/xrender.hpp"
+#include "../xlive/packet-handler.hpp"
 #include "../xlive/xsocket.hpp"
 #include "../xlive/net-entity.hpp"
 #include "../xlive/xuser.hpp"

@@ -129,6 +129,9 @@
     <ClCompile Include="xlive\xcustom.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
+    <ClCompile Include="xlive\packet-handler.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -244,6 +247,9 @@
     </ClInclude>
     <ClInclude Include="third-party\rapidxml\rapidxml_utils.hpp">
       <Filter>Source Files\third-party\rapidxml</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\packet-handler.hpp">
+      <Filter>Source Files\xlive</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

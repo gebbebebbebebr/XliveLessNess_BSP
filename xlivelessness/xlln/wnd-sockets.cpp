@@ -4,6 +4,7 @@
 #include "./wnd-sockets.hpp"
 #include "./xlln.hpp"
 #include "../utils/utils.hpp"
+#include "../xlive/packet-handler.hpp"
 #include "../xlive/xsocket.hpp"
 #include <stdint.h>
 #include <time.h>
