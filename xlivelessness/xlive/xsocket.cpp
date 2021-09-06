@@ -968,7 +968,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 			
 			XLLNNetPacketType::TYPE &newPacketUnknownUserType = *(XLLNNetPacketType::TYPE*)&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset];
 			newPacketBufferUnknownUserAlreadyProcessedOffset += packetSizeHeaderType;
-			newPacketUnknownUserType = XLLNNetPacketType::tTITLE_BROADCAST_PACKET ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
+			newPacketUnknownUserType = priorPacketType == XLLNNetPacketType::tTITLE_BROADCAST_PACKET ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
 			
 			memcpy(&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset], dataBuffer, resultDataRecvSize);
 			

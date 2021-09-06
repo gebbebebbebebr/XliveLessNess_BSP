@@ -888,7 +888,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
@@ -917,7 +916,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
@@ -946,7 +944,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
@@ -975,7 +972,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
@@ -1004,7 +1000,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
@@ -1058,7 +1053,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
@@ -1087,7 +1081,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
@@ -1116,7 +1109,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
-					XCloseHandle(hEnum);
 				}
 				Check_Overlapped(pXOverlapped);
 
