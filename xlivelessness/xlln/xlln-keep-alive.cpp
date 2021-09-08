@@ -5,6 +5,7 @@
 #include "../xlln/xlln.hpp"
 #include "../xlive/xlive.hpp"
 #include "../xlive/packet-handler.hpp"
+#include "../xlive/live-over-lan.hpp"
 #include "../xlive/xsocket.hpp"
 #include "../xlive/xlocator.hpp"
 #include "../xlive/xnet.hpp"

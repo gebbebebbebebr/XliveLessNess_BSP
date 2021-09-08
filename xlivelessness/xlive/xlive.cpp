@@ -14,6 +14,7 @@
 #include "xmarketplace.hpp"
 #include "xcontent.hpp"
 #include "net-entity.hpp"
+#include "live-over-lan.hpp"
 #include "xuser.hpp"
 #include <time.h>
 #include <string>

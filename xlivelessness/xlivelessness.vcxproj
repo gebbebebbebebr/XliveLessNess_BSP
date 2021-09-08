@@ -185,6 +185,7 @@
     <ClCompile Include="utils\util-hook.cpp" />
     <ClCompile Include="utils\util-socket.cpp" />
     <ClCompile Include="utils\utils.cpp" />
+    <ClCompile Include="xlive\live-over-lan.cpp" />
     <ClCompile Include="xlive\net-entity.cpp" />
     <ClCompile Include="xlive\packet-handler.cpp" />
     <ClCompile Include="xlive\voice.cpp" />
@@ -229,6 +230,7 @@
     <ClInclude Include="utils\util-hook.hpp" />
     <ClInclude Include="utils\util-socket.hpp" />
     <ClInclude Include="utils\utils.hpp" />
+    <ClInclude Include="xlive\live-over-lan.hpp" />
     <ClInclude Include="xlive\net-entity.hpp" />
     <ClInclude Include="xlive\packet-handler.hpp" />
     <ClInclude Include="xlive\voice.hpp" />
