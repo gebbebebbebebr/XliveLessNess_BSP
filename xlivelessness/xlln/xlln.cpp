@@ -22,12 +22,12 @@
 #include "../xlive/xpresence.hpp"
 #include "../xlive/xmarketplace.hpp"
 #include "../xlive/xcontent.hpp"
-#include "rand-name.hpp"
 #include "../resource.h"
 #include <ws2tcpip.h>
 #include <time.h>
 #include <CommCtrl.h>
 #include "../third-party/rapidxml/rapidxml.hpp"
+#include "../third-party/fantasyname/namegen.h"
 
 static LRESULT CALLBACK DLLWindowProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -259,9 +259,11 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 		xlive_users_info[dwUserIndex]->szUserName[XUSER_NAME_SIZE] = 0;
 	}
 	else {
-		wchar_t generated_name[XUSER_NAME_SIZE];
-		GetName(generated_name, XUSER_NAME_SIZE);
-		snprintf(xlive_users_info[dwUserIndex]->szUserName, XUSER_NAME_SIZE, "%ls", generated_name);
+		unsigned long seedNamegen = rand();
+		int resultNamegen;
+		do {
+			resultNamegen = namegen(xlive_users_info[dwUserIndex]->szUserName, XUSER_NAME_SIZE, "<!DdM|!DdV|!Dd|!m|!BVC|!BdC !DdM|!DdV|!Dd|!m|!BVC|!BdC>|<!DdM|!DdV|!Dd|!m|!BVC|!BdC>", &seedNamegen);
+		} while (resultNamegen == NAMEGEN_TRUNCATED || xlive_users_info[dwUserIndex]->szUserName[0] == 0);
 	}
 
 	if (!dwUserId) {

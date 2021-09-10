@@ -28,6 +28,9 @@
     <Filter Include="Source Files\third-party\rapidxml">
       <UniqueIdentifier>{67dc282b-6c8e-45cd-85d0-455c427fbd3c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Source Files\third-party\fantasyname">
+      <UniqueIdentifier>{51680ffe-ce4d-4c2b-a8fe-eb7dad750042}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -62,9 +65,6 @@
     </ClCompile>
     <ClCompile Include="xlive\xsocket.cpp">
       <Filter>Source Files\xlive</Filter>
-    </ClCompile>
-    <ClCompile Include="xlln\rand-name.cpp">
-      <Filter>Source Files\xlln</Filter>
     </ClCompile>
     <ClCompile Include="xlive\xshow.cpp">
       <Filter>Source Files\xlive</Filter>
@@ -167,9 +167,6 @@
     <ClInclude Include="xlive\xsocket.hpp">
       <Filter>Source Files\xlive</Filter>
     </ClInclude>
-    <ClInclude Include="xlln\rand-name.hpp">
-      <Filter>Source Files\xlln</Filter>
-    </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -256,6 +253,9 @@
     </ClInclude>
     <ClInclude Include="xlive\live-over-lan.hpp">
       <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="third-party\fantasyname\namegen.h">
+      <Filter>Source Files\third-party\fantasyname</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

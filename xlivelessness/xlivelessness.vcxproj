@@ -207,7 +207,6 @@
     <ClCompile Include="xlive\xuser.cpp" />
     <ClCompile Include="xlive\xwsa.cpp" />
     <ClCompile Include="xlln\debug-text.cpp" />
-    <ClCompile Include="xlln\rand-name.cpp" />
     <ClCompile Include="xlln\wnd-connections.cpp" />
     <ClCompile Include="xlln\wnd-sockets.cpp" />
     <ClCompile Include="xlln\xlln-config.cpp" />
@@ -221,6 +220,7 @@
   <ItemGroup>
     <ClInclude Include="dllmain.hpp" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="third-party\fantasyname\namegen.h" />
     <ClInclude Include="third-party\rapidxml\rapidxml.hpp" />
     <ClInclude Include="third-party\rapidxml\rapidxml_iterators.hpp" />
     <ClInclude Include="third-party\rapidxml\rapidxml_print.hpp" />
@@ -252,7 +252,6 @@
     <ClInclude Include="xlive\xuser.hpp" />
     <ClInclude Include="xlive\xwsa.hpp" />
     <ClInclude Include="xlln\debug-text.hpp" />
-    <ClInclude Include="xlln\rand-name.hpp" />
     <ClInclude Include="xlln\wnd-connections.hpp" />
     <ClInclude Include="xlln\wnd-sockets.hpp" />
     <ClInclude Include="xlln\xlln-config.hpp" />
