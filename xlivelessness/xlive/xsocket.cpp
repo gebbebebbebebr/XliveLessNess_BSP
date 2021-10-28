@@ -628,11 +628,10 @@ INT WINAPI XSocketSendTo(SOCKET socket, const char *dataBuffer, int dataSendSize
 
 	if (resultSentSize > 0) {
 		int32_t unsentDataSize = newPacketBufferTitleDataSize - resultSentSize;
-		if (unsentDataSize > 0) {
-			resultSentSize = dataSendSize - unsentDataSize;
-			if (resultSentSize < 0) {
-				resultSentSize = 0;
-	}
+		int32_t newPacketDataSizeDifference = newPacketBufferTitleDataSize - dataSendSize;
+		resultSentSize = dataSendSize - unsentDataSize;
+		if (resultSentSize <= newPacketDataSizeDifference) {
+			resultSentSize = 0;
 		}
 	}
 
