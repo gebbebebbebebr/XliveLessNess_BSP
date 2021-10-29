@@ -236,18 +236,35 @@ DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, XOVERLAPPED *pXOverla
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XSession is not initialised.", __func__);
 		return ERROR_FUNCTION_FAILED;
 	}
+	if (dwFlags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwFlags (0x%08x) is not 0.", __func__, dwFlags);
+		return ERROR_INVALID_PARAMETER;
+	}
 	if (!hSession) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	uint32_t result = ERROR_SUCCESS;
+	{
+		EnterCriticalSection(&xlive_critsec_xsession);
+		if (xlive_xsessions.count(hSession)) {
+			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
+
+			xsessionDetails->eState = XSESSION_STATE_INGAME;
+		}
+		else {
+			result = XONLINE_E_SESSION_NOT_FOUND;
+		}
+		LeaveCriticalSection(&xlive_critsec_xsession);
+	}
+
 	if (pXOverlapped) {
 		//asynchronous
 
-		pXOverlapped->InternalLow = ERROR_SUCCESS;
-		pXOverlapped->InternalHigh = ERROR_SUCCESS;
-		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+		pXOverlapped->InternalLow = result;
+		pXOverlapped->InternalHigh = result;
+		pXOverlapped->dwExtendedError = result;
 
 		Check_Overlapped(pXOverlapped);
 
@@ -257,7 +274,7 @@ DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, XOVERLAPPED *pXOverla
 		//synchronous
 		//return result;
 	}
-	return ERROR_SUCCESS;
+	return result;
 }
 
 // #5319
@@ -433,23 +450,34 @@ DWORD WINAPI XSessionModify(HANDLE hSession, DWORD dwFlags, DWORD dwMaxPublicSlo
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s hSession is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
-	if (!(dwFlags && 0x200)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s !(dwFlags && 0x200).", __func__);
-		return ERROR_INVALID_PARAMETER;
-	}
-	if (!(dwFlags && 0x800)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s !(dwFlags && 0x800).", __func__);
+	if ((dwFlags & XSESSION_CREATE_JOIN_VIA_PRESENCE_DISABLED) && (dwFlags & XSESSION_CREATE_JOIN_VIA_PRESENCE_FRIENDS_ONLY)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwFlags cannot set XSESSION_CREATE_JOIN_VIA_PRESENCE_DISABLED and XSESSION_CREATE_JOIN_VIA_PRESENCE_FRIENDS_ONLY.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	uint32_t result = ERROR_SUCCESS;
+	{
+		EnterCriticalSection(&xlive_critsec_xsession);
+		if (xlive_xsessions.count(hSession)) {
+			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
+
+			const DWORD maskModifiers = XSESSION_CREATE_MODIFIERS_MASK - XSESSION_CREATE_SOCIAL_MATCHMAKING_ALLOWED; // not sure if social property is modifiable.
+			xsessionDetails->dwFlags = (xsessionDetails->dwFlags & (~maskModifiers)) | (maskModifiers & dwFlags);
+			xsessionDetails->dwMaxPrivateSlots = dwMaxPublicSlots;
+			xsessionDetails->dwMaxPrivateSlots = dwMaxPrivateSlots;
+		}
+		else {
+			result = XONLINE_E_SESSION_NOT_FOUND;
+		}
+		LeaveCriticalSection(&xlive_critsec_xsession);
+	}
 
 	if (pXOverlapped) {
 		//asynchronous
 
-		pXOverlapped->InternalLow = ERROR_SUCCESS;
-		pXOverlapped->InternalHigh = ERROR_SUCCESS;
-		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
+		pXOverlapped->InternalLow = result;
+		pXOverlapped->InternalHigh = result;
+		pXOverlapped->dwExtendedError = result;
 
 		Check_Overlapped(pXOverlapped);
 
@@ -459,7 +487,7 @@ DWORD WINAPI XSessionModify(HANDLE hSession, DWORD dwFlags, DWORD dwMaxPublicSlo
 		//synchronous
 		//return result;
 	}
-	return ERROR_SUCCESS;
+	return result;
 }
 
 // #5323
@@ -877,7 +905,7 @@ DWORD WINAPI XSessionGetDetails(HANDLE hSession, DWORD *pcbResultsBuffer, XSESSI
 		return ERROR_INVALID_PARAMETER;
 	}
 
-	uint32_t result = ERROR_FUNCTION_FAILED;
+	uint32_t result = ERROR_SUCCESS;
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
 		if (xlive_xsessions.count(hSession)) {
@@ -885,7 +913,9 @@ DWORD WINAPI XSessionGetDetails(HANDLE hSession, DWORD *pcbResultsBuffer, XSESSI
 			*pSessionDetails = *xsessionDetails;
 			// TODO need to copy this in to buffer if there is enough space.
 			pSessionDetails->pSessionMembers = 0;
-			result = ERROR_SUCCESS;
+		}
+		else {
+			result = XONLINE_E_SESSION_NOT_FOUND;
 		}
 		LeaveCriticalSection(&xlive_critsec_xsession);
 	}
