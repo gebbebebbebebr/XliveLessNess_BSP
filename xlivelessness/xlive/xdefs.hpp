@@ -1258,11 +1258,14 @@ typedef struct {
 	XSESSION_MEMBER *pSessionMembers;
 } XSESSION_LOCAL_DETAILS, *PXSESSION_LOCAL_DETAILS;
 
+
+#pragma pack(push, 1) // Save then set byte alignment setting.
 typedef struct _XUSER_CONTEXT
 {
 	DWORD                               dwContextId;
 	DWORD                               dwValue;
 } XUSER_CONTEXT, *PXUSER_CONTEXT;
+#pragma pack(pop) // Return to original alignment setting.
 
 typedef struct _XSESSION_SEARCHRESULT
 {

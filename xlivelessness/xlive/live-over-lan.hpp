@@ -1,65 +1,86 @@
 #pragma once
 #include "xsocket.hpp"
 
-typedef struct {
-	XLOCATOR_SEARCHRESULT *searchresult;
-	DWORD broadcastTime;
-} XLOCATOR_SESSION;
-
 #pragma pack(push, 1) // Save then set byte alignment setting.
-typedef struct {
-	struct {
-		BYTE bCustomPacketType;
-	} HEAD;
-	union {
-		struct {
-			XUID xuid;
-			XNADDR xnAddr;
-			DWORD dwServerType;
-			XNKID xnkid;
-			XNKEY xnkey;
-			DWORD dwMaxPublicSlots;
-			DWORD dwMaxPrivateSlots;
-			DWORD dwFilledPublicSlots;
-			DWORD dwFilledPrivateSlots;
-			DWORD cProperties;
-			union {
-				DWORD pProperties;
-				DWORD propsSize;
-			};
-		} ADV;
-		struct {
-			XUID xuid;
-		} UNADV;
+
+typedef struct
+{
+	uint32_t                               propertyId;
+	uint8_t                                type;
+
+	union
+	{
+		LONG                            nData;     // XUSER_DATA_TYPE_INT32
+		LONGLONG                        i64Data;   // XUSER_DATA_TYPE_INT64
+		double                          dblData;   // XUSER_DATA_TYPE_DOUBLE
+		struct                                     // XUSER_DATA_TYPE_UNICODE
+		{
+			DWORD                       cbData;    // Includes null-terminator
+			// The address of this variable is the location of the string not the value of this variable (since it is serialised).
+			LPWSTR                      pwszData;
+		} string;
+		FLOAT                           fData;     // XUSER_DATA_TYPE_FLOAT
+		struct                                     // XUSER_DATA_TYPE_BINARY
+		{
+			DWORD                       cbData;
+			// The address of this variable is the location of the string not the value of this variable (since it is serialised).
+			PBYTE                       pbData;
+		} binary;
+		FILETIME                        ftData;    // XUSER_DATA_TYPE_DATETIME
 	};
-} LIVE_SERVER_DETAILS;
+} XUSER_PROPERTY_SERIALISED;
+
+typedef struct {
+	// serverID
+	XUID xuid = 0;
+	// hostAddress
+	XNADDR xnAddr;
+	uint32_t serverType = 0;
+	// sessionID
+	XNKID xnkid;
+	// keyExchangeKey
+	XNKEY xnkey;
+	uint32_t slotsPublicMaxCount = 0;
+	uint32_t slotsPublicFilledCount = 0;
+	uint32_t slotsPrivateMaxCount = 0;
+	uint32_t slotsPrivateFilledCount = 0;
+	uint32_t contextsCount = 0;
+	uint32_t propertiesCount = 0;
+	XUSER_CONTEXT *pContexts = 0;
+	XUSER_PROPERTY *pProperties = 0;
+} LIVE_SESSION;
+
 #pragma pack(pop) // Return to original alignment setting.
 
-VOID LiveOverLanAbort();
-VOID LiveOverLanClone(XLOCATOR_SEARCHRESULT **dst, XLOCATOR_SEARCHRESULT *src);
-VOID LiveOverLanDelete(XLOCATOR_SEARCHRESULT *xlocator_result);
-BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWORD buflen);
-VOID LiveOverLanBroadcastData(
-	XUID *xuid
-	, DWORD dwServerType
-	, XNKID xnkid
-	, XNKEY xnkey
-	, DWORD dwMaxPublicSlots
-	, DWORD dwMaxPrivateSlots
-	, DWORD dwFilledPublicSlots
-	, DWORD dwFilledPrivateSlots
-	, DWORD cProperties
-	, PXUSER_PROPERTY pProperties
+typedef struct {
+	LIVE_SESSION *liveSession;
+	uint32_t timeOfLastContact;
+} LIVE_SESSION_REMOTE;
+
+void LiveOverLanDestroyLiveSession(LIVE_SESSION **live_session);
+bool LiveOverLanDeserialiseLiveSession(
+	const uint8_t *live_session_buffer
+	, const uint32_t live_session_buffer_size
+	, LIVE_SESSION **result_live_session
 );
-VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, const LIVE_SERVER_DETAILS *session_details, INT &len);
+bool LiveOverLanSerialiseLiveSessionIntoNetPacket(
+	LIVE_SESSION *live_session
+	, uint8_t **result_buffer
+	, uint32_t *result_buffer_size
+);
+void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid);
+void LiveOverLanBroadcastRemoteSessionUnadvertise(const uint32_t instance_id, const XUID xuid);
+void LiveOverLanAddRemoteLiveSession(const uint32_t instanceId, LIVE_SESSION *live_session);
+
+VOID LiveOverLanAbort();
 VOID LiveOverLanStartBroadcast();
 VOID LiveOverLanStopBroadcast();
 VOID LiveOverLanStartEmpty();
 VOID LiveOverLanStopEmpty();
 bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo);
 
-//extern CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
-//extern VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*);
-extern std::map<uint32_t, XLOCATOR_SESSION*> liveoverlan_sessions;
 extern CRITICAL_SECTION xlln_critsec_liveoverlan_sessions;
 extern CRITICAL_SECTION xlln_critsec_liveoverlan_broadcast;
+
+extern LIVE_SESSION *local_xlocator_session;
+extern std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions;

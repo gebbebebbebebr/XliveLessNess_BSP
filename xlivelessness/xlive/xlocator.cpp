@@ -87,13 +87,94 @@ HRESULT WINAPI XLocatorServerAdvertise(
 		return E_FAIL;
 	}
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-		, "LiveOverLAN Send Advertise Broadcast."
-	);
-
-	LiveOverLanBroadcastData(&xlive_users_info[dwUserIndex]->xuid, dwServerType, xnkid, xnkey, dwMaxPublicSlots, dwMaxPrivateSlots, dwFilledPublicSlots, dwFilledPrivateSlots, cProperties, pProperties);
-	LiveOverLanStartBroadcast();
-
+	LIVE_SESSION *liveSession = new LIVE_SESSION;
+	liveSession->xuid = xlive_users_info[dwUserIndex]->xuid;
+	liveSession->serverType = dwServerType;
+	liveSession->xnkid = xnkid;
+	liveSession->xnkey = xnkey;
+	liveSession->slotsPublicMaxCount = dwMaxPublicSlots;
+	liveSession->slotsPublicFilledCount = dwFilledPublicSlots;
+	liveSession->slotsPrivateMaxCount = dwMaxPrivateSlots;
+	liveSession->slotsPrivateFilledCount = dwFilledPrivateSlots;
+	liveSession->slotsPrivateFilledCount = dwFilledPrivateSlots;
+	
+	std::map<uint32_t, XUSER_PROPERTY*> xuserProperties;
+	
+	for (uint32_t iProperty = 0; iProperty < cProperties; iProperty++) {
+		XUSER_PROPERTY &propertyOrig = pProperties[iProperty];
+		
+		if (xuserProperties.count(propertyOrig.dwPropertyId)) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s XUser Property 0x%08x exists more than once."
+				, __func__
+				, propertyOrig.dwPropertyId
+			);
+			continue;
+		}
+		
+		XUSER_PROPERTY *propertyListCopy = new XUSER_PROPERTY;
+		*propertyListCopy = propertyOrig;
+		
+		switch (propertyListCopy->value.type) {
+			case XUSER_DATA_TYPE_BINARY: {
+				if (propertyListCopy->value.binary.cbData == 0) {
+					propertyListCopy->value.binary.pbData = 0;
+					break;
+				}
+				propertyListCopy->value.binary.pbData = new uint8_t[propertyListCopy->value.binary.cbData];
+				memcpy(propertyListCopy->value.binary.pbData, propertyOrig.value.binary.pbData, propertyListCopy->value.binary.cbData);
+				break;
+			}
+			case XUSER_DATA_TYPE_UNICODE: {
+				if (propertyListCopy->value.string.cbData < sizeof(wchar_t)) {
+					propertyListCopy->value.string.cbData = sizeof(wchar_t);
+				}
+				else if (propertyListCopy->value.string.cbData % 2) {
+					propertyListCopy->value.string.cbData += 1;
+				}
+				propertyListCopy->value.string.pwszData = new wchar_t[propertyListCopy->value.string.cbData / 2];
+				memcpy(propertyListCopy->value.string.pwszData, propertyOrig.value.string.pwszData, propertyListCopy->value.string.cbData);
+				propertyListCopy->value.string.pwszData[(propertyListCopy->value.string.cbData / 2) - 1] = 0;
+				break;
+			}
+		}
+		
+		xuserProperties[propertyListCopy->dwPropertyId] = propertyListCopy;
+	}
+	
+	// Add username as server name if it does not already exist.
+	if (!xuserProperties.count(XUSER_PROPERTY_SERVER_NAME)) {
+		XUSER_PROPERTY *property = new XUSER_PROPERTY;
+		property->dwPropertyId = XUSER_PROPERTY_SERVER_NAME;
+		property->value.type = XUSER_DATA_TYPE_UNICODE;
+		uint32_t usernameLenSize = strnlen(xlive_users_info[dwUserIndex]->szUserName, XUSER_MAX_NAME_LENGTH) + 1;
+		property->value.string.cbData = usernameLenSize * sizeof(wchar_t);
+		property->value.string.pwszData = new wchar_t[usernameLenSize];
+		swprintf_s(property->value.string.pwszData, usernameLenSize, L"%hs", xlive_users_info[dwUserIndex]->szUserName);
+		
+		xuserProperties[XUSER_PROPERTY_SERVER_NAME] = property;
+	}
+	
+	liveSession->propertiesCount = xuserProperties.size();
+	liveSession->pProperties = new XUSER_PROPERTY[liveSession->propertiesCount];
+	{
+		uint32_t iProperty = 0;
+		for (auto const &entry : xuserProperties) {
+			XUSER_PROPERTY *propertyListCopy = entry.second;
+			XUSER_PROPERTY &propertyCopy = liveSession->pProperties[iProperty++];
+			memcpy(&propertyCopy, propertyListCopy, sizeof(propertyCopy));
+			delete propertyListCopy;
+		}
+	}
+	xuserProperties.clear();
+	
+	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+	if (local_xlocator_session) {
+		LiveOverLanDestroyLiveSession(&local_xlocator_session);
+	}
+	local_xlocator_session = liveSession;
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+	
 	if (pXOverlapped) {
 		//asynchronous
 
@@ -128,52 +209,8 @@ HRESULT WINAPI XLocatorServerUnAdvertise(DWORD dwUserIndex, XOVERLAPPED *pXOverl
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XLocator is not initialised.", __func__);
 		return E_FAIL;
 	}
-
-	LiveOverLanStopBroadcast();
-
-	LIVE_SERVER_DETAILS unadvertiseData;
-	unadvertiseData.HEAD.bCustomPacketType = XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE;
-	unadvertiseData.UNADV.xuid = xlive_users_info[dwUserIndex]->xuid;
-
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-		, "LiveOverLAN Send Unadvertise Broadcast."
-	);
-
-	//EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-	//if (liveoverlan_broadcast_handler) {
-	//	liveoverlan_broadcast_handler(&unadvertiseData);
-	//	LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-	//}
-	//else
-	{
-		//LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-		SOCKET_MAPPING_INFO socketInfoLiveOverLan;
-		if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "LiveOverLan socket not found!"
-			);
-		}
-		else {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
-				, "LiveOverLan socket: 0x%08x."
-				, socketInfoLiveOverLan.socket
-			);
-
-			SOCKADDR_IN SendStruct;
-			SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
-			SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-			SendStruct.sin_family = AF_INET;
-
-			XllnSocketSendTo(
-				socketInfoLiveOverLan.socket
-				, (char*)&unadvertiseData
-				, sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::UNADV)
-				, 0
-				, (SOCKADDR*)&SendStruct
-				, sizeof(SendStruct)
-			);
-		}
-	}
+	
+	LiveOverLanBroadcastLocalSessionUnadvertise(xlive_users_info[dwUserIndex]->xuid);
 
 	if (pXOverlapped) {
 		//asynchronous
@@ -224,7 +261,7 @@ HRESULT WINAPI XLocatorGetServiceProperty(DWORD dwUserIndex, DWORD cNumPropertie
 
 	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL) {
-		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL].value.nData = liveoverlan_sessions.size();
+		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL].value.nData = liveoverlan_remote_sessions.size();
 	}
 	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_PUBLIC) {
 		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_PUBLIC].value.nData = -1;
@@ -486,6 +523,7 @@ HRESULT WINAPI XLocatorServiceInitialize(XLOCATOR_INIT_INFO *pXii, HANDLE *phLoc
 	}
 
 	LiveOverLanStartEmpty();
+	LiveOverLanStartBroadcast();
 	
 	if (phLocatorService) {
 		*phLocatorService = CreateMutex(NULL, NULL, NULL);

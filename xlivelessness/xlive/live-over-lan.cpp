@@ -14,11 +14,6 @@
 #include <atomic>
 #include <vector>
 
-//CRITICAL_SECTION xlive_critsec_LiveOverLan_broadcast_handler;
-//VOID(WINAPI *liveoverlan_broadcast_handler)(LIVE_SERVER_DETAILS*) = 0;
-
-// Key: InstanceId.
-std::map<uint32_t, XLOCATOR_SESSION*> liveoverlan_sessions;
 CRITICAL_SECTION xlln_critsec_liveoverlan_sessions;
 static std::condition_variable liveoverlan_cond_empty;
 static std::thread liveoverlan_empty_thread;
@@ -31,52 +26,9 @@ static BOOL liveoverlan_running = FALSE;
 static std::atomic<bool> liveoverlan_exit = TRUE;
 static std::atomic<bool> liveoverlan_break_sleep = FALSE;
 
-static LIVE_SERVER_DETAILS *local_session_details = 0;
-
-VOID LiveOverLanClone(XLOCATOR_SEARCHRESULT **dst, XLOCATOR_SEARCHRESULT *src)
-{
-	XLOCATOR_SEARCHRESULT *xlocator_result;
-	if (dst) {
-		xlocator_result = *dst;
-	}
-	else {
-		*dst = xlocator_result = new XLOCATOR_SEARCHRESULT;
-	}
-	memcpy_s(xlocator_result, sizeof(XLOCATOR_SEARCHRESULT), src, sizeof(XLOCATOR_SEARCHRESULT));
-	xlocator_result->pProperties = new XUSER_PROPERTY[xlocator_result->cProperties];
-	for (DWORD i = 0; i < xlocator_result->cProperties; i++) {
-		memcpy_s(&xlocator_result->pProperties[i], sizeof(XUSER_PROPERTY), &src->pProperties[i], sizeof(XUSER_PROPERTY));
-		if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_UNICODE) {
-			if (xlocator_result->pProperties[i].value.string.cbData % 2) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
-					, "%s Unicode string buflen is not a factor of 2."
-					, __func__
-				);
-				__debugbreak();
-			}
-			xlocator_result->pProperties[i].value.string.pwszData = new WCHAR[xlocator_result->pProperties[i].value.string.cbData / 2];
-			memcpy_s(xlocator_result->pProperties[i].value.string.pwszData, xlocator_result->pProperties[i].value.string.cbData, src->pProperties[i].value.string.pwszData, src->pProperties[i].value.string.cbData);
-			xlocator_result->pProperties[i].value.string.pwszData[(xlocator_result->pProperties[i].value.string.cbData / 2) - 1] = 0;
-		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_BINARY) {
-			xlocator_result->pProperties[i].value.binary.pbData = new BYTE[xlocator_result->pProperties[i].value.binary.cbData];
-			memcpy_s(xlocator_result->pProperties[i].value.binary.pbData, xlocator_result->pProperties[i].value.binary.cbData, src->pProperties[i].value.binary.pbData, src->pProperties[i].value.binary.cbData);
-		}
-	}
-}
-VOID LiveOverLanDelete(XLOCATOR_SEARCHRESULT *xlocator_result)
-{
-	for (DWORD i = 0; i < xlocator_result->cProperties; i++) {
-		if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_UNICODE) {
-			delete[] xlocator_result->pProperties[i].value.string.pwszData;
-		}
-		else if (xlocator_result->pProperties[i].value.type == XUSER_DATA_TYPE_BINARY) {
-			delete[] xlocator_result->pProperties[i].value.binary.pbData;
-		}
-	}
-	delete[] xlocator_result->pProperties;
-	delete xlocator_result;
-}
+LIVE_SESSION *local_xlocator_session = 0;
+// Key: InstanceId.
+std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions;
 
 bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
 {
@@ -128,53 +80,163 @@ bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
 	return socketInfoSearch != 0;
 }
 
+void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid)
+{
+	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+	if (local_xlocator_session && local_xlocator_session->xuid == xuid) {
+		LiveOverLanDestroyLiveSession(&local_xlocator_session);
+	}
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+	
+	SOCKET_MAPPING_INFO socketInfoLiveOverLan;
+	if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+			, "%s LiveOverLan socket not found!"
+			, __func__
+		);
+		return;
+	}
+
+	SOCKADDR_IN SendStruct;
+	SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
+	SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+	SendStruct.sin_family = AF_INET;
+	
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
+		, "%s broadcast local sessions unadvertise to socket 0x%08x to port %hu."
+		, __func__
+		, socketInfoLiveOverLan.socket
+		, socketInfoLiveOverLan.portOgHBO
+	);
+	
+	const int packetSizeHeaderType = sizeof(XLLNNetPacketType::TYPE);
+	const int packetSizeLiveOverLanUnadvertise = sizeof(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE);
+	const int packetSize = packetSizeHeaderType + packetSizeLiveOverLanUnadvertise;
+
+	uint8_t *packetBuffer = new uint8_t[packetSize];
+	packetBuffer[0] = XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE;
+	XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE &liveOverLanUnadvertise = *(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE*)&packetBuffer[packetSizeHeaderType];
+	liveOverLanUnadvertise.xuid = xuid;
+
+	XllnSocketSendTo(
+		socketInfoLiveOverLan.socket
+		, (char*)packetBuffer
+		, packetSize
+		, 0
+		, (SOCKADDR*)&SendStruct
+		, sizeof(SendStruct)
+	);
+	
+	delete[] packetBuffer;
+}
+
+void LiveOverLanBroadcastRemoteSessionUnadvertise(const uint32_t instanceId, const XUID xuid)
+{
+	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
+
+	// Delete the old entry if there already is one.
+	if (liveoverlan_remote_sessions.count(instanceId)) {
+		LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions[instanceId];
+		LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
+		delete liveSessionRemoteOld;
+		liveoverlan_remote_sessions.erase(instanceId);
+	}
+
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+}
+
+void LiveOverLanAddRemoteLiveSession(const uint32_t instanceId, LIVE_SESSION *live_session)
+{
+	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
+	
+	// Delete the old entry if there already is one.
+	if (liveoverlan_remote_sessions.count(instanceId)) {
+		LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions[instanceId];
+		LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
+		delete liveSessionRemoteOld;
+	}
+
+	// Fill in serverAddress as it is not populated otherwise.
+	uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(&live_session->xnAddr, 0, instanceId);
+	if (resultNetter) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+			, "%s NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
+			, __func__
+			, instanceId
+			, resultNetter
+		);
+	}
+
+	LIVE_SESSION_REMOTE *liveSessionRemote = new LIVE_SESSION_REMOTE;
+	liveSessionRemote->liveSession = live_session;
+	time_t ltime;
+	time(&ltime);
+	liveSessionRemote->timeOfLastContact = (unsigned long)ltime;
+	liveoverlan_remote_sessions[instanceId] = liveSessionRemote;
+	
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+}
+
+static void LiveOverLanBroadcastLocalSession()
+{
+	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+	
+	// TODO local xsession session.
+	if (!local_xlocator_session && true) {
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+		return;
+	}
+	
+	SOCKET_MAPPING_INFO socketInfoLiveOverLan;
+	if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+			, "%s LiveOverLan socket not found!"
+			, __func__
+		);
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+		return;
+	}
+
+	SOCKADDR_IN SendStruct;
+	SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
+	SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+	SendStruct.sin_family = AF_INET;
+	
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
+		, "%s broadcast local session(s) to socket 0x%08x to port %hu."
+		, __func__
+		, socketInfoLiveOverLan.socket
+		, socketInfoLiveOverLan.portOgHBO
+	);
+	
+	if (local_xlocator_session) {
+		uint8_t *liveSessionSerialisedPacket;
+		uint32_t liveSessionSerialisedPacketSize;
+		if (LiveOverLanSerialiseLiveSessionIntoNetPacket(local_xlocator_session, &liveSessionSerialisedPacket, &liveSessionSerialisedPacketSize)) {
+			XllnSocketSendTo(
+				socketInfoLiveOverLan.socket
+				, (char*)liveSessionSerialisedPacket
+				, liveSessionSerialisedPacketSize
+				, 0
+				, (SOCKADDR*)&SendStruct
+				, sizeof(SendStruct)
+			);
+			delete[] liveSessionSerialisedPacket;
+		}
+	}
+
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+}
+
 static VOID LiveOverLanBroadcast()
 {
 	std::mutex mutexPause;
 	while (1) {
-		EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-		if (local_session_details) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-				, "LiveOverLan Advertise Broadcast."
-			);
-
-			//EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-			//if (liveoverlan_broadcast_handler) {
-			//	liveoverlan_broadcast_handler(local_session_details);
-			//	LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-			//}
-			//else
-			{
-				//LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-				SOCKET_MAPPING_INFO socketInfoLiveOverLan;
-				if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-						, "LiveOverLan socket not found!"
-					);
-				}
-				else {
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
-						, "LiveOverLan socket: 0x%08x."
-						, socketInfoLiveOverLan.socket
-					);
-
-					SOCKADDR_IN SendStruct;
-					SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
-					SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
-					SendStruct.sin_family = AF_INET;
-
-					XllnSocketSendTo(
-						socketInfoLiveOverLan.socket
-						, (char*)local_session_details
-						, local_session_details->ADV.propsSize + sizeof(LIVE_SERVER_DETAILS::HEAD) + sizeof(LIVE_SERVER_DETAILS::ADV)
-						, 0
-						, (SOCKADDR*)&SendStruct
-						, sizeof(SendStruct)
-					);
-				}
-			}
-		}
-		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+			, "%s continuing."
+			, __func__
+		);
+		LiveOverLanBroadcastLocalSession();
 
 		std::unique_lock<std::mutex> lock(mutexPause);
 		liveoverlan_cond_broadcast.wait_for(lock, std::chrono::seconds(10), []() { return liveoverlan_exit == TRUE || liveoverlan_break_sleep == TRUE; });
@@ -184,612 +246,436 @@ static VOID LiveOverLanBroadcast()
 		liveoverlan_break_sleep = FALSE;
 	}
 }
-BOOL LiveOverLanBroadcastReceive(PXLOCATOR_SEARCHRESULT *result, BYTE *buf, DWORD buflen)
+
+void LiveOverLanDestroyLiveSession(LIVE_SESSION **live_session)
 {
-	DWORD buflenread = sizeof(LIVE_SERVER_DETAILS);
-	if (buflenread > buflen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread > buflen) (%u > %u).", __func__, buflenread, buflen);
-		return FALSE;
-	}
-	XLOCATOR_SEARCHRESULT* xlocator_result = new XLOCATOR_SEARCHRESULT;
-	LIVE_SERVER_DETAILS* session_details = (LIVE_SERVER_DETAILS*)buf;
-	xlocator_result->serverID = session_details->ADV.xuid;
-	xlocator_result->dwServerType = session_details->ADV.dwServerType;
-
-	// This needs to be correctly populated for the client to be able to connect (fix XNADDR at some point).
-	xlocator_result->serverAddress = session_details->ADV.xnAddr;
-	xlocator_result->xnkid = session_details->ADV.xnkid;
-	xlocator_result->xnkey = session_details->ADV.xnkey;
-
-	xlocator_result->dwMaxPublicSlots = session_details->ADV.dwMaxPublicSlots;
-	xlocator_result->dwMaxPrivateSlots = session_details->ADV.dwMaxPrivateSlots;
-	xlocator_result->dwFilledPublicSlots = session_details->ADV.dwFilledPublicSlots;
-	xlocator_result->dwFilledPrivateSlots = session_details->ADV.dwFilledPrivateSlots;
-	xlocator_result->cProperties = session_details->ADV.cProperties;
-	try {
-		xlocator_result->pProperties = new XUSER_PROPERTY[xlocator_result->cProperties];
-	}
-	catch (std::bad_alloc) {
-		delete xlocator_result;
-		return FALSE;
-	}
-
-	// account for all dwPropertyId and value.type
-	buflenread += (sizeof(DWORD) + sizeof(BYTE)) * xlocator_result->cProperties;
-
-	if (buflenread > buflen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread > buflen) (%u > %u).", __func__, buflenread, buflen);
-		delete[] xlocator_result->pProperties;
-		delete xlocator_result;
-		return FALSE;
-	}
-
-	BYTE *propertiesBuf = (BYTE*)((DWORD)&session_details->ADV.pProperties + sizeof(DWORD));
-	DWORD i = 0;
-	for (; i < xlocator_result->cProperties; i++) {
-		xlocator_result->pProperties[i].dwPropertyId = *((DWORD*)propertiesBuf);
-		propertiesBuf += sizeof(DWORD); //dwPropertyId
-		xlocator_result->pProperties[i].value.type = *propertiesBuf;
-		propertiesBuf += sizeof(BYTE); //value.type
-
-		switch (xlocator_result->pProperties[i].value.type) {
-		case XUSER_DATA_TYPE_INT64: {
-			buflenread += sizeof(LONGLONG);
-			propertiesBuf += sizeof(LONGLONG);
-			break;
+	for (uint32_t iProperty = 0; iProperty < (*live_session)->propertiesCount; iProperty++) {
+		XUSER_PROPERTY &property = (*live_session)->pProperties[iProperty];
+		if (property.value.type == XUSER_DATA_TYPE_UNICODE) {
+			delete[] property.value.string.pwszData;
 		}
-		case XUSER_DATA_TYPE_DOUBLE: {
-			buflenread += sizeof(DOUBLE);
-			propertiesBuf += sizeof(DOUBLE);
-			break;
-		}
-		case XUSER_DATA_TYPE_FLOAT: {
-			buflenread += sizeof(FLOAT);
-			propertiesBuf += sizeof(FLOAT);
-			break;
-		}
-		case XUSER_DATA_TYPE_UNICODE: {
-			buflenread += sizeof(DWORD); //value.string.cbData
-			if (buflenread > buflen) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u (buflenread > buflen) (%u > %u)."
-					, __func__
-					, i + 1
-					, xlocator_result->cProperties
-					, buflenread
-					, buflen
-				);
-				break;
-			}
-			xlocator_result->pProperties[i].value.string.cbData = *((DWORD*)propertiesBuf);
-			propertiesBuf += sizeof(DWORD);
-			buflenread += xlocator_result->pProperties[i].value.string.cbData;
-			propertiesBuf += xlocator_result->pProperties[i].value.string.cbData;
-			if (buflenread > buflen) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u (buflenread > buflen) (%u > %u)."
-					, __func__
-					, i + 1
-					, xlocator_result->cProperties
-					, buflenread
-					, buflen
-				);
-				break;
-			}
-			if (xlocator_result->pProperties[i].value.string.cbData % 2) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u buflen is not a factor of 2 (%u)."
-					, __func__
-					, i + 1
-					, xlocator_result->cProperties
-					, xlocator_result->pProperties[i].value.string.cbData
-				);
-				break;
-			}
-			if (*(WCHAR*)(propertiesBuf - sizeof(WCHAR)) != 0) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_UNICODE item %u/%u is not null terminated."
-					, __func__
-					, i + 1
-					, xlocator_result->cProperties
-				);
-				break;
-			}
-			break;
-		}
-		case XUSER_DATA_TYPE_BINARY: {
-			buflenread += sizeof(DWORD); //value.binary.cbData
-			if (buflenread > buflen) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_BINARY item %u/%u (buflenread > buflen) (%u > %u)."
-					, __func__
-					, i + 1
-					, xlocator_result->cProperties
-					, buflenread
-					, buflen
-				);
-				break;
-			}
-			xlocator_result->pProperties[i].value.binary.cbData = *((DWORD*)propertiesBuf);
-			propertiesBuf += sizeof(DWORD);
-			buflenread += xlocator_result->pProperties[i].value.binary.cbData;
-			propertiesBuf += xlocator_result->pProperties[i].value.binary.cbData;
-			if (buflenread > buflen) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-					, "%s XUSER_DATA_TYPE_BINARY item %u/%u (buflenread > buflen) (%u > %u)."
-					, __func__
-					, i + 1
-					, xlocator_result->cProperties
-					, buflenread
-					, buflen
-				);
-				break;
-			}
-			break;
-		}
-		case XUSER_DATA_TYPE_DATETIME: {
-			buflenread += sizeof(FILETIME);
-			propertiesBuf += sizeof(FILETIME);
-			break;
-		}
-		case XUSER_DATA_TYPE_NULL: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s XUSER_DATA_TYPE_NULL item %u/%u."
-				, __func__
-				, i + 1
-				, xlocator_result->cProperties
-			);
-			break;
-		}
-		default: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s Unknown XUSER_DATA_TYPE item %u/%u."
-				, __func__
-				, i + 1
-				, xlocator_result->cProperties
-			);
-		}
-		case XUSER_DATA_TYPE_CONTEXT:
-		case XUSER_DATA_TYPE_INT32: {
-			buflenread += sizeof(LONG);
-			propertiesBuf += sizeof(LONG);
-			break;
-		}
+		else if (property.value.type == XUSER_DATA_TYPE_BINARY && property.value.binary.cbData) {
+			delete[] property.value.binary.pbData;
 		}
 	}
-
-	if (buflenread != buflen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (buflenread != buflen) (%u != %u).", __func__, buflenread, buflen);
-		delete[] xlocator_result->pProperties;
-		delete xlocator_result;
-		return FALSE;
-	}
-
-	if (i != xlocator_result->cProperties) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "%s (i != xlocator_result->cProperties) (%u != %u).", __func__, i, xlocator_result->cProperties);
-		delete[] xlocator_result->pProperties;
-		delete xlocator_result;
-		return FALSE;
-	}
-	if (propertiesBuf - buf != buflenread) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
-			, "%s Misaligned buffer!"
-			, __func__
-		);
-		__debugbreak();
-	}
-
-	propertiesBuf = (BYTE*)((DWORD)&session_details->ADV.pProperties + sizeof(DWORD));
-	i = 0;
-	for (; i < xlocator_result->cProperties; i++) {
-		propertiesBuf += sizeof(DWORD); //dwPropertyId
-		propertiesBuf += sizeof(BYTE); //value.type
-
-		switch (xlocator_result->pProperties[i].value.type) {
-		case XUSER_DATA_TYPE_INT64: {
-			xlocator_result->pProperties[i].value.i64Data = *((LONGLONG*)propertiesBuf);
-			propertiesBuf += sizeof(LONGLONG);
-			break;
-		}
-		case XUSER_DATA_TYPE_DOUBLE: {
-			xlocator_result->pProperties[i].value.dblData = *((DOUBLE*)propertiesBuf);
-			propertiesBuf += sizeof(DOUBLE);
-			break;
-		}
-		case XUSER_DATA_TYPE_FLOAT: {
-			xlocator_result->pProperties[i].value.fData = *((FLOAT*)propertiesBuf);
-			propertiesBuf += sizeof(FLOAT);
-			break;
-		}
-		case XUSER_DATA_TYPE_UNICODE: {
-			propertiesBuf += sizeof(DWORD); //value.string.cbData
-			xlocator_result->pProperties[i].value.string.pwszData = new WCHAR[xlocator_result->pProperties[i].value.string.cbData / 2];
-			memcpy_s(xlocator_result->pProperties[i].value.string.pwszData, xlocator_result->pProperties[i].value.string.cbData, propertiesBuf, xlocator_result->pProperties[i].value.string.cbData);
-			propertiesBuf += xlocator_result->pProperties[i].value.string.cbData;
-			xlocator_result->pProperties[i].value.string.pwszData[(xlocator_result->pProperties[i].value.string.cbData / 2) - 1] = 0;
-			break;
-		}
-		case XUSER_DATA_TYPE_BINARY: {
-			propertiesBuf += sizeof(DWORD); //value.binary.cbData
-			xlocator_result->pProperties[i].value.binary.pbData = new BYTE[xlocator_result->pProperties[i].value.binary.cbData];
-			memcpy_s(xlocator_result->pProperties[i].value.binary.pbData, xlocator_result->pProperties[i].value.binary.cbData, propertiesBuf, xlocator_result->pProperties[i].value.binary.cbData);
-			propertiesBuf += xlocator_result->pProperties[i].value.binary.cbData;
-			break;
-		}
-		case XUSER_DATA_TYPE_DATETIME: {
-			xlocator_result->pProperties[i].value.ftData = *((FILETIME*)propertiesBuf);
-			propertiesBuf += sizeof(FILETIME);
-			break;
-		}
-		case XUSER_DATA_TYPE_NULL: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s XUSER_DATA_TYPE_NULL item %u/%u."
-				, __func__
-				, i + 1
-				, xlocator_result->cProperties
-			);
-			break;
-		}
-		default: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s Unknown XUSER_DATA_TYPE item %u/%u."
-				, __func__
-				, i + 1
-				, xlocator_result->cProperties
-			);
-		}
-		case XUSER_DATA_TYPE_CONTEXT:
-		case XUSER_DATA_TYPE_INT32: {
-			xlocator_result->pProperties[i].value.nData = *((LONG*)propertiesBuf);
-			propertiesBuf += sizeof(LONG);
-			break;
-		}
-		}
-	}
-	if (propertiesBuf - buf != buflenread) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
-			, "%s Misaligned buffer!"
-			, __func__
-		);
-		__debugbreak();
-	}
-
-	*result = xlocator_result;
-	return TRUE;
+	delete[] (*live_session)->pProperties;
+	delete[] (*live_session)->pContexts;
+	delete *live_session;
+	*live_session = 0;
 }
 
-VOID LiveOverLanBroadcastData(
-	XUID *xuid
-	, DWORD dwServerType
-	, XNKID xnkid
-	, XNKEY xnkey
-	, DWORD dwMaxPublicSlots
-	, DWORD dwMaxPrivateSlots
-	, DWORD dwFilledPublicSlots
-	, DWORD dwFilledPrivateSlots
-	, DWORD cProperties
-	, PXUSER_PROPERTY pProperties
+bool LiveOverLanDeserialiseLiveSession(
+	const uint8_t *live_session_buffer
+	, const uint32_t live_session_buffer_size
+	, LIVE_SESSION **result_live_session
 )
 {
-	std::map<DWORD, XUSER_PROPERTY*> local_session_properties;
-	for (DWORD i = 0; i < cProperties; i++) {
-		local_session_properties[pProperties[i].dwPropertyId] = &pProperties[i];
+	if (!result_live_session) {
+		return false;
 	}
-	if (local_session_properties.count(0xFFFFFFFF)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
-			, "%s FIXME A 0xFFFFFFFF property id should not exist so we're using it for a special purpose of cleaning up the heap."
-			, __func__
-		);
-		__debugbreak();
-	}
-	if (!local_session_properties.count(XUSER_PROPERTY_SERVER_NAME) && xlive_users_info[0]->xuid == *xuid) {
-		XUSER_PROPERTY* prop = new XUSER_PROPERTY;
-		prop->dwPropertyId = 0xFFFFFFFF;// so we know to delete this heap entry later.
-		prop->value.type = XUSER_DATA_TYPE_UNICODE;
-		DWORD strlen = strnlen(xlive_users_info[0]->szUserName, XUSER_MAX_NAME_LENGTH) + 1;
-		prop->value.string.cbData = sizeof(WCHAR) * strlen;
-		prop->value.string.pwszData = new WCHAR[strlen];
-		swprintf_s(prop->value.string.pwszData, strlen, L"%hs", xlive_users_info[0]->szUserName);
-
-		local_session_properties[XUSER_PROPERTY_SERVER_NAME] = prop;
+	*result_live_session = 0;
+	if (!live_session_buffer) {
+		return false;
 	}
 
-	DWORD buflen = sizeof(LIVE_SERVER_DETAILS);
-	for (auto const &prop : local_session_properties) {
-		buflen += sizeof(DWORD); //dwPropertyId
-		buflen += sizeof(BYTE); //value.type
+	LIVE_SESSION &liveSessionSerialised = *(LIVE_SESSION*)live_session_buffer;
+	const uint32_t liveSessionStaticDataSize = (uint32_t)&liveSessionSerialised.pContexts - (uint32_t)&liveSessionSerialised;
 
-		switch (prop.second->value.type) {
-		case XUSER_DATA_TYPE_INT64: {
-			buflen += sizeof(LONGLONG);
-			break;
+	// --- Verify the buffer and length to ensure the object passed in is valid and not corrupt or truncated. ---
+	{
+		uint32_t bufferSizeCheck = 0;
+
+		bufferSizeCheck += liveSessionStaticDataSize;
+
+		if (bufferSizeCheck > live_session_buffer_size) {
+			return false;
 		}
-		case XUSER_DATA_TYPE_DOUBLE: {
-			buflen += sizeof(DOUBLE);
-			break;
+
+		bufferSizeCheck += (liveSessionSerialised.contextsCount * sizeof(*liveSessionSerialised.pContexts));
+
+		if (bufferSizeCheck > live_session_buffer_size) {
+			return false;
 		}
-		case XUSER_DATA_TYPE_FLOAT: {
-			buflen += sizeof(FLOAT);
-			break;
-		}
-		case XUSER_DATA_TYPE_UNICODE: {
-			buflen += sizeof(DWORD); //value.string.cbData
-			if (prop.second->value.string.cbData % 2) {
-				__debugbreak();
+
+		for (uint32_t iProperty = 0; iProperty < liveSessionSerialised.propertiesCount; iProperty++) {
+			XUSER_PROPERTY_SERIALISED &propertySerialised = *(XUSER_PROPERTY_SERIALISED*)&live_session_buffer[bufferSizeCheck];
+
+			bufferSizeCheck += sizeof(propertySerialised.propertyId);
+			bufferSizeCheck += sizeof(propertySerialised.type);
+
+			if (bufferSizeCheck > live_session_buffer_size) {
+				return false;
 			}
-			buflen += prop.second->value.string.cbData;
-			//if (prop.second->value.string.cbData == 2) {
-			//	buflen += 2;
-			//}
-			break;
-		}
-		case XUSER_DATA_TYPE_BINARY: {
-			buflen += sizeof(DWORD); //value.binary.cbData
-			buflen += prop.second->value.binary.cbData;
-			break;
-		}
-		case XUSER_DATA_TYPE_DATETIME: {
-			buflen += sizeof(FILETIME);
-			break;
-		}
-		case XUSER_DATA_TYPE_NULL: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s XUSER_DATA_TYPE_NULL dwPropertyId 0x%08x."
-				, __func__
-				, prop.first
-			);
-			break;
-		}
-		default: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s Unknown XUSER_DATA_TYPE (0x%02x) on dwPropertyId 0x%08x."
-				, __func__
-				, prop.second->value.type
-				, prop.first
-			);
-		}
-		case XUSER_DATA_TYPE_INT32:
-		case XUSER_DATA_TYPE_CONTEXT: {
-			buflen += sizeof(LONG);
-			break;
-		}
-		}
-	}
 
-	LIVE_SERVER_DETAILS *new_local_sd = (LIVE_SERVER_DETAILS*)malloc(buflen);
-	new_local_sd->ADV.xuid = *xuid;
-	new_local_sd->ADV.xnAddr = xlive_local_xnAddr;
-	new_local_sd->ADV.dwServerType = dwServerType;
-	new_local_sd->ADV.xnkid = xnkid;
-	new_local_sd->ADV.xnkey = xnkey;
-	new_local_sd->ADV.dwMaxPublicSlots = dwMaxPublicSlots;
-	new_local_sd->ADV.dwMaxPrivateSlots = dwMaxPrivateSlots;
-	new_local_sd->ADV.dwFilledPublicSlots = dwFilledPublicSlots;
-	new_local_sd->ADV.dwFilledPrivateSlots = dwFilledPrivateSlots;
-	new_local_sd->ADV.cProperties = local_session_properties.size();
-	BYTE *propertiesBuf = (BYTE*)&new_local_sd->ADV.pProperties;
-	*((DWORD*)propertiesBuf) = buflen - sizeof(LIVE_SERVER_DETAILS);
-	propertiesBuf += sizeof(DWORD);
-	for (auto const &prop : local_session_properties) {
-		*((DWORD*)propertiesBuf) = prop.first; //dwPropertyId
-		propertiesBuf += sizeof(DWORD);
-		*propertiesBuf = prop.second->value.type;
-		propertiesBuf += sizeof(BYTE);
-
-		switch (prop.second->value.type) {
-		case XUSER_DATA_TYPE_INT64: {
-			*((LONGLONG*)propertiesBuf) = prop.second->value.i64Data;
-			propertiesBuf += sizeof(LONGLONG);
-			break;
-		}
-		case XUSER_DATA_TYPE_DOUBLE: {
-			*((DOUBLE*)propertiesBuf) = prop.second->value.dblData;
-			propertiesBuf += sizeof(DOUBLE);
-			break;
-		}
-		case XUSER_DATA_TYPE_FLOAT: {
-			*((FLOAT*)propertiesBuf) = prop.second->value.fData;
-			propertiesBuf += sizeof(FLOAT);
-			break;
-		}
-		case XUSER_DATA_TYPE_UNICODE: {
-			*((DWORD*)propertiesBuf) = prop.second->value.string.cbData;
-			//if (prop.second->value.string.cbData == 2) {
-			//	*((DWORD*)propertiesBuf) = 4;
-			//}
-			propertiesBuf += sizeof(DWORD);
-			memcpy_s(propertiesBuf, prop.second->value.string.cbData, prop.second->value.string.pwszData, prop.second->value.string.cbData);
-			//if (prop.second->value.string.cbData == 2) {
-			//	((WCHAR*)propertiesBuf)[0] = 'a';
-			//	((WCHAR*)propertiesBuf)[1] = 0;
-			//	propertiesBuf += 2;
-			//}
-			propertiesBuf += prop.second->value.string.cbData;
-			break;
-		}
-		case XUSER_DATA_TYPE_BINARY: {
-			*((DWORD*)propertiesBuf) = prop.second->value.binary.cbData;
-			propertiesBuf += sizeof(DWORD);
-			memcpy_s(propertiesBuf, prop.second->value.binary.cbData, prop.second->value.binary.pbData, prop.second->value.binary.cbData);
-			propertiesBuf += prop.second->value.binary.cbData;
-			break;
-		}
-		case XUSER_DATA_TYPE_DATETIME: {
-			*((FILETIME*)propertiesBuf) = prop.second->value.ftData;
-			propertiesBuf += sizeof(FILETIME);
-			break;
-		}
-		case XUSER_DATA_TYPE_NULL: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s XUSER_DATA_TYPE_NULL dwPropertyId 0x%08x."
-				, __func__
-				, prop.first
-			);
-			break;
-		}
-		default: {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s Unknown XUSER_DATA_TYPE (0x%02x) on dwPropertyId 0x%08x."
-				, __func__
-				, prop.second->value.type
-				, prop.first
-			);
-		}
-		case XUSER_DATA_TYPE_CONTEXT:
-		case XUSER_DATA_TYPE_INT32: {
-			*((LONG*)propertiesBuf) = prop.second->value.nData;
-			propertiesBuf += sizeof(LONG);
-			break;
-		}
-		}
-	}
-
-	for (auto const &prop : local_session_properties) {
-		if (prop.second->dwPropertyId == 0xFFFFFFFF) {
-			if (prop.second->value.type == XUSER_DATA_TYPE_UNICODE) {
-				delete[] prop.second->value.string.pwszData;
+			switch (propertySerialised.type) {
+				case XUSER_DATA_TYPE_CONTEXT:
+				case XUSER_DATA_TYPE_INT32: {
+					bufferSizeCheck += sizeof(propertySerialised.nData);
+					break;
+				}
+				case XUSER_DATA_TYPE_INT64: {
+					bufferSizeCheck += sizeof(propertySerialised.i64Data);
+					break;
+				}
+				case XUSER_DATA_TYPE_DOUBLE: {
+					bufferSizeCheck += sizeof(propertySerialised.dblData);
+					break;
+				}
+				case XUSER_DATA_TYPE_FLOAT: {
+					bufferSizeCheck += sizeof(propertySerialised.fData);
+					break;
+				}
+				case XUSER_DATA_TYPE_DATETIME: {
+					bufferSizeCheck += sizeof(propertySerialised.ftData);
+					break;
+				}
+				case XUSER_DATA_TYPE_BINARY: {
+					bufferSizeCheck += sizeof(propertySerialised.binary.cbData);
+					if (bufferSizeCheck > live_session_buffer_size) {
+						return false;
+					}
+					bufferSizeCheck += propertySerialised.binary.cbData;
+					break;
+				}
+				case XUSER_DATA_TYPE_UNICODE: {
+					bufferSizeCheck += sizeof(propertySerialised.string.cbData);
+					if (bufferSizeCheck > live_session_buffer_size) {
+						return false;
+					}
+					uint32_t dataSize = propertySerialised.string.cbData;
+					if (dataSize < sizeof(wchar_t)) {
+						return false;
+					}
+					else if (dataSize % 2) {
+						return false;
+					}
+					bufferSizeCheck += dataSize;
+					break;
+				}
+				case XUSER_DATA_TYPE_NULL: {
+					break;
+				}
+				default: {
+					return false;
+				}
 			}
-			else if (prop.second->value.type == XUSER_DATA_TYPE_BINARY) {
-				delete[] prop.second->value.binary.pbData;
+
+			if (bufferSizeCheck > live_session_buffer_size) {
+				return false;
 			}
-			delete prop.second;
+		}
+
+		if (bufferSizeCheck != live_session_buffer_size) {
+			return false;
 		}
 	}
 
-	new_local_sd->HEAD.bCustomPacketType = XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE;
+	// --- Parse out all the contents into a new Live Session struct. ---
 
-	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-	if (local_session_details) {
-		free(local_session_details);
-	}
-	local_session_details = new_local_sd;
-	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-}
-VOID LiveOverLanRecieve(SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, const LIVE_SERVER_DETAILS *session_details, INT &len)
-{
-	if (session_details->HEAD.bCustomPacketType == XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE) {
-		if (len != sizeof(session_details->HEAD) + sizeof(session_details->UNADV)) {
-			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s INVALID Broadcast Unadvertise on socket 0x%08x from %s."
-				, __func__
-				, socket
-				, sockAddrInfo ? sockAddrInfo : ""
-			);
-			if (sockAddrInfo) {
-				free(sockAddrInfo);
-			}
-			return;
-		}
-		const XUID &unregisterXuid = session_details->UNADV.xuid;// Unused.
-		char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
+	LIVE_SESSION *liveSession = new LIVE_SESSION;
 
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-			, "%s Broadcast Unadvertise on socket 0x%08x from %s."
-			, __func__
-			, socket
-			, sockAddrInfo ? sockAddrInfo : ""
-		);
+	memcpy(liveSession, live_session_buffer, liveSessionStaticDataSize);
 
-		uint32_t instanceId = 0;
-		uint16_t portHBO = 0;
-		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
-		if (resultNetter) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
-				, __func__
-				, sockAddrInfo ? sockAddrInfo : ""
-				, resultNetter
-			);
-			return;
-		}
-
-		if (sockAddrInfo) {
-			free(sockAddrInfo);
-		}
-
-		EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-		liveoverlan_sessions.erase(instanceId);
-		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+	if (!liveSession->contextsCount) {
+		liveSession->pContexts = 0;
 	}
 	else {
-		// It can be larger than this.
-		if (len < sizeof(*session_details)) {
-			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s INVALID Broadcast Advertise on socket 0x%08x from %s."
-				, __func__
-				, socket
-				, sockAddrInfo ? sockAddrInfo : ""
-			);
-			if (sockAddrInfo) {
-				free(sockAddrInfo);
-			}
-			return;
-		}
-
-		uint32_t instanceId = 0;
-		uint16_t portHBO = 0;
-		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, sockAddrExternal);
-		if (resultNetter) {
-			char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-				, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
-				, __func__
-				, sockAddrInfo ? sockAddrInfo : ""
-				, resultNetter
-			);
-			if (sockAddrInfo) {
-				free(sockAddrInfo);
-			}
-
-			SendUnknownUserAskRequest(socket, (char*)session_details, len, sockAddrExternal, sockAddrExternalLen, true, ntohl(xlive_local_xnAddr.inaOnline.s_addr));
-			return;
-		}
-
-		XLOCATOR_SEARCHRESULT *searchresult = 0;
-		if (LiveOverLanBroadcastReceive(&searchresult, (BYTE*)session_details, len)) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
-				, "%s Broadcast Advertise from 0x%08x."
-				, __func__
-				, instanceId
-			);
-			EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-			// Delete the old entry if there already is one.
-			if (liveoverlan_sessions.count(instanceId)) {
-				XLOCATOR_SESSION *oldsession = liveoverlan_sessions[instanceId];
-				LiveOverLanDelete(oldsession->searchresult);
-				delete oldsession;
-			}
-
-			// fill in serverAddress as it is not populated from LOLBReceive.
-			uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(&searchresult->serverAddress, 0, instanceId);
-			if (resultNetter) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
-					, "%s NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
-					, __func__
-					, instanceId
-					, resultNetter
-				);
-			}
-
-			XLOCATOR_SESSION *newsession = new XLOCATOR_SESSION;
-			newsession->searchresult = searchresult;
-			time_t ltime;
-			time(&ltime);
-			newsession->broadcastTime = (unsigned long)ltime;
-			liveoverlan_sessions[instanceId] = newsession;
-			LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
-		}
-		else {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s %s Unable to parse Broadcast Advertise from 0x%08x."
-				, __func__
-				, instanceId
-			);
+		liveSession->pContexts = new XUSER_CONTEXT[liveSession->contextsCount];
+		XUSER_CONTEXT *pXUserContextsSerialised = (XUSER_CONTEXT*)&(live_session_buffer[liveSessionStaticDataSize]);
+		for (uint32_t iContext = 0; iContext < liveSession->contextsCount; iContext++) {
+			XUSER_CONTEXT &context = liveSession->pContexts[iContext];
+			XUSER_CONTEXT &contextSerialised = pXUserContextsSerialised[iContext];
+			context = contextSerialised;
 		}
 	}
+
+	uint8_t *pXUserPropertiesBuffer = (uint8_t*)&(live_session_buffer[liveSessionStaticDataSize + (liveSession->contextsCount * sizeof(*liveSession->pContexts))]);
+
+	if (!liveSession->propertiesCount) {
+		liveSession->pProperties = 0;
+	}
+	else {
+		liveSession->pProperties = new XUSER_PROPERTY[liveSession->propertiesCount];
+		XUSER_CONTEXT *pXUserContextsSerialised = (XUSER_CONTEXT*)&(live_session_buffer[liveSessionStaticDataSize]);
+		for (uint32_t iProperty = 0; iProperty < liveSession->propertiesCount; iProperty++) {
+			XUSER_PROPERTY &property = liveSession->pProperties[iProperty];
+			XUSER_PROPERTY_SERIALISED &propertySerialised = *(XUSER_PROPERTY_SERIALISED*)pXUserPropertiesBuffer;
+
+			uint32_t xuserPropertySize = 0;
+
+			xuserPropertySize += sizeof(propertySerialised.propertyId);
+			property.dwPropertyId = propertySerialised.propertyId;
+
+			xuserPropertySize += sizeof(propertySerialised.type);
+			property.value.type = propertySerialised.type;
+
+			switch (propertySerialised.type) {
+				case XUSER_DATA_TYPE_CONTEXT:
+				case XUSER_DATA_TYPE_INT32: {
+					xuserPropertySize += sizeof(propertySerialised.nData);
+					property.value.nData = propertySerialised.nData;
+					break;
+				}
+				case XUSER_DATA_TYPE_INT64: {
+					xuserPropertySize += sizeof(propertySerialised.i64Data);
+					property.value.i64Data = propertySerialised.i64Data;
+					break;
+				}
+				case XUSER_DATA_TYPE_DOUBLE: {
+					xuserPropertySize += sizeof(propertySerialised.dblData);
+					property.value.dblData = propertySerialised.dblData;
+					break;
+				}
+				case XUSER_DATA_TYPE_FLOAT: {
+					xuserPropertySize += sizeof(propertySerialised.fData);
+					property.value.fData = propertySerialised.fData;
+					break;
+				}
+				case XUSER_DATA_TYPE_DATETIME: {
+					xuserPropertySize += sizeof(propertySerialised.ftData);
+					property.value.ftData = propertySerialised.ftData;
+					break;
+				}
+				case XUSER_DATA_TYPE_BINARY: {
+					xuserPropertySize += sizeof(propertySerialised.binary.cbData);
+					property.value.binary.cbData = propertySerialised.binary.cbData;
+					if (property.value.binary.cbData == 0) {
+						property.value.binary.pbData = 0;
+						break;
+					}
+					xuserPropertySize += property.value.binary.cbData;
+					property.value.binary.pbData = new uint8_t[property.value.binary.cbData];
+					memcpy(property.value.binary.pbData, &propertySerialised.binary.pbData, property.value.binary.cbData);
+					break;
+				}
+				case XUSER_DATA_TYPE_UNICODE: {
+					xuserPropertySize += sizeof(propertySerialised.string.cbData);
+					property.value.string.cbData = propertySerialised.string.cbData;
+					xuserPropertySize += property.value.string.cbData;
+					property.value.string.pwszData = new wchar_t[property.value.string.cbData / 2];
+					memcpy(property.value.string.pwszData, &propertySerialised.string.pwszData, property.value.string.cbData);
+					property.value.string.pwszData[(property.value.string.cbData / 2) - 1] = 0;
+					break;
+				}
+			}
+
+			pXUserPropertiesBuffer += xuserPropertySize;
+		}
+	}
+
+	if (pXUserPropertiesBuffer != live_session_buffer + live_session_buffer_size) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
+			, "%s the end result of the pXUserPropertiesBuffer (0x%08x) should not be different from (0x%08x) the result buffer (0x%08x) + buffer size (0x%08x)."
+			, __func__
+			, pXUserPropertiesBuffer
+			, live_session_buffer + live_session_buffer_size
+			, live_session_buffer
+			, live_session_buffer_size
+		);
+		__debugbreak();
+		return false;
+	}
+
+	*result_live_session = liveSession;
+
+	return true;
 }
+
+bool LiveOverLanSerialiseLiveSessionIntoNetPacket(
+	LIVE_SESSION *live_session
+	, uint8_t **result_buffer
+	, uint32_t *result_buffer_size
+)
+{
+	if (result_buffer_size) {
+		*result_buffer_size = 0;
+	}
+	if (result_buffer) {
+		*result_buffer = 0;
+	}
+	if (!live_session || !result_buffer || !result_buffer_size) {
+		return false;
+	}
+
+	*result_buffer_size += sizeof(XLLNNetPacketType::TYPE);
+	const uint32_t liveSessionStaticDataSize = (uint32_t)&live_session->pContexts - (uint32_t)live_session;
+	*result_buffer_size += liveSessionStaticDataSize;
+	*result_buffer_size += live_session->contextsCount * sizeof(*live_session->pContexts);
+	{
+		for (uint32_t iProperty = 0; iProperty < live_session->propertiesCount; iProperty++) {
+			XUSER_PROPERTY &property = live_session->pProperties[iProperty];
+
+			uint32_t xuserPropertySize = 0;
+			xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::propertyId);
+			xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::type);
+
+			switch (property.value.type) {
+				case XUSER_DATA_TYPE_CONTEXT:
+				case XUSER_DATA_TYPE_INT32: {
+					xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::nData);
+					break;
+				}
+				case XUSER_DATA_TYPE_INT64: {
+					xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::i64Data);
+					break;
+				}
+				case XUSER_DATA_TYPE_DOUBLE: {
+					xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::dblData);
+					break;
+				}
+				case XUSER_DATA_TYPE_FLOAT: {
+					xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::fData);
+					break;
+				}
+				case XUSER_DATA_TYPE_DATETIME: {
+					xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::ftData);
+					break;
+				}
+				case XUSER_DATA_TYPE_BINARY: {
+					xuserPropertySize += sizeof(XUSER_PROPERTY_SERIALISED::binary.cbData);
+					xuserPropertySize += property.value.binary.cbData;
+					break;
+				}
+				case XUSER_DATA_TYPE_UNICODE: {
+					uint32_t dataSize = property.value.string.cbData;
+					if (dataSize < sizeof(wchar_t)) {
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+							, "%s Property 0x%08x XUSER_DATA_TYPE_UNICODE (dataSize < sizeof(wchar_t)) (%u < %u)."
+							, __func__
+							, property.dwPropertyId
+							, dataSize
+							, sizeof(wchar_t)
+						);
+						dataSize = sizeof(wchar_t);
+					}
+					else if (dataSize % 2) {
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+							, "%s Property 0x%08x XUSER_DATA_TYPE_UNICODE dataSize (%u) is odd."
+							, __func__
+							, property.dwPropertyId
+							, dataSize
+						);
+						dataSize += 1;
+					}
+					xuserPropertySize += sizeof(dataSize);
+					xuserPropertySize += dataSize;
+					break;
+				}
+			}
+
+			*result_buffer_size += xuserPropertySize;
+		}
+	}
+
+	*result_buffer = new uint8_t[*result_buffer_size];
+	((uint8_t*)*result_buffer)[0] = XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE;
+	memcpy(&(((uint8_t*)*result_buffer)[sizeof(XLLNNetPacketType::TYPE)]), live_session, liveSessionStaticDataSize);
+	XUSER_CONTEXT *pXUserContexts = (XUSER_CONTEXT*)&(((uint8_t*)*result_buffer)[sizeof(XLLNNetPacketType::TYPE) + liveSessionStaticDataSize]);
+	for (uint32_t iContext = 0; iContext < live_session->contextsCount; iContext++) {
+		XUSER_CONTEXT &context = live_session->pContexts[iContext];
+		XUSER_CONTEXT &contextSerialised = pXUserContexts[iContext];
+		contextSerialised = context;
+	}
+
+	uint8_t *pXUserPropertiesBuffer = (uint8_t*)&(((uint8_t*)*result_buffer)[sizeof(XLLNNetPacketType::TYPE) + liveSessionStaticDataSize + (live_session->contextsCount * sizeof(*live_session->pContexts))]);
+	for (uint32_t iProperty = 0; iProperty < live_session->propertiesCount; iProperty++) {
+		XUSER_PROPERTY &property = live_session->pProperties[iProperty];
+		XUSER_PROPERTY_SERIALISED &propertySerialised = *(XUSER_PROPERTY_SERIALISED*)pXUserPropertiesBuffer;
+		
+		uint32_t xuserPropertySize = 0;
+
+		xuserPropertySize += sizeof(propertySerialised.propertyId);
+		propertySerialised.propertyId = property.dwPropertyId;
+
+		xuserPropertySize += sizeof(propertySerialised.type);
+		propertySerialised.type = property.value.type;
+
+		switch (propertySerialised.type) {
+			case XUSER_DATA_TYPE_CONTEXT:
+			case XUSER_DATA_TYPE_INT32: {
+				xuserPropertySize += sizeof(propertySerialised.nData);
+				propertySerialised.nData = property.value.nData;
+				break;
+			}
+			case XUSER_DATA_TYPE_INT64: {
+				xuserPropertySize += sizeof(propertySerialised.i64Data);
+				propertySerialised.i64Data = property.value.i64Data;
+				break;
+			}
+			case XUSER_DATA_TYPE_DOUBLE: {
+				xuserPropertySize += sizeof(propertySerialised.dblData);
+				propertySerialised.dblData = property.value.dblData;
+				break;
+			}
+			case XUSER_DATA_TYPE_FLOAT: {
+				xuserPropertySize += sizeof(propertySerialised.fData);
+				propertySerialised.fData = property.value.fData;
+				break;
+			}
+			case XUSER_DATA_TYPE_DATETIME: {
+				xuserPropertySize += sizeof(propertySerialised.ftData);
+				propertySerialised.ftData = property.value.ftData;
+				break;
+			}
+			case XUSER_DATA_TYPE_BINARY: {
+				xuserPropertySize += sizeof(propertySerialised.binary.cbData);
+				propertySerialised.binary.cbData = property.value.binary.cbData;
+				if (propertySerialised.binary.cbData == 0) {
+					break;
+				}
+				xuserPropertySize += property.value.binary.cbData;
+				memcpy(&propertySerialised.binary.pbData, property.value.binary.pbData, propertySerialised.binary.cbData);
+				break;
+			}
+			case XUSER_DATA_TYPE_UNICODE: {
+				uint32_t dataSize = property.value.string.cbData;
+				if (dataSize < sizeof(wchar_t)) {
+					dataSize = sizeof(wchar_t);
+				}
+				else if (dataSize % 2) {
+					dataSize += 1;
+				}
+				xuserPropertySize += sizeof(dataSize);
+				propertySerialised.string.cbData = dataSize;
+				xuserPropertySize += dataSize;
+				memcpy(&propertySerialised.string.pwszData, property.value.string.pwszData, dataSize);
+				((wchar_t*)&propertySerialised.string.pwszData)[(dataSize / 2) - 1] = 0;
+				break;
+			}
+			case XUSER_DATA_TYPE_NULL: {
+				break;
+			}
+			default: {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+					, "%s Property 0x%08x has unknown XUSER_DATA_TYPE (0x%02hhx). Changing to NULL."
+					, __func__
+					, propertySerialised.propertyId
+					, propertySerialised.type
+				);
+				propertySerialised.type = XUSER_DATA_TYPE_NULL;
+				break;
+			}
+		}
+
+		pXUserPropertiesBuffer += xuserPropertySize;
+	}
+
+	if (pXUserPropertiesBuffer != *result_buffer + *result_buffer_size) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_FATAL
+			, "%s the end result of the pXUserPropertiesBuffer (0x%08x) should not be different from (0x%08x) the result buffer (0x%08x) + buffer size (0x%08x)."
+			, __func__
+			, pXUserPropertiesBuffer
+			, *result_buffer + *result_buffer_size
+			, *result_buffer
+			, *result_buffer_size
+		);
+		__debugbreak();
+		return false;
+	}
+	
+	return true;
+}
+
 VOID LiveOverLanStartBroadcast()
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
@@ -809,10 +695,10 @@ VOID LiveOverLanStartBroadcast()
 VOID LiveOverLanStopBroadcast()
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-	if (local_session_details) {
-		free(local_session_details);
+	if (local_xlocator_session) {
+		LiveOverLanDestroyLiveSession(&local_xlocator_session);
 	}
-	local_session_details = 0;
+	local_xlocator_session = 0;
 
 	if (liveoverlan_running) {
 		liveoverlan_running = FALSE;
@@ -832,23 +718,26 @@ static VOID LiveOverLanEmpty()
 {
 	std::mutex mymutex;
 	while (1) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO, "LiveOverLAN Remove Old Entries.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+			, "%s continuing. Removing any old entries."
+			, __func__
+		);
 		EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 
 		std::vector<uint32_t> removesessions;
 		time_t ltime;
 		time(&ltime);//seconds since epoch.
 		DWORD timetoremove = ((DWORD)ltime) - 15;
-		for (auto const &session : liveoverlan_sessions) {
-			if (session.second->broadcastTime > timetoremove) {
+		for (auto const &session : liveoverlan_remote_sessions) {
+			if (session.second->timeOfLastContact > timetoremove) {
 				continue;
 			}
-			LiveOverLanDelete(session.second->searchresult);
+			LiveOverLanDestroyLiveSession(&session.second->liveSession);
 			delete session.second;
 			removesessions.push_back(session.first);
 		}
 		for (auto const &session : removesessions) {
-			liveoverlan_sessions.erase(session);
+			liveoverlan_remote_sessions.erase(session);
 		}
 
 		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
@@ -862,17 +751,22 @@ static VOID LiveOverLanEmpty()
 }
 VOID LiveOverLanStartEmpty()
 {
+	if (liveoverlan_empty_exit == FALSE) {
+		liveoverlan_empty_exit = TRUE;
+		liveoverlan_cond_empty.notify_all();
+		liveoverlan_empty_thread.join();
+	}
 	liveoverlan_empty_exit = FALSE;
 	liveoverlan_empty_thread = std::thread(LiveOverLanEmpty);
 }
 VOID LiveOverLanStopEmpty()
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-	for (auto const &session : liveoverlan_sessions) {
-		LiveOverLanDelete(session.second->searchresult);
+	for (auto const &session : liveoverlan_remote_sessions) {
+		LiveOverLanDestroyLiveSession(&session.second->liveSession);
 		delete session.second;
 	}
-	liveoverlan_sessions.clear();
+	liveoverlan_remote_sessions.clear();
 	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	if (liveoverlan_empty_exit == FALSE) {
 		liveoverlan_empty_exit = TRUE;

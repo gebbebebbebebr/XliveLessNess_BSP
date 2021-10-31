@@ -859,22 +859,92 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 		if (xlive_xlocator_enumerators.count(hEnum)) {
 			foundEnumerator = true;
 
-			DWORD max_result_len = cbBuffer / sizeof(XLOCATOR_SEARCHRESULT);
-			DWORD total_server_count = 0;
-
+			bool triedToReturnSomething = false;
+			uint32_t totalSessionCount = 0;
+			XLOCATOR_SEARCHRESULT *searchResults = (XLOCATOR_SEARCHRESULT*)pvBuffer;
+			uint8_t *searchResultsData = ((uint8_t*)pvBuffer) + cbBuffer;
+			
 			EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-			for (auto const &session : liveoverlan_sessions) {
-				if (total_server_count >= max_result_len) {
-					break;
-				}
+			for (auto const &session : liveoverlan_remote_sessions) {
+				// Ensure this Live Session has not already been returned in this enumerator.
 				if (std::find(xlive_xlocator_enumerators[hEnum].begin(), xlive_xlocator_enumerators[hEnum].end(), session.first) != xlive_xlocator_enumerators[hEnum].end()) {
 					continue;
 				}
-				XLOCATOR_SEARCHRESULT* server = &((XLOCATOR_SEARCHRESULT*)pvBuffer)[total_server_count++];
+
+				uint8_t *searchResultsDataPrev = searchResultsData;
+				
+				// Calculate the space required.
+				searchResultsData -= session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties);
+				for (uint32_t iProperty = 0; iProperty < session.second->liveSession->propertiesCount; iProperty++) {
+					XUSER_PROPERTY &property = session.second->liveSession->pProperties[iProperty];
+					switch (property.value.type) {
+						case XUSER_DATA_TYPE_BINARY: {
+							searchResultsData -= property.value.binary.cbData;
+							break;
+						}
+						case XUSER_DATA_TYPE_UNICODE: {
+							searchResultsData -= property.value.string.cbData;
+							break;
+						}
+					}
+				}
+				
+				triedToReturnSomething = true;
+				if ((uint8_t*)&searchResults[totalSessionCount + 1] > searchResultsData) {
+					// Not enough room left in the buffer to store this object.
+					break;
+				}
+				
+				// Copy over all the memory into the buffer.
+				XLOCATOR_SEARCHRESULT &searchResult = searchResults[totalSessionCount++];
+				searchResult.serverID = session.second->liveSession->xuid;
+				searchResult.dwServerType = session.second->liveSession->serverType;
+				searchResult.serverAddress = session.second->liveSession->xnAddr;
+				searchResult.xnkid = session.second->liveSession->xnkid;
+				searchResult.xnkey = session.second->liveSession->xnkey;
+				searchResult.dwMaxPublicSlots = session.second->liveSession->slotsPublicMaxCount;
+				searchResult.dwMaxPrivateSlots = session.second->liveSession->slotsPrivateMaxCount;
+				searchResult.dwFilledPublicSlots = session.second->liveSession->slotsPublicFilledCount;
+				searchResult.dwFilledPrivateSlots = session.second->liveSession->slotsPrivateFilledCount;
+				searchResult.cProperties = session.second->liveSession->propertiesCount;
+				searchResult.pProperties = (XUSER_PROPERTY*)searchResultsData;
+				memcpy(searchResult.pProperties, session.second->liveSession->pProperties, session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties));
+				uint8_t *searchResultData = searchResultsData + (session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties));
+				for (uint32_t iProperty = 0; iProperty < session.second->liveSession->propertiesCount; iProperty++) {
+					XUSER_PROPERTY &propertyOrig = session.second->liveSession->pProperties[iProperty];
+					XUSER_PROPERTY &propertyCopy = searchResult.pProperties[iProperty];
+					switch (propertyCopy.value.type) {
+						case XUSER_DATA_TYPE_BINARY: {
+							propertyCopy.value.binary.pbData = searchResultData;
+							memcpy(propertyCopy.value.binary.pbData, propertyOrig.value.binary.pbData, propertyCopy.value.binary.cbData);
+							searchResultData += propertyCopy.value.binary.cbData;
+							break;
+						}
+						case XUSER_DATA_TYPE_UNICODE: {
+							propertyCopy.value.string.pwszData = (wchar_t*)searchResultData;
+							memcpy(propertyCopy.value.string.pwszData, propertyOrig.value.string.pwszData, propertyCopy.value.string.cbData);
+							searchResultData += propertyCopy.value.string.cbData;
+							break;
+						}
+					}
+				}
+				
+				// Record that this Live Session has been returned in the enumerator.
 				xlive_xlocator_enumerators[hEnum].push_back(session.first);
-				LiveOverLanClone(&server, session.second->searchresult);
+				
+				if (searchResultData != searchResultsDataPrev) {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_FATAL
+						, "%s the end result of searchResultData (0x%08x) should not be different from searchResultsDataPrev (0x%08x)."
+						, __func__
+						, searchResultData
+						, searchResultsDataPrev
+					);
+					__debugbreak();
+					break;
+				}
 			}
 			LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+			
 			LeaveCriticalSection(&xlive_critsec_xlocator_enumerators);
 
 			if (pXOverlapped) {
@@ -882,9 +952,13 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				//pXOverlapped->InternalLow = ERROR_IO_INCOMPLETE;
 				//pXOverlapped->dwExtendedError = ERROR_SUCCESS;
 
-				if (total_server_count) {
-					pXOverlapped->InternalHigh = total_server_count;
+				if (totalSessionCount) {
+					pXOverlapped->InternalHigh = totalSessionCount;
 					pXOverlapped->InternalLow = ERROR_SUCCESS;
+				}
+				else if (triedToReturnSomething) {
+					pXOverlapped->InternalHigh = ERROR_SUCCESS;
+					pXOverlapped->InternalLow = ERROR_INSUFFICIENT_BUFFER;
 				}
 				else {
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
@@ -895,7 +969,7 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				return ERROR_IO_PENDING;
 			}
 			else {
-				*pcItemsReturned = total_server_count;
+				*pcItemsReturned = totalSessionCount;
 				return ERROR_SUCCESS;
 			}
 		}

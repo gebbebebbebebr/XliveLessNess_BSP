@@ -345,30 +345,6 @@ DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD 
 		}
 		return ERROR_SUCCESS;
 	}
-	/*else if (propertyId == XLLNModifyPropertyTypes::tLiveOverLan_BROADCAST_HANDLER) {
-		EnterCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-		if (!newValue && !oldValue) {
-			if (liveoverlan_broadcast_handler == NULL) {
-				LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-				return ERROR_NOT_FOUND;
-			}
-			liveoverlan_broadcast_handler = NULL;
-			LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-			return ERROR_SUCCESS;
-		}
-		if (newValue && !oldValue && liveoverlan_broadcast_handler != NULL) {
-			LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-			return ERROR_ALREADY_REGISTERED;
-		}
-		if (oldValue) {
-			*oldValue = (DWORD)liveoverlan_broadcast_handler;
-		}
-		if (newValue) {
-			liveoverlan_broadcast_handler = (VOID(WINAPI*)(LIVE_SERVER_DETAILS*))*newValue;
-		}
-		LeaveCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
-		return ERROR_SUCCESS;
-	}*/
 	else if (propertyId == XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_REGISTER) {
 		// TODO
 		XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)newValue;
@@ -1075,7 +1051,6 @@ void InitCriticalSections()
 {
 	InitializeCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	InitializeCriticalSection(&xlive_critsec_network_adapter);
-	//InitializeCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	InitializeCriticalSection(&xlln_critsec_net_entity);
 	InitializeCriticalSection(&xlive_critsec_xlocator_enumerators);
 	InitializeCriticalSection(&xlive_critsec_xuser_achievement_enumerators);
@@ -1100,7 +1075,6 @@ void UninitCriticalSections()
 {
 	DeleteCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 	DeleteCriticalSection(&xlive_critsec_network_adapter);
-	//DeleteCriticalSection(&xlive_critsec_LiveOverLan_broadcast_handler);
 	DeleteCriticalSection(&xlln_critsec_net_entity);
 	DeleteCriticalSection(&xlive_critsec_xlocator_enumerators);
 	DeleteCriticalSection(&xlive_critsec_xuser_achievement_enumerators);

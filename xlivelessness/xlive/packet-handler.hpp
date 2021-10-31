@@ -69,6 +69,10 @@ namespace XLLNNetPacketType {
 		uint32_t recommendedInstanceId = 0; // the Instance ID that should be used instead (in case of collisions).
 	} HUB_REPLY_PACKET;
 
+	typedef struct {
+		XUID xuid = 0;
+	} LIVE_OVER_LAN_UNADVERTISE;
+
 #pragma pack(pop) // Return to original alignment setting.
 
 }

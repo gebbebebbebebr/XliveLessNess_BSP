@@ -93,6 +93,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 	const int packetSizeTypeUnknownUser = sizeof(XLLNNetPacketType::UNKNOWN_USER);
 	const int packetSizeTypeHubRequest = sizeof(XLLNNetPacketType::HUB_REQUEST_PACKET);
 	const int packetSizeTypeHubReply = sizeof(XLLNNetPacketType::HUB_REPLY_PACKET);
+	const int packetSizeTypeLiveOverLanUnadvertise = sizeof(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE);
 
 	int packetSizeAlreadyProcessedOffset = 0;
 	int resultDataRecvSize = 0;
@@ -313,17 +314,80 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 		case XLLNNetPacketType::tLIVE_OVER_LAN_ADVERTISE:
 		case XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE: {
 			canSendUnknownUserAsk = false;
-			int dataSizeRemaining = dataRecvSize - packetSizeAlreadyProcessedOffset + 1;
+			
+			// Verify that the original sender (if it was forwarded) is a trusted Hub server.
+			if (packetForwardedSockAddrSize) {
+				// TODO Verify that the original sender (if it was forwarded) is a trusted Hub server.
+				if (false) {
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
+				}
+			}
+			
+			uint32_t instanceId = 0;
+			uint16_t portHBO = 0;
+			uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+			if (resultNetter) {
+				char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+				XLLN_DEBUG_LOG_ECODE(resultNetter, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
+					, "%s NetterEntityGetInstanceIdPortByExternalAddr failed from %s with error:"
+					, __func__
+					, sockAddrInfo ? sockAddrInfo : "?"
+				);
+				if (sockAddrInfo) {
+					free(sockAddrInfo);
+				}
 
-			// FIXME This function assumes the buffer includes the packet type.
-			LiveOverLanRecieve(
-				socket
-				, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
-				, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
-				, (const LIVE_SERVER_DETAILS*)&dataBuffer[packetSizeAlreadyProcessedOffset - 1]
-				, dataSizeRemaining
-			);
+				int dataSizeRemaining = dataRecvSize - packetSizeAlreadyProcessedOffset + packetSizeHeaderType;
 
+				SendUnknownUserAskRequest(
+					socket
+					, (char*)&dataBuffer[packetSizeAlreadyProcessedOffset - packetSizeHeaderType]
+					, dataSizeRemaining
+					, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
+					, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
+					, true
+					, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
+				);
+
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
+			}
+			
+			if (packetType == XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE) {
+				if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeLiveOverLanUnadvertise) {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+						, "%s Invalid %s received (insufficient size)."
+						, __func__
+						, XLLNNetPacketType::TYPE_NAMES[packetType]
+					);
+					packetSizeAlreadyProcessedOffset = dataRecvSize;
+					break;
+				}
+				
+				XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE &packetLiveOverLanUnadvertise = *(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+				LiveOverLanBroadcastRemoteSessionUnadvertise(instanceId, packetLiveOverLanUnadvertise.xuid);
+				
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
+			}
+			
+			const uint8_t *liveSessionBuffer = (uint8_t*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+			const int liveSessionBufferSize = dataRecvSize - packetSizeAlreadyProcessedOffset;
+			LIVE_SESSION *liveSession;
+			
+			if (!LiveOverLanDeserialiseLiveSession(liveSessionBuffer, liveSessionBufferSize, &liveSession)) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s Invalid %s received."
+					, __func__
+					, XLLNNetPacketType::TYPE_NAMES[packetType]
+				);
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
+			}
+			
+			LiveOverLanAddRemoteLiveSession(instanceId, liveSession);
+			
 			packetSizeAlreadyProcessedOffset = dataRecvSize;
 			break;
 		}
@@ -408,7 +472,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 					_time64(&broadcastEntity.lastComm);
 
 					if (packetHubReply.recommendedInstanceId && packetHubReply.recommendedInstanceId != ntohl(xlive_local_xnAddr.inaOnline.s_addr)) {
-						char *sockAddrInfo = GetSockAddrInfo(&broadcastEntity.sockaddr);
+						char *sockAddrInfo = GET_SOCKADDR_INFO(&broadcastEntity.sockaddr);
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
 							, "%s HUB_REPLY_PACKET from %s recommends a different Instance ID (from 0x%08x to 0x%08x)."
 							, __func__
@@ -416,7 +480,9 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 							, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
 							, packetHubReply.recommendedInstanceId
 						);
-						free(sockAddrInfo);
+						if (sockAddrInfo) {
+							free(sockAddrInfo);
+						}
 					}
 
 					{
@@ -461,75 +527,77 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 		return 0;
 	}
 
-	uint32_t instanceId = 0;
-	uint16_t portHBO = 0;
-	uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
-	if (resultNetter) {
-		char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
-			, __func__
-			, sockAddrInfo ? sockAddrInfo : ""
-			, resultNetter
-		);
-		if (sockAddrInfo) {
-			free(sockAddrInfo);
-		}
-
-		if (canSendUnknownUserAsk) {
-			int newPacketBufferUnknownUserSize = packetSizeHeaderType + resultDataRecvSize;
-			uint8_t *newPacketBufferUnknownUser = new uint8_t[newPacketBufferUnknownUserSize];
-			int newPacketBufferUnknownUserAlreadyProcessedOffset = 0;
-
-			XLLNNetPacketType::TYPE &newPacketUnknownUserType = *(XLLNNetPacketType::TYPE*)&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset];
-			newPacketBufferUnknownUserAlreadyProcessedOffset += packetSizeHeaderType;
-			newPacketUnknownUserType = priorPacketType == XLLNNetPacketType::tTITLE_BROADCAST_PACKET ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
-
-			memcpy(&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset], dataBuffer, resultDataRecvSize);
-
-			SendUnknownUserAskRequest(
-				socket
-				, (char*)newPacketBufferUnknownUser
-				, newPacketBufferUnknownUserSize
-				, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
-				, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
-				, true
-				, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
+	{
+		uint32_t instanceId = 0;
+		uint16_t portHBO = 0;
+		uint32_t resultNetter = NetterEntityGetInstanceIdPortByExternalAddr(&instanceId, &portHBO, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+		if (resultNetter) {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s NetterEntityGetInstanceIdPortByExternalAddr failed to find external addr %s with error 0x%08x."
+				, __func__
+				, sockAddrInfo ? sockAddrInfo : ""
+				, resultNetter
 			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 
-			delete[] newPacketBufferUnknownUser;
-		}
+			if (canSendUnknownUserAsk) {
+				int newPacketBufferUnknownUserSize = packetSizeHeaderType + resultDataRecvSize;
+				uint8_t *newPacketBufferUnknownUser = new uint8_t[newPacketBufferUnknownUserSize];
+				int newPacketBufferUnknownUserAlreadyProcessedOffset = 0;
 
-		if (packetForwardedSockAddrSize && packetForwardedNetter.instanceId) {
-			sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
-			sockAddrIpv4Xlive->sin_family = AF_INET;
-			sockAddrIpv4Xlive->sin_addr.s_addr = htonl(packetForwardedNetter.instanceId);
-			sockAddrIpv4Xlive->sin_port = htons(packetForwardedNetter.socketInternalPortHBO);
-			*sockAddrXliveLen = sizeof(sockaddr_in);
+				XLLNNetPacketType::TYPE &newPacketUnknownUserType = *(XLLNNetPacketType::TYPE*)&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset];
+				newPacketBufferUnknownUserAlreadyProcessedOffset += packetSizeHeaderType;
+				newPacketUnknownUserType = priorPacketType == XLLNNetPacketType::tTITLE_BROADCAST_PACKET ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
+
+				memcpy(&newPacketBufferUnknownUser[newPacketBufferUnknownUserAlreadyProcessedOffset], dataBuffer, resultDataRecvSize);
+
+				SendUnknownUserAskRequest(
+					socket
+					, (char*)newPacketBufferUnknownUser
+					, newPacketBufferUnknownUserSize
+					, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
+					, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
+					, true
+					, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
+				);
+
+				delete[] newPacketBufferUnknownUser;
+			}
+
+			if (packetForwardedSockAddrSize && packetForwardedNetter.instanceId) {
+				sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
+				sockAddrIpv4Xlive->sin_family = AF_INET;
+				sockAddrIpv4Xlive->sin_addr.s_addr = htonl(packetForwardedNetter.instanceId);
+				sockAddrIpv4Xlive->sin_port = htons(packetForwardedNetter.socketInternalPortHBO);
+				*sockAddrXliveLen = sizeof(sockaddr_in);
+			}
+			else {
+				// We do not want whatever this was being passed to the Title.
+				return 0;
+			}
 		}
 		else {
-			// We do not want whatever this was being passed to the Title.
-			return 0;
-		}
-	}
-	else {
-		char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "%s NetterEntityGetInstanceIdPortByExternalAddr found external addr %s as instanceId:0x%08x port:%hu."
-			, __func__
-			, sockAddrInfo ? sockAddrInfo : ""
-			, instanceId
-			, portHBO
-		);
-		if (sockAddrInfo) {
-			free(sockAddrInfo);
-		}
+			char *sockAddrInfo = GET_SOCKADDR_INFO(packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal);
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "%s NetterEntityGetInstanceIdPortByExternalAddr found external addr %s as instanceId:0x%08x port:%hu."
+				, __func__
+				, sockAddrInfo ? sockAddrInfo : ""
+				, instanceId
+				, portHBO
+			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
 
-		sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
-		sockAddrIpv4Xlive->sin_family = AF_INET;
-		sockAddrIpv4Xlive->sin_addr.s_addr = htonl(instanceId);
-		sockAddrIpv4Xlive->sin_port = htons(portHBO);
-		*sockAddrXliveLen = sizeof(sockaddr_in);
+			sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
+			sockAddrIpv4Xlive->sin_family = AF_INET;
+			sockAddrIpv4Xlive->sin_addr.s_addr = htonl(instanceId);
+			sockAddrIpv4Xlive->sin_port = htons(portHBO);
+			*sockAddrXliveLen = sizeof(sockaddr_in);
+		}
 	}
 
 	return resultDataRecvSize;

@@ -32,7 +32,10 @@ static void ThreadKeepAlive()
 
 	std::mutex mutexPause;
 	while (1) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO, "LiveOverLAN Remove Old Entries.");
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+			, "%s continuing. Keeping any Hub connections alive."
+			, __func__
+		);
 		EnterCriticalSection(&xlive_critsec_broadcast_addresses);
 
 		__time64_t ltime;
