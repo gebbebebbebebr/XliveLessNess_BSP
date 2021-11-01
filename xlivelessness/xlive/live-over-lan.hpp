@@ -1,6 +1,9 @@
 #pragma once
 #include "xsocket.hpp"
 
+#define XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR 0
+#define XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION 1
+
 #pragma pack(push, 1) // Save then set byte alignment setting.
 
 typedef struct
@@ -32,10 +35,11 @@ typedef struct
 
 typedef struct {
 	// serverID
-	XUID xuid = 0;
-	// hostAddress
-	XNADDR xnAddr;
-	uint32_t serverType = 0;
+	XUID xuid = INVALID_XUID;
+	// XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR or XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION.
+	uint8_t sessionType = 0;
+	// If sessionType is XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR then this contains XLOCATOR_SERVERTYPE_ macros. Otherwise if XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION then XSESSION_CREATE_ macros.
+	uint32_t sessionFlags = 0;
 	// sessionID
 	XNKID xnkid;
 	// keyExchangeKey
@@ -54,8 +58,25 @@ typedef struct {
 
 typedef struct {
 	LIVE_SESSION *liveSession;
+	// hostAddress
+	XNADDR xnAddr;
 	uint32_t timeOfLastContact;
 } LIVE_SESSION_REMOTE;
+
+typedef struct {
+	LIVE_SESSION *liveSession = 0;
+	// hostAddress
+	XNADDR xnAddr;
+	DWORD dwGameType = 0;
+	DWORD dwGameMode = 0;
+	DWORD dwActualMemberCount = 0;
+	DWORD dwReturnedMemberCount = 0;
+	XSESSION_STATE eState = XSESSION_STATE_LOBBY;
+	// Treating as XUID of the creator.
+	ULONGLONG qwNonce = INVALID_XUID;
+	XNKID xnkidArbitration;
+	XSESSION_MEMBER *pSessionMembers = 0;
+} LIVE_SESSION_XSESSION;
 
 void LiveOverLanDestroyLiveSession(LIVE_SESSION **live_session);
 bool LiveOverLanDeserialiseLiveSession(
@@ -69,8 +90,8 @@ bool LiveOverLanSerialiseLiveSessionIntoNetPacket(
 	, uint32_t *result_buffer_size
 );
 void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid);
-void LiveOverLanBroadcastRemoteSessionUnadvertise(const uint32_t instance_id, const XUID xuid);
-void LiveOverLanAddRemoteLiveSession(const uint32_t instanceId, LIVE_SESSION *live_session);
+void LiveOverLanBroadcastRemoteSessionUnadvertise(const uint32_t instance_id, const uint8_t session_type, const XUID xuid);
+void LiveOverLanAddRemoteLiveSession(const uint32_t instance_id, const uint8_t session_type, LIVE_SESSION *live_session);
 
 VOID LiveOverLanAbort();
 VOID LiveOverLanStartBroadcast();
@@ -82,5 +103,5 @@ bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo);
 extern CRITICAL_SECTION xlln_critsec_liveoverlan_sessions;
 extern CRITICAL_SECTION xlln_critsec_liveoverlan_broadcast;
 
-extern LIVE_SESSION *local_xlocator_session;
-extern std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions;
+extern std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions_xlocator;
+extern std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions_xsession;

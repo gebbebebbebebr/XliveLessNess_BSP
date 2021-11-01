@@ -865,12 +865,17 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 			uint8_t *searchResultsData = ((uint8_t*)pvBuffer) + cbBuffer;
 			
 			EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-			for (auto const &session : liveoverlan_remote_sessions) {
+			for (auto const &session : liveoverlan_remote_sessions_xlocator) {
 				// Ensure this Live Session has not already been returned in this enumerator.
 				if (std::find(xlive_xlocator_enumerators[hEnum].begin(), xlive_xlocator_enumerators[hEnum].end(), session.first) != xlive_xlocator_enumerators[hEnum].end()) {
 					continue;
 				}
-
+				
+				// Ensure this is an XLocator item.
+				if (session.second->liveSession->sessionType != XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR) {
+					continue;
+				}
+				
 				uint8_t *searchResultsDataPrev = searchResultsData;
 				
 				// Calculate the space required.
@@ -898,8 +903,8 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				// Copy over all the memory into the buffer.
 				XLOCATOR_SEARCHRESULT &searchResult = searchResults[totalSessionCount++];
 				searchResult.serverID = session.second->liveSession->xuid;
-				searchResult.dwServerType = session.second->liveSession->serverType;
-				searchResult.serverAddress = session.second->liveSession->xnAddr;
+				searchResult.dwServerType = session.second->liveSession->sessionFlags;
+				searchResult.serverAddress = session.second->xnAddr;
 				searchResult.xnkid = session.second->liveSession->xnkid;
 				searchResult.xnkey = session.second->liveSession->xnkey;
 				searchResult.dwMaxPublicSlots = session.second->liveSession->slotsPublicMaxCount;
@@ -907,24 +912,31 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				searchResult.dwFilledPublicSlots = session.second->liveSession->slotsPublicFilledCount;
 				searchResult.dwFilledPrivateSlots = session.second->liveSession->slotsPrivateFilledCount;
 				searchResult.cProperties = session.second->liveSession->propertiesCount;
-				searchResult.pProperties = (XUSER_PROPERTY*)searchResultsData;
-				memcpy(searchResult.pProperties, session.second->liveSession->pProperties, session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties));
+				
 				uint8_t *searchResultData = searchResultsData + (session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties));
-				for (uint32_t iProperty = 0; iProperty < session.second->liveSession->propertiesCount; iProperty++) {
-					XUSER_PROPERTY &propertyOrig = session.second->liveSession->pProperties[iProperty];
-					XUSER_PROPERTY &propertyCopy = searchResult.pProperties[iProperty];
-					switch (propertyCopy.value.type) {
-						case XUSER_DATA_TYPE_BINARY: {
-							propertyCopy.value.binary.pbData = searchResultData;
-							memcpy(propertyCopy.value.binary.pbData, propertyOrig.value.binary.pbData, propertyCopy.value.binary.cbData);
-							searchResultData += propertyCopy.value.binary.cbData;
-							break;
-						}
-						case XUSER_DATA_TYPE_UNICODE: {
-							propertyCopy.value.string.pwszData = (wchar_t*)searchResultData;
-							memcpy(propertyCopy.value.string.pwszData, propertyOrig.value.string.pwszData, propertyCopy.value.string.cbData);
-							searchResultData += propertyCopy.value.string.cbData;
-							break;
+				
+				if (searchResult.cProperties == 0) {
+					searchResult.pProperties = 0;
+				}
+				else {
+					searchResult.pProperties = (XUSER_PROPERTY*)searchResultsData;
+					memcpy(searchResult.pProperties, session.second->liveSession->pProperties, session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties));
+					for (uint32_t iProperty = 0; iProperty < session.second->liveSession->propertiesCount; iProperty++) {
+						XUSER_PROPERTY &propertyOrig = session.second->liveSession->pProperties[iProperty];
+						XUSER_PROPERTY &propertyCopy = searchResult.pProperties[iProperty];
+						switch (propertyCopy.value.type) {
+							case XUSER_DATA_TYPE_BINARY: {
+								propertyCopy.value.binary.pbData = searchResultData;
+								memcpy(propertyCopy.value.binary.pbData, propertyOrig.value.binary.pbData, propertyCopy.value.binary.cbData);
+								searchResultData += propertyCopy.value.binary.cbData;
+								break;
+							}
+							case XUSER_DATA_TYPE_UNICODE: {
+								propertyCopy.value.string.pwszData = (wchar_t*)searchResultData;
+								memcpy(propertyCopy.value.string.pwszData, propertyOrig.value.string.pwszData, propertyCopy.value.string.cbData);
+								searchResultData += propertyCopy.value.string.cbData;
+								break;
+							}
 						}
 					}
 				}

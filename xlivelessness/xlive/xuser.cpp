@@ -960,10 +960,10 @@ DWORD WINAPI XUserSetContextEx(DWORD dwUserIndex, DWORD dwContextId, DWORD dwCon
 
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
-		for (auto const &xsession : xlive_xsessions) {
-			XSESSION_LOCAL_DETAILS *xsessionDetails = xsession.second;
+		for (auto const &xsession : xlive_xsession_local_sessions) {
+			LIVE_SESSION_XSESSION *xsessionDetails = xsession.second;
 
-			uint32_t maxMembers = xsessionDetails->dwMaxPublicSlots > xsessionDetails->dwMaxPrivateSlots ? xsessionDetails->dwMaxPublicSlots : xsessionDetails->dwMaxPrivateSlots;
+			uint32_t maxMembers = xsessionDetails->liveSession->slotsPublicMaxCount > xsessionDetails->liveSession->slotsPrivateMaxCount ? xsessionDetails->liveSession->slotsPublicMaxCount : xsessionDetails->liveSession->slotsPrivateMaxCount;
 			uint32_t iMember = 0;
 			for (; iMember < maxMembers; iMember++) {
 				if (dwUserIndex == xsessionDetails->pSessionMembers[iMember].dwUserIndex) {

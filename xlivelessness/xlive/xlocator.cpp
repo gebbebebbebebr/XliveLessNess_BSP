@@ -22,6 +22,7 @@ CRITICAL_SECTION xlive_critsec_xlocator_enumerators;
 // Key: enumerator handle (id).
 // Value: Vector of InstanceIds that have already been returned for that enumerator.
 std::map<HANDLE, std::vector<uint32_t>> xlive_xlocator_enumerators;
+LIVE_SESSION *xlive_xlocator_local_session = 0;
 
 // #5230
 HRESULT WINAPI XLocatorServerAdvertise(
@@ -89,7 +90,8 @@ HRESULT WINAPI XLocatorServerAdvertise(
 
 	LIVE_SESSION *liveSession = new LIVE_SESSION;
 	liveSession->xuid = xlive_users_info[dwUserIndex]->xuid;
-	liveSession->serverType = dwServerType;
+	liveSession->sessionType = XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR;
+	liveSession->sessionFlags = dwServerType;
 	liveSession->xnkid = xnkid;
 	liveSession->xnkey = xnkey;
 	liveSession->slotsPublicMaxCount = dwMaxPublicSlots;
@@ -169,10 +171,10 @@ HRESULT WINAPI XLocatorServerAdvertise(
 	xuserProperties.clear();
 	
 	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-	if (local_xlocator_session) {
-		LiveOverLanDestroyLiveSession(&local_xlocator_session);
+	if (xlive_xlocator_local_session) {
+		LiveOverLanDestroyLiveSession(&xlive_xlocator_local_session);
 	}
-	local_xlocator_session = liveSession;
+	xlive_xlocator_local_session = liveSession;
 	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	
 	if (pXOverlapped) {
@@ -258,22 +260,84 @@ HRESULT WINAPI XLocatorGetServiceProperty(DWORD dwUserIndex, DWORD cNumPropertie
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive XLocator is not initialised.", __func__);
 		return E_FAIL;
 	}
-
-	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL) {
-		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL].value.nData = liveoverlan_remote_sessions.size();
+	
+	uint32_t countTotal = 0;
+	uint32_t countPublic = 0;
+	uint32_t countGold = 0;
+	uint32_t countPeer = 0;
+	
+	{
+		EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
+		
+		for (auto const &session : liveoverlan_remote_sessions_xlocator) {
+			// Ensure this is an XLocator item.
+			if (session.second->liveSession->sessionType != XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR) {
+				continue;
+			}
+			countTotal++;
+			switch (session.second->liveSession->sessionFlags) {
+				case XLOCATOR_SERVERTYPE_PUBLIC: {
+					countPublic++;
+					break;
+				}
+				case XLOCATOR_SERVERTYPE_GOLD_ONLY: {
+					countGold++;
+					break;
+				}
+				case XLOCATOR_SERVERTYPE_PEER_HOSTED: {
+					countPeer++;
+					break;
+				}
+				case XLOCATOR_SERVERTYPE_PEER_HOSTED_GOLD_ONLY: {
+					countGold++;
+					countPeer++;
+					break;
+				}
+			}
+		}
+		
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	}
-	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_PUBLIC) {
-		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_PUBLIC].value.nData = -1;
+	
+	for (uint32_t iProperty = 0; iProperty < cNumProperties; iProperty++) {
+		XUSER_PROPERTY &property = pProperties[iProperty];
+		switch (property.dwPropertyId) {
+			case XLOCATOR_PROPERTY_LIVE_COUNT_TOTAL: {
+				if (property.value.type == XUSER_DATA_TYPE_INT32) {
+					property.value.nData = countTotal;
+				}
+				break;
+			}
+			case XLOCATOR_PROPERTY_LIVE_COUNT_PUBLIC: {
+				if (property.value.type == XUSER_DATA_TYPE_INT32) {
+					property.value.nData = countPublic;
+				}
+				break;
+			}
+			case XLOCATOR_PROPERTY_LIVE_COUNT_GOLD: {
+				if (property.value.type == XUSER_DATA_TYPE_INT32) {
+					property.value.nData = countGold;
+				}
+				break;
+			}
+			case XLOCATOR_PROPERTY_LIVE_COUNT_PEER: {
+				if (property.value.type == XUSER_DATA_TYPE_INT32) {
+					property.value.nData = countPeer;
+				}
+				break;
+			}
+			default: {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s Unknown XUser Property 0x%08x of type 0x%02hhx."
+					, __func__
+					, property.dwPropertyId
+					, property.value.type
+				);
+				break;
+			}
+		}
 	}
-	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_GOLD) {
-		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_GOLD].value.nData = -1;
-	}
-	if (cNumProperties > XLOCATOR_PROPERTY_LIVE_COUNT_PEER) {
-		pProperties[XLOCATOR_PROPERTY_LIVE_COUNT_PEER].value.nData = -1;
-	}
-	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
-
+	
 	if (pXOverlapped) {
 		//asynchronous
 

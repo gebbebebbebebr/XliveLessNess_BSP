@@ -1,6 +1,7 @@
 #include <winsock2.h>
 #include "xdefs.hpp"
 #include "xsession.hpp"
+#include "live-over-lan.hpp"
 #include "../xlln/debug-text.hpp"
 #include "xlive.hpp"
 #include "xnet.hpp"
@@ -10,7 +11,7 @@
 CRITICAL_SECTION xlive_critsec_xsession;
 // Key: session handle (id).
 // Value: the details of the session.
-std::map<HANDLE, XSESSION_LOCAL_DETAILS*> xlive_xsessions;
+std::map<HANDLE, LIVE_SESSION_XSESSION*> xlive_xsession_local_sessions;
 
 BOOL xlive_xsession_initialised = FALSE;
 
@@ -104,56 +105,63 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 		}
 	}
 	
-	XSESSION_LOCAL_DETAILS *xsessionDetails = new XSESSION_LOCAL_DETAILS;
-	memset(xsessionDetails, 0, sizeof(XSESSION_LOCAL_DETAILS));
+	LIVE_SESSION_XSESSION *xsessionDetails = new LIVE_SESSION_XSESSION;
+	xsessionDetails->liveSession = new LIVE_SESSION;
+	xsessionDetails->liveSession->sessionType = XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION;
 
 	if (dwFlags & XSESSION_CREATE_HOST) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO, "%s User %u is hosting a session.", __func__, dwUserIndex);
-
-		xsessionDetails->dwUserIndexHost = dwUserIndex;
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+			, "%s User %u is hosting a session."
+			, __func__
+			, dwUserIndex
+		);
+		
+		xsessionDetails->liveSession->xuid = xlive_users_info[dwUserIndex]->xuid;
 		xsessionDetails->qwNonce = xlive_users_info[dwUserIndex]->xuid;
-
-		xsessionDetails->sessionInfo.hostAddress = xlive_local_xnAddr;
-
+		
+		xsessionDetails->xnAddr = xlive_local_xnAddr;
+		
 		// TODO XNKEY
-		memset(&xsessionDetails->sessionInfo.keyExchangeKey, 0xAA, sizeof(XNKEY));
-
+		memset(&xsessionDetails->liveSession->xnkey, 0xAA, sizeof(XNKEY));
+		
 		// TODO XNKID
-		memset(&xsessionDetails->sessionInfo.sessionID, 0x8B, sizeof(XNKID));
-		xsessionDetails->sessionInfo.sessionID.ab[0] &= ~XNET_XNKID_MASK;
-		xsessionDetails->sessionInfo.sessionID.ab[0] |= XNET_XNKID_ONLINE_PEER;
-
-		// Copy the struct.
-		*pSessionInfo = xsessionDetails->sessionInfo;
-
+		memset(&xsessionDetails->liveSession->xnkid, 0x8B, sizeof(XNKID));
+		xsessionDetails->liveSession->xnkid.ab[0] &= ~XNET_XNKID_MASK;
+		xsessionDetails->liveSession->xnkid.ab[0] |= XNET_XNKID_ONLINE_PEER;
+		
+		pSessionInfo->hostAddress = xsessionDetails->xnAddr;
+		pSessionInfo->keyExchangeKey = xsessionDetails->liveSession->xnkey;
+		pSessionInfo->sessionID = xsessionDetails->liveSession->xnkid;
+		
 		*pqwSessionNonce = xsessionDetails->qwNonce;
 	}
 	else {
-		xsessionDetails->dwUserIndexHost = XUSER_INDEX_NONE;
-
-		// Copy the struct.
-		xsessionDetails->sessionInfo = *pSessionInfo;
-
+		xsessionDetails->liveSession->xuid = INVALID_XUID;
+		
+		xsessionDetails->xnAddr = pSessionInfo->hostAddress;
+		xsessionDetails->liveSession->xnkey = pSessionInfo->keyExchangeKey;
+		xsessionDetails->liveSession->xnkid = pSessionInfo->sessionID;
+		
 		xsessionDetails->qwNonce = *pqwSessionNonce;
 	}
 
 	// already filled - SetContext
 	//xsessionDetails->dwGameType = 0;
 	//xsessionDetails->dwGameMode = 0;
+	
+	memset(&xsessionDetails->xnkidArbitration, 0x8B, sizeof(XNKID));
+	
+	xsessionDetails->liveSession->sessionFlags = dwFlags;
 
-	xsessionDetails->dwFlags = dwFlags;
-
-	xsessionDetails->dwMaxPublicSlots = dwMaxPublicSlots;
-	xsessionDetails->dwMaxPrivateSlots = dwMaxPrivateSlots;
-	xsessionDetails->dwAvailablePublicSlots = dwMaxPublicSlots;
-	xsessionDetails->dwAvailablePrivateSlots = dwMaxPrivateSlots;
+	xsessionDetails->liveSession->slotsPublicMaxCount = dwMaxPublicSlots;
+	xsessionDetails->liveSession->slotsPrivateMaxCount = dwMaxPrivateSlots;
+	xsessionDetails->liveSession->slotsPublicFilledCount = 0;
+	xsessionDetails->liveSession->slotsPrivateFilledCount = 0;
 
 	xsessionDetails->dwActualMemberCount = 0;
 	xsessionDetails->dwReturnedMemberCount = 0;
 
-	xsessionDetails->eState = XSESSION_STATE_LOBBY;
-
-	uint32_t maxMembers = xsessionDetails->dwMaxPublicSlots > xsessionDetails->dwMaxPrivateSlots ? xsessionDetails->dwMaxPublicSlots : xsessionDetails->dwMaxPrivateSlots;
+	uint32_t maxMembers = xsessionDetails->liveSession->slotsPublicMaxCount > xsessionDetails->liveSession->slotsPrivateMaxCount ? xsessionDetails->liveSession->slotsPublicMaxCount : xsessionDetails->liveSession->slotsPrivateMaxCount;
 	xsessionDetails->pSessionMembers = new XSESSION_MEMBER[maxMembers];
 
 	for (uint32_t i = 0; i < maxMembers; i++) {
@@ -165,7 +173,7 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 	*phEnum = CreateMutex(NULL, NULL, NULL);
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
-		xlive_xsessions[*phEnum] = xsessionDetails;
+		xlive_xsession_local_sessions[*phEnum] = xsessionDetails;
 		LeaveCriticalSection(&xlive_critsec_xsession);
 	}
 
@@ -248,8 +256,8 @@ DWORD WINAPI XSessionStart(HANDLE hSession, DWORD dwFlags, XOVERLAPPED *pXOverla
 	uint32_t result = ERROR_SUCCESS;
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
-		if (xlive_xsessions.count(hSession)) {
-			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
+		if (xlive_xsession_local_sessions.count(hSession)) {
+			LIVE_SESSION_XSESSION *xsessionDetails = xlive_xsession_local_sessions[hSession];
 
 			xsessionDetails->eState = XSESSION_STATE_INGAME;
 		}
@@ -341,17 +349,134 @@ DWORD WINAPI XSessionSearchEx(
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pcbResultsBuffer is NULL.", __func__);
 		return ERROR_INVALID_PARAMETER;
 	}
-
-	uint32_t requiredResultsBufferSize = 1326 * dwNumResults + 8;
-	if (*pcbResultsBuffer < requiredResultsBufferSize || !pSearchResults) {
-		*pcbResultsBuffer = requiredResultsBufferSize;
-		return ERROR_INSUFFICIENT_BUFFER;
+	
+	if (pSearchResults && *pcbResultsBuffer >= sizeof(XSESSION_SEARCHRESULT_HEADER)) {
+		pSearchResults->dwSearchResults = 0;
+		pSearchResults->pResults = 0;
 	}
+	
+	{
+		EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
+		
+		// Calculate the space required.
+		uint32_t bufferSizeRequired = sizeof(XSESSION_SEARCHRESULT_HEADER);
+		uint32_t searchResultCount = 0;
+		for (auto const &session : liveoverlan_remote_sessions_xsession) {
+			
+			// Ensure this is an XSession item.
+			if (session.second->liveSession->sessionType != XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION) {
+				continue;
+			}
+			
+			// TODO search criteria.
+			
+			searchResultCount++;
+			bufferSizeRequired += sizeof(XSESSION_SEARCHRESULT);
+			bufferSizeRequired += session.second->liveSession->contextsCount * sizeof(*session.second->liveSession->pContexts);
+			bufferSizeRequired += session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties);
+			for (uint32_t iProperty = 0; iProperty < session.second->liveSession->propertiesCount; iProperty++) {
+				XUSER_PROPERTY &property = session.second->liveSession->pProperties[iProperty];
+				switch (property.value.type) {
+					case XUSER_DATA_TYPE_BINARY: {
+						bufferSizeRequired += property.value.binary.cbData;
+						break;
+					}
+					case XUSER_DATA_TYPE_UNICODE: {
+						bufferSizeRequired += property.value.string.cbData;
+						break;
+					}
+				}
+			}
+		}
+		
+		if (*pcbResultsBuffer < bufferSizeRequired || !pSearchResults) {
+			*pcbResultsBuffer = bufferSizeRequired;
+			LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+			return ERROR_INSUFFICIENT_BUFFER;
+		}
+		
+		if (searchResultCount > 0) {
+			pSearchResults->pResults = (XSESSION_SEARCHRESULT*)&((uint8_t*)pSearchResults)[sizeof(XSESSION_SEARCHRESULT_HEADER)];
+			uint8_t *searchResultsData = &((uint8_t*)pSearchResults->pResults)[searchResultCount * sizeof(*pSearchResults->pResults)];
+			
+			uint32_t iSearchResult = 0;
+			for (auto const &session : liveoverlan_remote_sessions_xsession) {
+				// Ensure this is an XSession item.
+				if (session.second->liveSession->sessionType != XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION) {
+					continue;
+				}
+				
+				// TODO search criteria.
+				
+				// Copy over all the memory into the buffer.
+				XSESSION_SEARCHRESULT &searchResult = pSearchResults->pResults[iSearchResult++];
+				searchResult.info.sessionID = session.second->liveSession->xnkid;
+				searchResult.info.hostAddress = session.second->xnAddr;
+				searchResult.info.keyExchangeKey = session.second->liveSession->xnkey;
+				searchResult.dwOpenPublicSlots = session.second->liveSession->slotsPublicMaxCount;
+				searchResult.dwOpenPrivateSlots = session.second->liveSession->slotsPrivateMaxCount;
+				searchResult.dwFilledPublicSlots = session.second->liveSession->slotsPublicFilledCount;
+				searchResult.dwFilledPrivateSlots = session.second->liveSession->slotsPrivateFilledCount;
 
-	pSearchResults->dwSearchResults = 0;
-	pSearchResults->pResults = 0;
+				searchResult.cContexts = session.second->liveSession->contextsCount;
+				if (searchResult.cContexts == 0) {
+					searchResult.pContexts = 0;
+				}
+				else {
+					searchResult.pContexts = (XUSER_CONTEXT*)searchResultsData;
+					uint32_t contextsSize = searchResult.cContexts * sizeof(*searchResult.pContexts);
+					searchResultsData += contextsSize;
+					memcpy(searchResult.pContexts, session.second->liveSession->pContexts, contextsSize);
+				}
 
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+				searchResult.cProperties = session.second->liveSession->propertiesCount;
+				if (searchResult.cProperties == 0) {
+					searchResult.pProperties = 0;
+				}
+				else {
+					searchResult.pProperties = (XUSER_PROPERTY*)searchResultsData;
+					uint32_t propertiesSize = searchResult.cProperties * sizeof(*searchResult.pProperties);
+					searchResultsData += propertiesSize;
+					memcpy(searchResult.pProperties, session.second->liveSession->pProperties, propertiesSize);
+
+					for (uint32_t iProperty = 0; iProperty < searchResult.cProperties; iProperty++) {
+						XUSER_PROPERTY &propertyOrig = session.second->liveSession->pProperties[iProperty];
+						XUSER_PROPERTY &propertyCopy = searchResult.pProperties[iProperty];
+						switch (propertyCopy.value.type) {
+							case XUSER_DATA_TYPE_BINARY: {
+								propertyCopy.value.binary.pbData = searchResultsData;
+								memcpy(propertyCopy.value.binary.pbData, propertyOrig.value.binary.pbData, propertyCopy.value.binary.cbData);
+								searchResultsData += propertyCopy.value.binary.cbData;
+								break;
+							}
+							case XUSER_DATA_TYPE_UNICODE: {
+								propertyCopy.value.string.pwszData = (wchar_t*)searchResultsData;
+								memcpy(propertyCopy.value.string.pwszData, propertyOrig.value.string.pwszData, propertyCopy.value.string.cbData);
+								searchResultsData += propertyCopy.value.string.cbData;
+								break;
+							}
+						}
+					}
+				}
+			}
+			
+			if (searchResultsData != &((uint8_t*)pSearchResults)[bufferSizeRequired]) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_FATAL
+					, "%s the end result of searchResultData (0x%08x) should not be different from pSearchResults (0x%08x) plus bufferSizeRequired (0x%08x) giving 0x%08x."
+					, __func__
+					, searchResultsData
+					, (uint8_t*)pSearchResults
+					, bufferSizeRequired
+					, &((uint8_t*)pSearchResults)[bufferSizeRequired]
+				);
+				__debugbreak();
+				LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+				return ERROR_FATAL_APP_EXIT;
+			}
+		}
+		
+		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+	}
 
 	if (pXOverlapped) {
 		//asynchronous
@@ -458,13 +583,39 @@ DWORD WINAPI XSessionModify(HANDLE hSession, DWORD dwFlags, DWORD dwMaxPublicSlo
 	uint32_t result = ERROR_SUCCESS;
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
-		if (xlive_xsessions.count(hSession)) {
-			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
-
+		if (xlive_xsession_local_sessions.count(hSession)) {
+			LIVE_SESSION_XSESSION *xsessionDetails = xlive_xsession_local_sessions[hSession];
+			
 			const DWORD maskModifiers = XSESSION_CREATE_MODIFIERS_MASK - XSESSION_CREATE_SOCIAL_MATCHMAKING_ALLOWED; // not sure if social property is modifiable.
-			xsessionDetails->dwFlags = (xsessionDetails->dwFlags & (~maskModifiers)) | (maskModifiers & dwFlags);
-			xsessionDetails->dwMaxPrivateSlots = dwMaxPublicSlots;
-			xsessionDetails->dwMaxPrivateSlots = dwMaxPrivateSlots;
+			xsessionDetails->liveSession->sessionFlags = (xsessionDetails->liveSession->sessionFlags & (~maskModifiers)) | (maskModifiers & dwFlags);
+			
+			uint32_t maxMembersBefore = xsessionDetails->liveSession->slotsPublicMaxCount > xsessionDetails->liveSession->slotsPrivateMaxCount ? xsessionDetails->liveSession->slotsPublicMaxCount : xsessionDetails->liveSession->slotsPrivateMaxCount;
+			uint32_t maxMembersAfter = dwMaxPublicSlots > dwMaxPrivateSlots ? dwMaxPublicSlots : dwMaxPrivateSlots;
+			
+			if (maxMembersAfter < maxMembersBefore) {
+				// TODO and if the number of INVALID_XUID dont make up for it then error.
+				result = XONLINE_E_SESSION_FULL;
+			}
+			else {
+				xsessionDetails->liveSession->slotsPublicMaxCount = dwMaxPublicSlots;
+				xsessionDetails->liveSession->slotsPrivateMaxCount = dwMaxPrivateSlots;
+				
+				XSESSION_MEMBER *sessionMembersBefore = xsessionDetails->pSessionMembers;
+				xsessionDetails->pSessionMembers = new XSESSION_MEMBER[maxMembersAfter];
+				
+				for (uint32_t i = 0; i < maxMembersBefore; i++) {
+					xsessionDetails->pSessionMembers[i].xuidOnline = sessionMembersBefore[i].xuidOnline;
+					xsessionDetails->pSessionMembers[i].dwUserIndex = sessionMembersBefore[i].dwUserIndex;
+					xsessionDetails->pSessionMembers[i].dwFlags = sessionMembersBefore[i].dwFlags;
+				}
+				for (uint32_t i = maxMembersBefore; i < maxMembersAfter; i++) {
+					xsessionDetails->pSessionMembers[i].xuidOnline = INVALID_XUID;
+					xsessionDetails->pSessionMembers[i].dwUserIndex = XLIVE_LOCAL_USER_INVALID;
+					xsessionDetails->pSessionMembers[i].dwFlags = 0;
+				}
+				
+				delete[] sessionMembersBefore;
+			}
 		}
 		else {
 			result = XONLINE_E_SESSION_NOT_FOUND;
@@ -610,8 +761,8 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 	uint32_t result = ERROR_SUCCESS;
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
-		if (xlive_xsessions.count(hSession)) {
-			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
+		if (xlive_xsession_local_sessions.count(hSession)) {
+			LIVE_SESSION_XSESSION *xsessionDetails = xlive_xsession_local_sessions[hSession];
 
 			uint32_t requestedSlotCountPublic = 0;
 			uint32_t requestedSlotCountPrivate = 0;
@@ -624,28 +775,30 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 				}
 			}
 
-			if (requestedSlotCountPrivate > xsessionDetails->dwAvailablePrivateSlots) {
+			if (requestedSlotCountPrivate > xsessionDetails->liveSession->slotsPrivateMaxCount - xsessionDetails->liveSession->slotsPrivateFilledCount) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%u > %u)"
+					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%u > %u - %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPrivate
-					, xsessionDetails->dwAvailablePrivateSlots
+					, xsessionDetails->liveSession->slotsPrivateMaxCount
+					, xsessionDetails->liveSession->slotsPrivateFilledCount
 				);
 				result = XONLINE_E_SESSION_JOIN_ILLEGAL;
 			}
-			else if (requestedSlotCountPublic > xsessionDetails->dwAvailablePublicSlots) {
+			else if (requestedSlotCountPublic > xsessionDetails->liveSession->slotsPublicMaxCount - xsessionDetails->liveSession->slotsPublicFilledCount) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%u > %u)"
+					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%u > %u - %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPublic
-					, xsessionDetails->dwAvailablePublicSlots
+					, xsessionDetails->liveSession->slotsPublicMaxCount
+					, xsessionDetails->liveSession->slotsPublicFilledCount
 				);
 				result = XONLINE_E_SESSION_JOIN_ILLEGAL;
 			}
 			else {
-				uint32_t maxMembers = xsessionDetails->dwMaxPublicSlots > xsessionDetails->dwMaxPrivateSlots ? xsessionDetails->dwMaxPublicSlots : xsessionDetails->dwMaxPrivateSlots;
+				uint32_t maxMembers = xsessionDetails->liveSession->slotsPublicMaxCount > xsessionDetails->liveSession->slotsPrivateMaxCount ? xsessionDetails->liveSession->slotsPublicMaxCount : xsessionDetails->liveSession->slotsPrivateMaxCount;
 
 				for (uint32_t iXuid = 0; iXuid < dwXuidCount; iXuid++) {
 					const XUID &remoteXuid = pXuids[iXuid];
@@ -669,11 +822,11 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 						xsessionDetails->pSessionMembers[iMemberEmpty].dwUserIndex = XLIVE_LOCAL_USER_INVALID;
 						xsessionDetails->pSessionMembers[iMemberEmpty].dwFlags = 0;
 						if (pfPrivateSlots[iXuid]) {
-							xsessionDetails->dwAvailablePrivateSlots--;
+							xsessionDetails->liveSession->slotsPrivateFilledCount++;
 							xsessionDetails->pSessionMembers[iMemberEmpty].dwFlags = XSESSION_MEMBER_FLAGS_PRIVATE_SLOT;
 						}
 						else {
-							xsessionDetails->dwAvailablePublicSlots--;
+							xsessionDetails->liveSession->slotsPublicFilledCount++;
 						}
 						xsessionDetails->dwActualMemberCount++;
 						xsessionDetails->dwReturnedMemberCount++;
@@ -688,18 +841,18 @@ DWORD WINAPI XSessionJoinRemote(HANDLE hSession, DWORD dwXuidCount, const XUID *
 							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Remote XUID 0x%016x is already in the session.", __func__, remoteXuid);
 						}
 						if (xsessionDetails->pSessionMembers[iMember].dwFlags & XSESSION_MEMBER_FLAGS_PRIVATE_SLOT) {
-							xsessionDetails->dwAvailablePrivateSlots++;
+							xsessionDetails->liveSession->slotsPrivateFilledCount--;
 						}
 						else {
-							xsessionDetails->dwAvailablePublicSlots++;
+							xsessionDetails->liveSession->slotsPublicFilledCount--;
 						}
 						xsessionDetails->pSessionMembers[iMember].dwFlags = 0;
 						if (pfPrivateSlots[iXuid]) {
-							xsessionDetails->dwAvailablePrivateSlots--;
+							xsessionDetails->liveSession->slotsPrivateFilledCount++;
 							xsessionDetails->pSessionMembers[iMemberEmpty].dwFlags = XSESSION_MEMBER_FLAGS_PRIVATE_SLOT;
 						}
 						else {
-							xsessionDetails->dwAvailablePublicSlots--;
+							xsessionDetails->liveSession->slotsPublicFilledCount++;
 						}
 					}
 				}
@@ -761,8 +914,8 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 	uint32_t result = ERROR_SUCCESS;
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
-		if (xlive_xsessions.count(hSession)) {
-			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
+		if (xlive_xsession_local_sessions.count(hSession)) {
+			LIVE_SESSION_XSESSION *xsessionDetails = xlive_xsession_local_sessions[hSession];
 
 			uint32_t requestedSlotCountPublic = 0;
 			uint32_t requestedSlotCountPrivate = 0;
@@ -775,28 +928,30 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 				}
 			}
 
-			if (requestedSlotCountPrivate > xsessionDetails->dwAvailablePrivateSlots) {
+			if (requestedSlotCountPrivate > xsessionDetails->liveSession->slotsPrivateMaxCount - xsessionDetails->liveSession->slotsPrivateFilledCount) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%u > %u)"
+					, "%s Not enough private slots are available in session 0x%08x. (need > available) (%u > %u - %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPrivate
-					, xsessionDetails->dwAvailablePrivateSlots
+					, xsessionDetails->liveSession->slotsPrivateMaxCount
+					, xsessionDetails->liveSession->slotsPrivateFilledCount
 				);
 				result = XONLINE_E_SESSION_JOIN_ILLEGAL;
 			}
-			else if (requestedSlotCountPublic > xsessionDetails->dwAvailablePublicSlots) {
+			else if (requestedSlotCountPublic > xsessionDetails->liveSession->slotsPublicMaxCount - xsessionDetails->liveSession->slotsPublicFilledCount) {
 				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%u > %u)"
+					, "%s Not enough public slots are available in session 0x%08x. (need > available) (%u > %u - %u)"
 					, __func__
 					, hSession
 					, requestedSlotCountPublic
-					, xsessionDetails->dwAvailablePublicSlots
+					, xsessionDetails->liveSession->slotsPublicMaxCount
+					, xsessionDetails->liveSession->slotsPublicFilledCount
 				);
 				result = XONLINE_E_SESSION_JOIN_ILLEGAL;
 			}
 			else {
-				uint32_t maxMembers = xsessionDetails->dwMaxPublicSlots > xsessionDetails->dwMaxPrivateSlots ? xsessionDetails->dwMaxPublicSlots : xsessionDetails->dwMaxPrivateSlots;
+				uint32_t maxMembers = xsessionDetails->liveSession->slotsPublicMaxCount > xsessionDetails->liveSession->slotsPrivateMaxCount ? xsessionDetails->liveSession->slotsPublicMaxCount : xsessionDetails->liveSession->slotsPrivateMaxCount;
 
 				for (uint32_t iUser = 0; iUser < dwUserCount; iUser++) {
 					const uint32_t &localUserIndex = pdwUserIndexes[iUser];
@@ -820,11 +975,11 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 						xsessionDetails->pSessionMembers[iMemberEmpty].dwUserIndex = localUserIndex;
 						xsessionDetails->pSessionMembers[iMemberEmpty].dwFlags = 0;
 						if (pfPrivateSlots[iUser]) {
-							xsessionDetails->dwAvailablePrivateSlots--;
+							xsessionDetails->liveSession->slotsPrivateFilledCount++;
 							xsessionDetails->pSessionMembers[iMemberEmpty].dwFlags = XSESSION_MEMBER_FLAGS_PRIVATE_SLOT;
 						}
 						else {
-							xsessionDetails->dwAvailablePublicSlots--;
+							xsessionDetails->liveSession->slotsPublicFilledCount++;
 						}
 						xsessionDetails->dwActualMemberCount++;
 						xsessionDetails->dwReturnedMemberCount++;
@@ -839,18 +994,18 @@ DWORD WINAPI XSessionJoinLocal(HANDLE hSession, DWORD dwUserCount, const DWORD *
 							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Local user %u is already in the session.", __func__, localUserIndex);
 						}
 						if (xsessionDetails->pSessionMembers[iMember].dwFlags & XSESSION_MEMBER_FLAGS_PRIVATE_SLOT) {
-							xsessionDetails->dwAvailablePrivateSlots++;
+							xsessionDetails->liveSession->slotsPrivateFilledCount--;
 						}
 						else {
-							xsessionDetails->dwAvailablePublicSlots++;
+							xsessionDetails->liveSession->slotsPublicFilledCount--;
 						}
 						xsessionDetails->pSessionMembers[iMember].dwFlags = 0;
 						if (pfPrivateSlots[iUser]) {
-							xsessionDetails->dwAvailablePrivateSlots--;
+							xsessionDetails->liveSession->slotsPrivateFilledCount++;
 							xsessionDetails->pSessionMembers[iMemberEmpty].dwFlags = XSESSION_MEMBER_FLAGS_PRIVATE_SLOT;
 						}
 						else {
-							xsessionDetails->dwAvailablePublicSlots--;
+							xsessionDetails->liveSession->slotsPublicFilledCount++;
 						}
 					}
 				}
@@ -908,10 +1063,32 @@ DWORD WINAPI XSessionGetDetails(HANDLE hSession, DWORD *pcbResultsBuffer, XSESSI
 	uint32_t result = ERROR_SUCCESS;
 	{
 		EnterCriticalSection(&xlive_critsec_xsession);
-		if (xlive_xsessions.count(hSession)) {
-			XSESSION_LOCAL_DETAILS *xsessionDetails = xlive_xsessions[hSession];
-			*pSessionDetails = *xsessionDetails;
-			// TODO need to copy this in to buffer if there is enough space.
+		if (xlive_xsession_local_sessions.count(hSession)) {
+			LIVE_SESSION_XSESSION *xsessionDetails = xlive_xsession_local_sessions[hSession];
+			pSessionDetails->dwUserIndexHost = XLIVE_LOCAL_USER_INVALID;
+			for (size_t iUser = 0; iUser < XLIVE_LOCAL_USER_COUNT; iUser++) {
+				if (xlive_users_info[iUser]->xuid == xsessionDetails->liveSession->xuid) {
+					pSessionDetails->dwUserIndexHost = iUser;
+					break;
+				}
+			}
+			pSessionDetails->dwGameType = xsessionDetails->dwGameType;
+			pSessionDetails->dwGameMode = xsessionDetails->dwGameMode;
+			pSessionDetails->dwFlags = xsessionDetails->liveSession->sessionFlags;
+			pSessionDetails->dwMaxPublicSlots = xsessionDetails->liveSession->slotsPublicMaxCount;
+			pSessionDetails->dwMaxPrivateSlots = xsessionDetails->liveSession->slotsPrivateMaxCount;
+			pSessionDetails->dwAvailablePublicSlots = xsessionDetails->liveSession->slotsPublicMaxCount - xsessionDetails->liveSession->slotsPublicFilledCount;
+			pSessionDetails->dwAvailablePrivateSlots = xsessionDetails->liveSession->slotsPrivateMaxCount - xsessionDetails->liveSession->slotsPrivateFilledCount;
+			pSessionDetails->dwActualMemberCount = xsessionDetails->dwActualMemberCount;
+			pSessionDetails->dwReturnedMemberCount = xsessionDetails->dwReturnedMemberCount;
+			pSessionDetails->eState = xsessionDetails->eState;
+			pSessionDetails->qwNonce = xsessionDetails->qwNonce;
+			pSessionDetails->sessionInfo.sessionID = xsessionDetails->liveSession->xnkid;
+			pSessionDetails->sessionInfo.hostAddress = xsessionDetails->xnAddr;
+			pSessionDetails->sessionInfo.keyExchangeKey = xsessionDetails->liveSession->xnkey;
+			pSessionDetails->xnkidArbitration = xsessionDetails->xnkidArbitration;
+			
+			// FIXME need to copy this in to buffer if there is enough space.
 			pSessionDetails->pSessionMembers = 0;
 		}
 		else {

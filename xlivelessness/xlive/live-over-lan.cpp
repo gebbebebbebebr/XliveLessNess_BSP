@@ -4,6 +4,8 @@
 #include "packet-handler.hpp"
 #include "net-entity.hpp"
 #include "xsocket.hpp"
+#include "xlocator.hpp"
+#include "xsession.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../utils/utils.hpp"
 #include "../utils/util-socket.hpp"
@@ -26,9 +28,9 @@ static BOOL liveoverlan_running = FALSE;
 static std::atomic<bool> liveoverlan_exit = TRUE;
 static std::atomic<bool> liveoverlan_break_sleep = FALSE;
 
-LIVE_SESSION *local_xlocator_session = 0;
 // Key: InstanceId.
-std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions;
+std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions_xlocator;
+std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions_xsession;
 
 bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
 {
@@ -83,8 +85,8 @@ bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
 void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid)
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-	if (local_xlocator_session && local_xlocator_session->xuid == xuid) {
-		LiveOverLanDestroyLiveSession(&local_xlocator_session);
+	if (xlive_xlocator_local_session && xlive_xlocator_local_session->xuid == xuid) {
+		LiveOverLanDestroyLiveSession(&xlive_xlocator_local_session);
 	}
 	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	
@@ -130,49 +132,76 @@ void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid)
 	delete[] packetBuffer;
 }
 
-void LiveOverLanBroadcastRemoteSessionUnadvertise(const uint32_t instanceId, const XUID xuid)
-{
-	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-
-	// Delete the old entry if there already is one.
-	if (liveoverlan_remote_sessions.count(instanceId)) {
-		LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions[instanceId];
-		LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
-		delete liveSessionRemoteOld;
-		liveoverlan_remote_sessions.erase(instanceId);
-	}
-
-	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
-}
-
-void LiveOverLanAddRemoteLiveSession(const uint32_t instanceId, LIVE_SESSION *live_session)
+void LiveOverLanBroadcastRemoteSessionUnadvertise(const uint32_t instance_id, const uint8_t session_type, const XUID xuid)
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	
-	// Delete the old entry if there already is one.
-	if (liveoverlan_remote_sessions.count(instanceId)) {
-		LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions[instanceId];
-		LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
-		delete liveSessionRemoteOld;
+	if (session_type == XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR) {
+		// Delete the old entry if there already is one.
+		if (liveoverlan_remote_sessions_xlocator.count(instance_id)) {
+			LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions_xlocator[instance_id];
+			LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
+			delete liveSessionRemoteOld;
+			liveoverlan_remote_sessions_xlocator.erase(instance_id);
+		}
+	}
+	else {
+		// Delete the old entry if there already is one.
+		if (liveoverlan_remote_sessions_xsession.count(instance_id)) {
+			LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions_xsession[instance_id];
+			LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
+			delete liveSessionRemoteOld;
+			liveoverlan_remote_sessions_xsession.erase(instance_id);
+		}
+	}
+	
+	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+}
+
+void LiveOverLanAddRemoteLiveSession(const uint32_t instance_id, const uint8_t session_type, LIVE_SESSION *live_session)
+{
+	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
+	
+	if (session_type == XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR) {
+		// Delete the old entry if there already is one.
+		if (liveoverlan_remote_sessions_xlocator.count(instance_id)) {
+			LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions_xlocator[instance_id];
+			LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
+			delete liveSessionRemoteOld;
+		}
+	}
+	else {
+		// Delete the old entry if there already is one.
+		if (liveoverlan_remote_sessions_xsession.count(instance_id)) {
+			LIVE_SESSION_REMOTE *liveSessionRemoteOld = liveoverlan_remote_sessions_xsession[instance_id];
+			LiveOverLanDestroyLiveSession(&liveSessionRemoteOld->liveSession);
+			delete liveSessionRemoteOld;
+		}
 	}
 
-	// Fill in serverAddress as it is not populated otherwise.
-	uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(&live_session->xnAddr, 0, instanceId);
+	XNADDR xnaddr;
+	uint32_t resultNetter = NetterEntityGetXnaddrByInstanceId(&xnaddr, 0, instance_id);
 	if (resultNetter) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_ERROR
 			, "%s NetterEntityGetXnaddrByInstanceId failed to find NetEntity 0x%08x with error 0x%08x."
 			, __func__
-			, instanceId
+			, instance_id
 			, resultNetter
 		);
 	}
 
 	LIVE_SESSION_REMOTE *liveSessionRemote = new LIVE_SESSION_REMOTE;
 	liveSessionRemote->liveSession = live_session;
+	liveSessionRemote->xnAddr = xnaddr;
 	time_t ltime;
 	time(&ltime);
 	liveSessionRemote->timeOfLastContact = (unsigned long)ltime;
-	liveoverlan_remote_sessions[instanceId] = liveSessionRemote;
+	if (session_type == XLLN_LIVEOVERLAN_SESSION_TYPE_XLOCATOR) {
+		liveoverlan_remote_sessions_xlocator[instance_id] = liveSessionRemote;
+	}
+	else {
+		liveoverlan_remote_sessions_xsession[instance_id] = liveSessionRemote;
+	}
 	
 	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 }
@@ -181,8 +210,15 @@ static void LiveOverLanBroadcastLocalSession()
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	
-	// TODO local xsession session.
-	if (!local_xlocator_session && true) {
+	bool anyXSessionLocalSessions = false;
+	for (auto const &entry : xlive_xsession_local_sessions) {
+		if (entry.second->liveSession->sessionType == XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION && entry.second->liveSession->sessionFlags & XSESSION_CREATE_HOST) {
+			anyXSessionLocalSessions = true;
+			break;
+		}
+	}
+	
+	if (!xlive_xlocator_local_session && !anyXSessionLocalSessions) {
 		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 		return;
 	}
@@ -209,10 +245,10 @@ static void LiveOverLanBroadcastLocalSession()
 		, socketInfoLiveOverLan.portOgHBO
 	);
 	
-	if (local_xlocator_session) {
+	if (xlive_xlocator_local_session) {
 		uint8_t *liveSessionSerialisedPacket;
 		uint32_t liveSessionSerialisedPacketSize;
-		if (LiveOverLanSerialiseLiveSessionIntoNetPacket(local_xlocator_session, &liveSessionSerialisedPacket, &liveSessionSerialisedPacketSize)) {
+		if (LiveOverLanSerialiseLiveSessionIntoNetPacket(xlive_xlocator_local_session, &liveSessionSerialisedPacket, &liveSessionSerialisedPacketSize)) {
 			XllnSocketSendTo(
 				socketInfoLiveOverLan.socket
 				, (char*)liveSessionSerialisedPacket
@@ -222,6 +258,28 @@ static void LiveOverLanBroadcastLocalSession()
 				, sizeof(SendStruct)
 			);
 			delete[] liveSessionSerialisedPacket;
+		}
+	}
+	
+	if (anyXSessionLocalSessions) {
+		for (auto const &entry : xlive_xsession_local_sessions) {
+			if (!(entry.second->liveSession->sessionType == XLLN_LIVEOVERLAN_SESSION_TYPE_XSESSION && entry.second->liveSession->sessionFlags & XSESSION_CREATE_HOST)) {
+				continue;
+			}
+			
+			uint8_t *liveSessionSerialisedPacket;
+			uint32_t liveSessionSerialisedPacketSize;
+			if (LiveOverLanSerialiseLiveSessionIntoNetPacket(entry.second->liveSession, &liveSessionSerialisedPacket, &liveSessionSerialisedPacketSize)) {
+				XllnSocketSendTo(
+					socketInfoLiveOverLan.socket
+					, (char*)liveSessionSerialisedPacket
+					, liveSessionSerialisedPacketSize
+					, 0
+					, (SOCKADDR*)&SendStruct
+					, sizeof(SendStruct)
+				);
+				delete[] liveSessionSerialisedPacket;
+			}
 		}
 	}
 
@@ -695,10 +753,10 @@ VOID LiveOverLanStartBroadcast()
 VOID LiveOverLanStopBroadcast()
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-	if (local_xlocator_session) {
-		LiveOverLanDestroyLiveSession(&local_xlocator_session);
+	if (xlive_xlocator_local_session) {
+		LiveOverLanDestroyLiveSession(&xlive_xlocator_local_session);
 	}
-	local_xlocator_session = 0;
+	xlive_xlocator_local_session = 0;
 
 	if (liveoverlan_running) {
 		liveoverlan_running = FALSE;
@@ -722,26 +780,44 @@ static VOID LiveOverLanEmpty()
 			, "%s continuing. Removing any old entries."
 			, __func__
 		);
-		EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-
-		std::vector<uint32_t> removesessions;
-		time_t ltime;
-		time(&ltime);//seconds since epoch.
-		DWORD timetoremove = ((DWORD)ltime) - 15;
-		for (auto const &session : liveoverlan_remote_sessions) {
-			if (session.second->timeOfLastContact > timetoremove) {
-				continue;
+		
+		{
+			EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
+			
+			time_t ltime;
+			time(&ltime);//seconds since epoch.
+			DWORD timetoremove = ((DWORD)ltime) - 15;
+			std::vector<uint32_t> removesessions;
+			
+			for (auto const &session : liveoverlan_remote_sessions_xlocator) {
+				if (session.second->timeOfLastContact > timetoremove) {
+					continue;
+				}
+				LiveOverLanDestroyLiveSession(&session.second->liveSession);
+				delete session.second;
+				removesessions.push_back(session.first);
 			}
-			LiveOverLanDestroyLiveSession(&session.second->liveSession);
-			delete session.second;
-			removesessions.push_back(session.first);
+			for (auto const &session : removesessions) {
+				liveoverlan_remote_sessions_xlocator.erase(session);
+			}
+			removesessions.clear();
+			
+			for (auto const &session : liveoverlan_remote_sessions_xsession) {
+				if (session.second->timeOfLastContact > timetoremove) {
+					continue;
+				}
+				LiveOverLanDestroyLiveSession(&session.second->liveSession);
+				delete session.second;
+				removesessions.push_back(session.first);
+			}
+			for (auto const &session : removesessions) {
+				liveoverlan_remote_sessions_xsession.erase(session);
+			}
+			removesessions.clear();
+			
+			LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 		}
-		for (auto const &session : removesessions) {
-			liveoverlan_remote_sessions.erase(session);
-		}
-
-		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
-
+		
 		std::unique_lock<std::mutex> lock(mymutex);
 		liveoverlan_cond_empty.wait_for(lock, std::chrono::seconds(10), []() { return liveoverlan_empty_exit == TRUE; });
 		if (liveoverlan_empty_exit) {
@@ -762,12 +838,21 @@ VOID LiveOverLanStartEmpty()
 VOID LiveOverLanStopEmpty()
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_sessions);
-	for (auto const &session : liveoverlan_remote_sessions) {
+	
+	for (auto const &session : liveoverlan_remote_sessions_xlocator) {
 		LiveOverLanDestroyLiveSession(&session.second->liveSession);
 		delete session.second;
 	}
-	liveoverlan_remote_sessions.clear();
+	liveoverlan_remote_sessions_xlocator.clear();
+	
+	for (auto const &session : liveoverlan_remote_sessions_xsession) {
+		LiveOverLanDestroyLiveSession(&session.second->liveSession);
+		delete session.second;
+	}
+	liveoverlan_remote_sessions_xsession.clear();
+	
 	LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
+	
 	if (liveoverlan_empty_exit == FALSE) {
 		liveoverlan_empty_exit = TRUE;
 		liveoverlan_cond_empty.notify_all();

@@ -366,7 +366,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 				}
 				
 				XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE &packetLiveOverLanUnadvertise = *(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE*)&dataBuffer[packetSizeAlreadyProcessedOffset];
-				LiveOverLanBroadcastRemoteSessionUnadvertise(instanceId, packetLiveOverLanUnadvertise.xuid);
+				LiveOverLanBroadcastRemoteSessionUnadvertise(instanceId, packetLiveOverLanUnadvertise.sessionType, packetLiveOverLanUnadvertise.xuid);
 				
 				packetSizeAlreadyProcessedOffset = dataRecvSize;
 				break;
@@ -386,7 +386,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 				break;
 			}
 			
-			LiveOverLanAddRemoteLiveSession(instanceId, liveSession);
+			LiveOverLanAddRemoteLiveSession(instanceId, liveSession->sessionType, liveSession);
 			
 			packetSizeAlreadyProcessedOffset = dataRecvSize;
 			break;

@@ -70,6 +70,7 @@ namespace XLLNNetPacketType {
 	} HUB_REPLY_PACKET;
 
 	typedef struct {
+		uint8_t sessionType = 0;
 		XUID xuid = 0;
 	} LIVE_OVER_LAN_UNADVERTISE;
 
