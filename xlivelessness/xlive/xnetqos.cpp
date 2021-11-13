@@ -17,74 +17,72 @@ INT WINAPI XNetQosListen(XNKID *pxnkid, PBYTE pb, UINT cb, DWORD dwBitsPerSec, D
 DWORD WINAPI XNetQosLookup(UINT cxna, XNADDR * apxna[], XNKID * apxnkid[], XNKEY * apxnkey[], UINT cina, IN_ADDR aina[], DWORD adwServiceId[], UINT cProbes, DWORD dwBitsPerSec, DWORD dwFlags, WSAEVENT hEvent, XNQOS** pxnqos)
 {
 	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	//return ERROR_FUNCTION_FAILED;
-	/*
-	//void ClientQoSLookUp(UINT cxna, XNADDR* apxna[],UINT cProbes,IN_ADDR  aina[], XNQOS** pxnqos,DWORD dwBitsPerSec)
-
-	//XNADDR **axpna_copy = (XNADDR**)malloc(cxna * sizeof(XNADDR*));
-	XNADDR** axpna_copy = (XNADDR**)malloc(cxna * sizeof(XNADDR*));
-
-	for (unsigned int i = 0; i < cxna; i++)
-	{
-		XNADDR* xn = apxna[i];
-		axpna_copy[i] = new XNADDR;
-		memcpy(axpna_copy[i], xn, sizeof(XNADDR));
+	if (!pxnqos) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnqos is NULL.", __func__);
+		return WSAEFAULT;
 	}
-
-
-	*pxnqos = (XNQOS*)malloc(sizeof(XNQOS) + (sizeof(XNQOSINFO) * (cxna - 1)));
-
-	XNQOS* pqos = &**pxnqos;
-	ZeroMemory(pqos, sizeof(XNQOS) + (sizeof(XNQOSINFO)*(cxna - 1)));
-
-	pqos->cxnqosPending = cxna;
-	pqos->cxnqos = cxna;
-	pqos->axnqosinfo[0].wRttMedInMsecs = 500;
-	pqos->axnqosinfo[0].wRttMinInMsecs = 100;
-	pqos->axnqosinfo[0].dwDnBitsPerSec = dwBitsPerSec;
-	pqos->axnqosinfo[0].dwUpBitsPerSec = dwBitsPerSec;
-	pqos->axnqosinfo[0].bFlags = XNET_XNQOSINFO_TARGET_CONTACTED | XNET_XNQOSINFO_COMPLETE;
-
-
-	*/
-	/*
-	This is gonna hit some CPUs hard when there's a lot of servers on the list, we'll probably want to queue this a bit and only allow X number of threads to run at a time.
-	We want to abuse the CPU where possible considering more modern systems will have decent CPUs so we'll be able to force things to happen faster but still want to keep compatibility with older setups.
-	*/
-
-	//std::thread(ClientQoSLookUp, cxna, axpna_copy, cProbes, aina, pxnqos, dwBitsPerSec, pqos).detach();
-
-
-	/* Memory Leak  - FIX ME! (Need to do some kind of garbage collection somewhere and store data like this in an array to be cleared later */
+	*pxnqos = 0;
+	if (dwFlags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s dwFlags is not 0.", __func__);
+		return WSAEINVAL;
+	}
+	if (!cxna && !cina) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s cxna and cina are 0.", __func__);
+		return WSAEINVAL;
+	}
+	if (cxna) {
+		if (!apxna) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s apxna is NULL.", __func__);
+			return WSAEFAULT;
+		}
+		if (!apxnkid) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s apxnkid is NULL.", __func__);
+			return WSAEFAULT;
+		}
+		if (!apxnkey) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s apxnkey is NULL.", __func__);
+			return WSAEFAULT;
+		}
+	}
+	if (cina) {
+		if (!aina) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s aina is NULL.", __func__);
+			return WSAEFAULT;
+		}
+		if (!adwServiceId) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s adwServiceId is NULL.", __func__);
+			return WSAEFAULT;
+		}
+		
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s FIXME need to see how results are populated.", __func__);
+	}
 	
-	*pxnqos = new XNQOS;
-	XNQOS* pqos = *pxnqos;
-	pqos->cxnqos = 1;
-	pqos->cxnqosPending = 0;
-	memset(pqos->axnqosinfo, 0x00, sizeof(XNQOSINFO));
-	pqos->axnqosinfo->bReserved = 0;
-	pqos->axnqosinfo->cProbesXmit = cProbes;
-	pqos->axnqosinfo->cProbesRecv = cProbes;
-
-	if (cProbes > 0)
-	{
-	pqos->axnqosinfo->wRttMedInMsecs = 5;
-	pqos->axnqosinfo->wRttMinInMsecs = 10;
-	pqos->axnqosinfo->dwUpBitsPerSec = dwBitsPerSec;
-	pqos->axnqosinfo->dwDnBitsPerSec = dwBitsPerSec;
-	pqos->axnqosinfo->bFlags = XNET_XNQOSINFO_TARGET_CONTACTED | XNET_XNQOSINFO_COMPLETE | XNET_XNQOSINFO_DATA_RECEIVED;
+	uint32_t xnQoSSize = (uint32_t)&(*pxnqos)->axnqosinfo - (uint32_t)*pxnqos;
+	// FIXME also add cina?
+	xnQoSSize += cxna * sizeof(*(*pxnqos)->axnqosinfo);
+	*pxnqos = (XNQOS*)new uint8_t[xnQoSSize];
+	memset(*pxnqos, 0, xnQoSSize);
+	
+	XNQOS &xnQoS = *(*pxnqos);
+	xnQoS.cxnqos = cxna;
+	xnQoS.cxnqosPending = 0;
+	
+	for (size_t iXnQoS = 0; iXnQoS < xnQoS.cxnqos; iXnQoS++) {
+		xnQoS.axnqosinfo[iXnQoS].bFlags = XNET_XNQOSINFO_TARGET_CONTACTED | XNET_XNQOSINFO_COMPLETE;
+		if (cProbes > 0) {
+			xnQoS.axnqosinfo[iXnQoS].bFlags |= XNET_XNQOSINFO_DATA_RECEIVED;
+		}
+		xnQoS.axnqosinfo[iXnQoS].cProbesXmit = cProbes;
+		xnQoS.axnqosinfo[iXnQoS].cProbesRecv = cProbes;
+		xnQoS.axnqosinfo[iXnQoS].wRttMinInMsecs = 50;
+		xnQoS.axnqosinfo[iXnQoS].wRttMedInMsecs = 60;
+		xnQoS.axnqosinfo[iXnQoS].dwUpBitsPerSec = dwBitsPerSec;
+		xnQoS.axnqosinfo[iXnQoS].dwDnBitsPerSec = dwBitsPerSec;
+		// TODO This will probably need setting.
+		xnQoS.axnqosinfo[iXnQoS].cbData = 0;
+		xnQoS.axnqosinfo[iXnQoS].pbData = 0;
 	}
-	else
-	{
-	pqos->axnqosinfo->wRttMedInMsecs = 5;
-	pqos->axnqosinfo->wRttMinInMsecs = 10;
-	pqos->axnqosinfo->dwUpBitsPerSec = dwBitsPerSec;
-	pqos->axnqosinfo->dwDnBitsPerSec = dwBitsPerSec;
-	pqos->axnqosinfo->bFlags = XNET_XNQOSINFO_TARGET_CONTACTED | XNET_XNQOSINFO_COMPLETE;
-
-	}
-
+	
 	return S_OK;
 }
 
@@ -118,21 +116,23 @@ INT WINAPI XNetQosRelease(XNQOS* pxnqos)
 	TRACE_FX();
 	if (!pxnqos) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnqos is NULL.", __func__);
-		return WSAEINVAL;
+		return WSAEFAULT;
 	}
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return S_OK;
-	//return ERROR_FUNCTION_FAILED;
-	for (unsigned int i = 0; i == pxnqos->cxnqos; i++)
-	{
-		if (pxnqos->axnqosinfo[i].cbData > 0)
-			delete[] pxnqos->axnqosinfo[i].pbData;
-
-		delete[] & pxnqos->axnqosinfo[i];
-		//XNQOSINFO *xnqos = &pqos->axnqosinfo[ ( pqos->cxnqosPending - 1) ];
-
+	
+	for (size_t iXnQoS = 0; iXnQoS < pxnqos->cxnqos; iXnQoS++) {
+		if (pxnqos->axnqosinfo[iXnQoS].cbData && !pxnqos->axnqosinfo[iXnQoS].pbData) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnqos (0x%08x) pxnqos->axnqosinfo[%u].cbData is not 0 while pbData is NULL.", __func__, pxnqos, iXnQoS);
+		}
+		if (pxnqos->axnqosinfo[iXnQoS].pbData && !pxnqos->axnqosinfo[iXnQoS].cbData) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnqos (0x%08x) pxnqos->axnqosinfo[%u].pbData is not null while cbData is 0.", __func__, pxnqos, iXnQoS);
+		}
+		if (pxnqos->axnqosinfo[iXnQoS].pbData) {
+			delete[] pxnqos->axnqosinfo[iXnQoS].pbData;
+		}
 	}
-	// We need to clean-up all XNetQoSLookup data here, listener data should be cleaned up inside the Listen function Only.
+	
+	delete[] pxnqos;
+	
 	return S_OK;
 }
 

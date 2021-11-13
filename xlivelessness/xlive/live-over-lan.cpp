@@ -72,7 +72,16 @@ bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
 				socketInfoSearch = socketInfoPair.second;
 			}
 		}
-
+		
+		if (!socketInfoSearch) {
+			for (auto const &socketInfoPair : xlive_socket_info) {
+				if (socketInfoPair.second->socket == xlln_socket_core) {
+					socketInfoSearch = socketInfoPair.second;
+					break;
+				}
+			}
+		}
+		
 		if (socketInfoSearch) {
 			memcpy(socketInfo, socketInfoSearch, sizeof(SOCKET_MAPPING_INFO));
 		}

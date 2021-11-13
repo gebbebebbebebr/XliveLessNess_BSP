@@ -17,6 +17,8 @@
 
 static std::condition_variable xlln_keep_alive_cond;
 static std::thread xlln_keep_alive_thread;
+static std::condition_variable xlln_core_socket_cond;
+static std::thread xlln_core_socket_thread;
 static std::atomic<bool> xlln_keep_alive_exit = TRUE;
 
 static void ThreadKeepAlive()
@@ -81,11 +83,51 @@ static void ThreadKeepAlive()
 	}
 }
 
+static void ThreadCoreSocket()
+{
+	std::mutex mutexPause;
+	while (1) {
+		SOCKET socket;
+		EnterCriticalSection(&xlive_critsec_sockets);
+		socket = xlln_socket_core;
+		LeaveCriticalSection(&xlive_critsec_sockets);
+		
+		// The function already captures XLLN packets so anything else we can just ignore anyway. All we need is a thread to trigger the read from the socket.
+		const int dataBufferSize = 1024;
+		char dataBuffer[dataBufferSize];
+		SOCKADDR_STORAGE sockAddrExternal;
+		int sockAddrExternalLen = sizeof(sockAddrExternal);
+		while (1) {
+			int resultRecvFromDataSize = XSocketRecvFrom(socket, dataBuffer, dataBufferSize, 0, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+			if (resultRecvFromDataSize > 0) {
+				// Empty the socket of queued packets.
+				continue;
+			}
+			if (resultRecvFromDataSize == SOCKET_ERROR) {
+				int resultErrorRecvFrom = WSAGetLastError();
+				if (resultErrorRecvFrom == WSAEWOULDBLOCK) {
+					// Normal error. No more data.
+					break;
+				}
+			}
+			// Perhaps log error here.
+			break;
+		}
+		
+		std::unique_lock<std::mutex> lock(mutexPause);
+		xlln_core_socket_cond.wait_for(lock, std::chrono::seconds(1), []() { return xlln_keep_alive_exit == TRUE; });
+		if (xlln_keep_alive_exit) {
+			break;
+		}
+	}
+}
+
 void XLLNKeepAliveStart()
 {
 	XLLNKeepAliveStop();
 	xlln_keep_alive_exit = FALSE;
 	xlln_keep_alive_thread = std::thread(ThreadKeepAlive);
+	xlln_core_socket_thread = std::thread(ThreadCoreSocket);
 }
 
 void XLLNKeepAliveStop()
@@ -94,6 +136,8 @@ void XLLNKeepAliveStop()
 		xlln_keep_alive_exit = TRUE;
 		xlln_keep_alive_cond.notify_all();
 		xlln_keep_alive_thread.join();
+		xlln_core_socket_cond.notify_all();
+		xlln_core_socket_thread.join();
 	}
 }
 
@@ -103,5 +147,7 @@ void XLLNKeepAliveAbort()
 		xlln_keep_alive_exit = TRUE;
 		xlln_keep_alive_cond.notify_all();
 		xlln_keep_alive_thread.detach();
+		xlln_core_socket_cond.notify_all();
+		xlln_core_socket_thread.detach();
 	}
 }

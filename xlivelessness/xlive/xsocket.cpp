@@ -23,6 +23,8 @@ CRITICAL_SECTION xlive_critsec_sockets;
 std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
 
+SOCKET xlln_socket_core = INVALID_SOCKET;
+
 // #3
 SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 {
@@ -747,8 +749,54 @@ USHORT WINAPI XSocketHTONS(USHORT hostshort)
 	return result;
 }
 
+void XLLNCreateCoreSocket()
+{
+	SOCKET socket = XSocketCreate(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (socket == INVALID_SOCKET) {
+		return;
+	}
+	
+	char sockOptValue = true;
+	INT resultSetSockOpt = XSocketSetSockOpt(socket, SOL_SOCKET, SO_BROADCAST, &sockOptValue, sizeof(sockOptValue));
+	if (resultSetSockOpt == SOCKET_ERROR) {
+		XSocketClose(socket);
+		return;
+	}
+	
+	sockaddr_in socketBindAddress;
+	socketBindAddress.sin_family = AF_INET;
+	socketBindAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+	socketBindAddress.sin_port = htons(3074);
+	SOCKET resultSocketBind = XSocketBind(socket, (sockaddr*)&socketBindAddress, sizeof(socketBindAddress));
+	if (resultSocketBind != ERROR_SUCCESS) {
+		XSocketClose(socket);
+		return;
+	}
+	
+	EnterCriticalSection(&xlive_critsec_sockets);
+	xlln_socket_core = socket;
+	LeaveCriticalSection(&xlive_critsec_sockets);
+}
+
+void XLLNCloseCoreSocket()
+{
+	SOCKET socket;
+	EnterCriticalSection(&xlive_critsec_sockets);
+	socket = xlln_socket_core;
+	xlln_socket_core = INVALID_SOCKET;
+	LeaveCriticalSection(&xlive_critsec_sockets);
+	
+	if (socket == INVALID_SOCKET) {
+		return;
+	}
+	
+	XSocketShutdown(socket, SD_RECEIVE);
+	XSocketClose(socket);
+}
+
 BOOL InitXSocket()
 {
+	XLLNCreateCoreSocket();
 	XLLNKeepAliveStart();
 	return TRUE;
 }
@@ -756,5 +804,6 @@ BOOL InitXSocket()
 BOOL UninitXSocket()
 {
 	XLLNKeepAliveStop();
+	XLLNCloseCoreSocket();
 	return TRUE;
 }

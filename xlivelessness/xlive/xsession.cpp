@@ -134,6 +134,34 @@ DWORD WINAPI XSessionCreate(DWORD dwFlags, DWORD dwUserIndex, DWORD dwMaxPublicS
 		pSessionInfo->sessionID = xsessionDetails->liveSession->xnkid;
 		
 		*pqwSessionNonce = xsessionDetails->qwNonce;
+
+		std::map<uint32_t, XUSER_PROPERTY*> xuserProperties;
+
+		if (!xuserProperties.count(XUSER_PROPERTY_GAMERHOSTNAME)) {
+			XUSER_PROPERTY *property = new XUSER_PROPERTY;
+			property->dwPropertyId = XUSER_PROPERTY_GAMERHOSTNAME;
+			property->value.type = XUSER_DATA_TYPE_UNICODE;
+			uint32_t usernameLenSize = strnlen(xlive_users_info[dwUserIndex]->szUserName, XUSER_MAX_NAME_LENGTH) + 1;
+			property->value.string.cbData = usernameLenSize * sizeof(wchar_t);
+			property->value.string.pwszData = new wchar_t[usernameLenSize];
+			swprintf_s(property->value.string.pwszData, usernameLenSize, L"%hs", xlive_users_info[dwUserIndex]->szUserName);
+
+			xuserProperties[XUSER_PROPERTY_GAMERHOSTNAME] = property;
+		}
+
+		xsessionDetails->liveSession->propertiesCount = xuserProperties.size();
+		xsessionDetails->liveSession->pProperties = new XUSER_PROPERTY[xsessionDetails->liveSession->propertiesCount];
+		{
+			uint32_t iProperty = 0;
+			for (auto const &entry : xuserProperties) {
+				XUSER_PROPERTY *propertyListCopy = entry.second;
+				XUSER_PROPERTY &propertyCopy = xsessionDetails->liveSession->pProperties[iProperty++];
+				memcpy(&propertyCopy, propertyListCopy, sizeof(propertyCopy));
+				delete propertyListCopy;
+			}
+		}
+		xuserProperties.clear();
+
 	}
 	else {
 		xsessionDetails->liveSession->xuid = INVALID_XUID;
@@ -473,6 +501,8 @@ DWORD WINAPI XSessionSearchEx(
 				LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);
 				return ERROR_FATAL_APP_EXIT;
 			}
+
+			pSearchResults->dwSearchResults = searchResultCount;
 		}
 		
 		LeaveCriticalSection(&xlln_critsec_liveoverlan_sessions);

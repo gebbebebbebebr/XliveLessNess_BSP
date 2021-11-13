@@ -20,6 +20,9 @@ struct SOCKET_MAPPING_INFO {
 
 extern CRITICAL_SECTION xlive_critsec_sockets;
 extern std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
+extern SOCKET xlln_socket_core;
+
+INT WINAPI XSocketRecvFrom(SOCKET socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen);
 
 BOOL InitXSocket();
 BOOL UninitXSocket();
