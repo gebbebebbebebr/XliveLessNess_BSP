@@ -876,9 +876,16 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 					continue;
 				}
 				
+				if ((uint8_t*)&searchResults[totalSessionCount + 1] > searchResultsData) {
+					// Not enough room left in the buffer to store this object's minimum size.
+					break;
+				}
+				
+				triedToReturnSomething = true;
+				
 				uint8_t *searchResultsDataPrev = searchResultsData;
 				
-				// Calculate the space required.
+				// Calculate the space required for the extra data.
 				searchResultsData -= session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties);
 				for (uint32_t iProperty = 0; iProperty < session.second->liveSession->propertiesCount; iProperty++) {
 					XUSER_PROPERTY &property = session.second->liveSession->pProperties[iProperty];
@@ -894,12 +901,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 					}
 				}
 				
-				triedToReturnSomething = true;
-				if ((uint8_t*)&searchResults[totalSessionCount + 1] > searchResultsData) {
-					// Not enough room left in the buffer to store this object.
-					break;
-				}
-				
 				// Copy over all the memory into the buffer.
 				XLOCATOR_SEARCHRESULT &searchResult = searchResults[totalSessionCount++];
 				searchResult.serverID = session.second->liveSession->xuid;
@@ -911,14 +912,29 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				searchResult.dwMaxPrivateSlots = session.second->liveSession->slotsPrivateMaxCount;
 				searchResult.dwFilledPublicSlots = session.second->liveSession->slotsPublicFilledCount;
 				searchResult.dwFilledPrivateSlots = session.second->liveSession->slotsPrivateFilledCount;
+				searchResult.cProperties = 0;
+				searchResult.pProperties = 0;
+				
+				// Record that this Live Session has been returned in the enumerator.
+				xlive_xlocator_enumerators[hEnum].push_back(session.first);
+				
+				if ((uint8_t*)&searchResults[totalSessionCount] > searchResultsData) {
+					// Not enough room left in the buffer to store this object and all the extra data.
+					searchResultsData = searchResultsDataPrev;
+					
+					// Ignore this item if there is already at least one being returned.
+					if (totalSessionCount > 1) {
+						totalSessionCount--;
+					}
+					
+					break;
+				}
+				
 				searchResult.cProperties = session.second->liveSession->propertiesCount;
 				
 				uint8_t *searchResultData = searchResultsData + (session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties));
 				
-				if (searchResult.cProperties == 0) {
-					searchResult.pProperties = 0;
-				}
-				else {
+				if (searchResult.cProperties) {
 					searchResult.pProperties = (XUSER_PROPERTY*)searchResultsData;
 					memcpy(searchResult.pProperties, session.second->liveSession->pProperties, session.second->liveSession->propertiesCount * sizeof(*session.second->liveSession->pProperties));
 					for (uint32_t iProperty = 0; iProperty < session.second->liveSession->propertiesCount; iProperty++) {
@@ -941,9 +957,6 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 					}
 				}
 				
-				// Record that this Live Session has been returned in the enumerator.
-				xlive_xlocator_enumerators[hEnum].push_back(session.first);
-				
 				if (searchResultData != searchResultsDataPrev) {
 					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_FATAL
 						, "%s the end result of searchResultData (0x%08x) should not be different from searchResultsDataPrev (0x%08x)."
@@ -963,7 +976,7 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 				//pXOverlapped->InternalHigh = ERROR_IO_INCOMPLETE;
 				//pXOverlapped->InternalLow = ERROR_IO_INCOMPLETE;
 				//pXOverlapped->dwExtendedError = ERROR_SUCCESS;
-
+				
 				if (totalSessionCount) {
 					pXOverlapped->InternalHigh = totalSessionCount;
 					pXOverlapped->InternalLow = ERROR_SUCCESS;
@@ -976,8 +989,9 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 					pXOverlapped->InternalHigh = ERROR_SUCCESS;
 					pXOverlapped->InternalLow = ERROR_NO_MORE_FILES;
 				}
+				pXOverlapped->dwExtendedError = pXOverlapped->InternalLow;
 				Check_Overlapped(pXOverlapped);
-
+				
 				return ERROR_IO_PENDING;
 			}
 			else {
