@@ -241,6 +241,7 @@
     <ClInclude Include="xlive\xlocator.hpp" />
     <ClInclude Include="xlive\xmarketplace.hpp" />
     <ClInclude Include="xlive\xnet.hpp" />
+    <ClInclude Include="xlive\xnetqos.hpp" />
     <ClInclude Include="xlive\xpbuffer.hpp" />
     <ClInclude Include="xlive\xpresence.hpp" />
     <ClInclude Include="xlive\xprotect.hpp" />

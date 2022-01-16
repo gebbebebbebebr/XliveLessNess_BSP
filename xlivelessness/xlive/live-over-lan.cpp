@@ -134,7 +134,7 @@ void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid)
 		, (char*)packetBuffer
 		, packetSize
 		, 0
-		, (SOCKADDR*)&SendStruct
+		, (const SOCKADDR*)&SendStruct
 		, sizeof(SendStruct)
 	);
 	
@@ -263,7 +263,7 @@ static void LiveOverLanBroadcastLocalSession()
 				, (char*)liveSessionSerialisedPacket
 				, liveSessionSerialisedPacketSize
 				, 0
-				, (SOCKADDR*)&SendStruct
+				, (const SOCKADDR*)&SendStruct
 				, sizeof(SendStruct)
 			);
 			delete[] liveSessionSerialisedPacket;
@@ -284,7 +284,7 @@ static void LiveOverLanBroadcastLocalSession()
 					, (char*)liveSessionSerialisedPacket
 					, liveSessionSerialisedPacketSize
 					, 0
-					, (SOCKADDR*)&SendStruct
+					, (const SOCKADDR*)&SendStruct
 					, sizeof(SendStruct)
 				);
 				delete[] liveSessionSerialisedPacket;

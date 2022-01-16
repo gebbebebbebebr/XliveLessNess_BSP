@@ -15,6 +15,8 @@ namespace XLLNNetPacketType {
 		"LIVE_OVER_LAN_UNADVERTISE",
 		"HUB_REQUEST",
 		"HUB_REPLY",
+		"QOS_REQUEST",
+		"QOS_RESPONSE",
 	};
 	typedef enum : uint8_t {
 		tUNKNOWN = 0,
@@ -28,6 +30,8 @@ namespace XLLNNetPacketType {
 		tLIVE_OVER_LAN_UNADVERTISE,
 		tHUB_REQUEST,
 		tHUB_REPLY,
+		tQOS_REQUEST,
+		tQOS_RESPONSE,
 	} TYPE;
 
 #pragma pack(push, 1) // Save then set byte alignment setting.
@@ -73,6 +77,22 @@ namespace XLLNNetPacketType {
 		uint8_t sessionType = 0;
 		XUID xuid = 0;
 	} LIVE_OVER_LAN_UNADVERTISE;
+	
+	typedef struct {
+		uint32_t qosLookupId = 0;
+		uint64_t sessionId = 0; // XNKID
+		uint32_t probeId = 0;
+		uint32_t instanceId = 0; // Instance ID of the requester.
+	} QOS_REQUEST;
+	
+	typedef struct {
+		uint32_t qosLookupId = 0;
+		uint64_t sessionId = 0; // XNKID
+		uint32_t probeId = 0;
+		uint32_t instanceId = 0; // Instance ID of the responder.
+		uint8_t enabled = 0;
+		uint16_t sizeData = 0; // the amount of data appended to the end of this packet type.
+	} QOS_RESPONSE;
 
 #pragma pack(pop) // Return to original alignment setting.
 
@@ -104,5 +124,5 @@ extern CRITICAL_SECTION xlive_critsec_broadcast_addresses;
 extern std::vector<XLLNBroadcastEntity::BROADCAST_ENTITY> xlive_broadcast_addresses;
 
 INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, char *dataBuffer, const int dataBufferSize, const int flags, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, sockaddr *sockAddrXlive, int *sockAddrXliveLen);
-INT WINAPI XllnSocketSendTo(SOCKET socket, const char *dataBuffer, int dataSendSize, int flags, sockaddr *to, int tolen);
+INT WINAPI XllnSocketSendTo(SOCKET socket, const char *dataBuffer, int dataSendSize, int flags, const sockaddr *to, int tolen);
 VOID SendUnknownUserAskRequest(SOCKET socket, const char* data, int dataLen, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, bool isAsking, uint32_t instanceIdConsumeRemaining);

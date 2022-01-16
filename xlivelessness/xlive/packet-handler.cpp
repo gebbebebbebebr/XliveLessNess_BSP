@@ -8,6 +8,7 @@
 #include "net-entity.hpp"
 #include "xsocket.hpp"
 #include "xnet.hpp"
+#include "xnetqos.hpp"
 #include "xlive.hpp"
 #include "../resource.h"
 #include "xlocator.hpp"
@@ -94,6 +95,8 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 	const int packetSizeTypeHubRequest = sizeof(XLLNNetPacketType::HUB_REQUEST_PACKET);
 	const int packetSizeTypeHubReply = sizeof(XLLNNetPacketType::HUB_REPLY_PACKET);
 	const int packetSizeTypeLiveOverLanUnadvertise = sizeof(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE);
+	const int packetSizeTypeQosRequest = sizeof(XLLNNetPacketType::QOS_REQUEST);
+	const int packetSizeTypeQosResponse = sizeof(XLLNNetPacketType::QOS_RESPONSE);
 
 	int packetSizeAlreadyProcessedOffset = 0;
 	int resultDataRecvSize = 0;
@@ -506,6 +509,61 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 			packetSizeAlreadyProcessedOffset = dataRecvSize;
 			break;
 		}
+		case XLLNNetPacketType::tQOS_REQUEST: {
+			canSendUnknownUserAsk = false;
+			
+			if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeQosRequest) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s Invalid %s received (insufficient size)."
+					, __func__
+					, XLLNNetPacketType::TYPE_NAMES[packetType]
+				);
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
+			}
+			
+			XLLNNetPacketType::QOS_REQUEST &packetQosRequest = *(XLLNNetPacketType::QOS_REQUEST*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+			
+			XLiveQosReceiveRequest(
+				&packetQosRequest
+				, socket
+				, packetForwardedSockAddrSize ? &packetForwardedSockAddr : sockAddrExternal
+				, packetForwardedSockAddrSize ? packetForwardedSockAddrSize : sockAddrExternalLen
+			);
+			
+			packetSizeAlreadyProcessedOffset = dataRecvSize;
+			break;
+		}
+		case XLLNNetPacketType::tQOS_RESPONSE: {
+			canSendUnknownUserAsk = false;
+			
+			if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeQosResponse) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s Invalid %s received (insufficient size)."
+					, __func__
+					, XLLNNetPacketType::TYPE_NAMES[packetType]
+				);
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
+			}
+			
+			XLLNNetPacketType::QOS_RESPONSE &packetQosResponse = *(XLLNNetPacketType::QOS_RESPONSE*)&dataBuffer[packetSizeAlreadyProcessedOffset];
+			
+			if (dataRecvSize < packetSizeAlreadyProcessedOffset + packetSizeTypeQosResponse + packetQosResponse.sizeData) {
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s Invalid %s received (insufficient size with extra data payload)."
+					, __func__
+					, XLLNNetPacketType::TYPE_NAMES[packetType]
+				);
+				packetSizeAlreadyProcessedOffset = dataRecvSize;
+				break;
+			}
+			
+			XLiveQosReceiveResponse(&packetQosResponse);
+			
+			packetSizeAlreadyProcessedOffset = dataRecvSize;
+			break;
+		}
 		default: {
 			const int dataSizeRemaining = dataRecvSize - packetSizeAlreadyProcessedOffset;
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
@@ -604,7 +662,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET socket, ch
 }
 
 // dataBuffer data must be wrapped in PacketType.
-INT WINAPI XllnSocketSendTo(SOCKET socket, const char *dataBuffer, int dataSendSize, int flags, sockaddr *to, int tolen)
+INT WINAPI XllnSocketSendTo(SOCKET socket, const char *dataBuffer, int dataSendSize, int flags, const sockaddr *to, int tolen)
 {
 	TRACE_FX();
 	if (flags) {

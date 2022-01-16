@@ -115,7 +115,7 @@ static void ThreadCoreSocket()
 		}
 		
 		std::unique_lock<std::mutex> lock(mutexPause);
-		xlln_core_socket_cond.wait_for(lock, std::chrono::seconds(1), []() { return xlln_keep_alive_exit == TRUE; });
+		xlln_core_socket_cond.wait_for(lock, std::chrono::milliseconds(10), []() { return xlln_keep_alive_exit == TRUE; });
 		if (xlln_keep_alive_exit) {
 			break;
 		}
@@ -149,5 +149,7 @@ void XLLNKeepAliveAbort()
 		xlln_keep_alive_thread.detach();
 		xlln_core_socket_cond.notify_all();
 		xlln_core_socket_thread.detach();
+
+		XLLNCloseCoreSocket();
 	}
 }

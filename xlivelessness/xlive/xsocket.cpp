@@ -8,6 +8,7 @@
 #include "../xlln/xlln-keep-alive.hpp"
 #include "xnet.hpp"
 #include "xlocator.hpp"
+#include "xnetqos.hpp"
 #include "packet-handler.hpp"
 #include "net-entity.hpp"
 #include "../utils/utils.hpp"
@@ -15,8 +16,9 @@
 
 #define IPPROTO_VDP 254
 
-WORD xlive_base_port = 0;
+uint16_t xlive_base_port = 0;
 HANDLE xlive_base_port_mutex = 0;
+uint16_t xlive_system_link_port = 3074;
 BOOL xlive_netsocket_abort = FALSE;
 
 CRITICAL_SECTION xlive_critsec_sockets;
@@ -767,7 +769,12 @@ void XLLNCreateCoreSocket()
 	sockaddr_in socketBindAddress;
 	socketBindAddress.sin_family = AF_INET;
 	socketBindAddress.sin_addr.s_addr = htonl(INADDR_ANY);
-	socketBindAddress.sin_port = htons(3074);
+	if (IsUsingBasePort(xlive_base_port)) {
+		socketBindAddress.sin_port = htons(xlive_base_port);
+	}
+	else {
+		socketBindAddress.sin_port = htons(xlive_system_link_port);
+	}
 	SOCKET resultSocketBind = XSocketBind(socket, (sockaddr*)&socketBindAddress, sizeof(socketBindAddress));
 	if (resultSocketBind != ERROR_SUCCESS) {
 		XSocketClose(socket);
@@ -799,12 +806,14 @@ BOOL InitXSocket()
 {
 	XLLNCreateCoreSocket();
 	XLLNKeepAliveStart();
+	XLiveThreadQosStart();
 	return TRUE;
 }
 
 BOOL UninitXSocket()
 {
-	XLLNKeepAliveStop();
+	XLiveThreadQosStop();
 	XLLNCloseCoreSocket();
+	XLLNKeepAliveStop();
 	return TRUE;
 }

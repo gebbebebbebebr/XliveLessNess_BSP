@@ -257,6 +257,9 @@
     <ClInclude Include="third-party\fantasyname\namegen.h">
       <Filter>Source Files\third-party\fantasyname</Filter>
     </ClInclude>
+    <ClInclude Include="xlive\xnetqos.hpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="xlive_exports.def">

@@ -460,6 +460,7 @@ VOID WINAPI XLiveUninitialize()
 
 	INT errorXSession = UninitXSession();
 	INT errorXRender = UninitXRender();
+	INT errorXNet = UninitXNet();
 	INT errorNetEntity = UninitNetEntity();
 	INT errorXSocket = UninitXSocket();
 }
@@ -1465,6 +1466,7 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	INT errorXSocket = InitXSocket();
 	CreateLocalUser();
 	INT errorNetEntity = InitNetEntity();
+	INT errorXNet = InitXNet();
 	INT errorXRender = InitXRender();
 	INT errorXSession = InitXSession();
 

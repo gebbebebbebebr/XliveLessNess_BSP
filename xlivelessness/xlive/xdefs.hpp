@@ -711,10 +711,6 @@ typedef struct
 
 #define XNET_QOS_SERVICE_LOOKUP_RESERVED    0x00000000 // No flags defined yet for XNetQosServiceLookup
 
-//INT   WINAPI XNetQosListen(const XNKID * pxnkid, const BYTE * pb, UINT cb, DWORD dwBitsPerSec, DWORD dwFlags);
-//INT   WINAPI XNetQosLookup(UINT cxna, const XNADDR * apxna[], const XNKID * apxnkid[], const XNKEY * apxnkey[], UINT cina, const IN_ADDR aina[], const DWORD adwServiceId[], UINT cProbes, DWORD dwBitsPerSec, DWORD dwFlags, WSAEVENT hEvent, XNQOS ** ppxnqos);
-//INT   WINAPI XNetQosRelease(XNQOS* pxnqos);
-//INT   WINAPI XNetQosGetListenStats(const XNKID * pxnkid, XNQOSLISTENSTATS * pQosListenStats);
 
 
 
@@ -749,26 +745,6 @@ typedef struct
 	DWORD       dwNumDataReplyBytesSent;        // Number of data reply bytes sent
 	DWORD       dwNumProbeRepliesSent;          // Number of probe replies sent
 } XNQOSLISTENSTATS;
-
-
-
-//INT   WINAPI XNetStartup(const XNetStartupParams * pxnsp);
-//INT   WINAPI XNetCleanup();
-
-//INT   WINAPI XNetRandom(BYTE * pb, UINT cb);
-
-//INT   WINAPI XNetCreateKey(XNKID * pxnkid, XNKEY * pxnkey);
-//INT   WINAPI XNetRegisterKey(const XNKID * pxnkid, const XNKEY * pxnkey);
-//INT   WINAPI XNetUnregisterKey(const XNKID * pxnkid);
-//INT   WINAPI XNetReplaceKey(const XNKID * pxnkidUnregister, const XNKID * pxnkidReplace);
-
-//INT   WINAPI XNetXnAddrToInAddr(const XNADDR * pxna, const XNKID * pxnkid, IN_ADDR * pina);
-//INT   WINAPI XNetServerToInAddr(const IN_ADDR ina, DWORD dwServiceId, IN_ADDR * pina);
-//INT   WINAPI XNetTsAddrToInAddr(const TSADDR * ptsa, DWORD dwServiceId, const XNKID * pxnkid, IN_ADDR * pina);
-//INT   WINAPI XNetInAddrToXnAddr(const IN_ADDR ina, XNADDR * pxna, XNKID * pxnkid);
-//INT   WINAPI XNetInAddrToServer(const IN_ADDR ina, IN_ADDR *pina);
-//INT   WINAPI XNetInAddrToString(const IN_ADDR ina, char * pchBuf, INT cchBuf);
-//INT   WINAPI XNetUnregisterInAddr(const IN_ADDR ina);
 
 
 

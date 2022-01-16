@@ -5,13 +5,21 @@
 #include "../xlln/xlln.hpp"
 #include "../xlln/debug-text.hpp"
 #include "xsocket.hpp"
+#include "xnetqos.hpp"
 #include "net-entity.hpp"
 #include <WS2tcpip.h>
 #include <iptypes.h>
 
 BOOL xlive_net_initialized = FALSE;
 
+XNetStartupParams xlive_net_startup_params;
+
 XNADDR xlive_local_xnAddr;
+
+CRITICAL_SECTION xlive_critsec_xnet_session_keys;
+
+// Key: sessionId / xnkid.
+static std::map<uint64_t, XNKEY*> xlive_xnet_session_keys;
 
 void UnregisterSecureAddr(const IN_ADDR ina)
 {
@@ -31,7 +39,13 @@ INT WINAPI XNetStartup(const XNetStartupParams *pxnsp)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive NetSocket is disabled.", __func__);
 		return ERROR_FUNCTION_FAILED;
 	}
+	
+	if (pxnsp) {
+		xlive_net_startup_params = *pxnsp;
+	}
+	
 	xlive_net_initialized = TRUE;
+	
 	return ERROR_SUCCESS;
 }
 
@@ -108,6 +122,27 @@ INT WINAPI XNetRegisterKey(const XNKID *pxnkid, const XNKEY *pxnkey)
 	//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNetXnKidFlag(pxnkid) (0x%02x) is not XNET_XNKID_ONLINE_PEER, XNET_XNKID_ONLINE_TITLESERVER or XNET_XNKID_SYSTEM_LINK_XPLAT.", __func__, XNetXnKidFlag(pxnkid));
 	//	return E_INVALIDARG;
 	//}
+	
+	const uint64_t &sessionId = *(uint64_t*)pxnkid;
+	
+	{
+		EnterCriticalSection(&xlive_critsec_xnet_session_keys);
+		
+		if (xlive_xnet_session_keys.count(sessionId)) {
+			LeaveCriticalSection(&xlive_critsec_xnet_session_keys);
+			XLLN_DEBUG_LOG(
+				XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid (0x%016x) is already registered."
+				, __func__
+				, sessionId
+			);
+			return ERROR_ALREADY_REGISTERED;
+		}
+
+		*(xlive_xnet_session_keys[sessionId] = new XNKEY) = *pxnkey;
+		
+		LeaveCriticalSection(&xlive_critsec_xnet_session_keys);
+	}
+	
 	return S_OK;
 }
 
@@ -123,6 +158,33 @@ INT WINAPI XNetUnregisterKey(const XNKID* pxnkid)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid is NULL.", __func__);
 		return WSAEFAULT;
 	}
+	
+	const uint64_t &sessionId = *(uint64_t*)pxnkid;
+	
+	{
+		EnterCriticalSection(&xlive_critsec_qos_listeners);
+		EnterCriticalSection(&xlive_critsec_xnet_session_keys);
+		
+		if (!xlive_xnet_session_keys.count(sessionId)) {
+			EnterCriticalSection(&xlive_critsec_qos_listeners);
+			LeaveCriticalSection(&xlive_critsec_xnet_session_keys);
+			XLLN_DEBUG_LOG(
+				XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkid (0x%016x) does not exist."
+				, __func__
+				, sessionId
+			);
+			return ERROR_NOT_FOUND;
+		}
+		
+		XNKEY *xnkey = xlive_xnet_session_keys[sessionId];
+		xlive_qos_listeners.erase(sessionId);
+		xlive_xnet_session_keys.erase(sessionId);
+		delete xnkey;
+		
+		LeaveCriticalSection(&xlive_critsec_xnet_session_keys);
+		LeaveCriticalSection(&xlive_critsec_qos_listeners);
+	}
+	
 	return S_OK;
 }
 
@@ -617,31 +679,37 @@ INT WINAPI XNetGetXnAddrPlatform(const XNADDR *pxnaddr, DWORD *pdwPlatform)
 }
 
 // #83
-// pwSystemLinkPort - network byte (big-endian) order
-INT WINAPI XNetGetSystemLinkPort(WORD *pwSystemLinkPort)
+// system_link_port_NBO - network byte (big-endian) order
+INT WINAPI XNetGetSystemLinkPort(uint16_t *system_link_port_NBO)
 {
 	TRACE_FX();
-	if (!pwSystemLinkPort) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pwSystemLinkPort is NULL.", __func__);
+	if (!system_link_port_NBO) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s system_link_port_NBO is NULL.", __func__);
 		return E_POINTER;
 	}
-
-	*pwSystemLinkPort = htons(xlive_base_port);
-	//TODO XNetGetSystemLinkPort XEX_PRIVILEGE_CROSSPLATFORM_SYSTEM_LINK
+	// TODO XNetGetSystemLinkPort XEX_PRIVILEGE_CROSSPLATFORM_SYSTEM_LINK.
+	
+	*system_link_port_NBO = htons(xlive_system_link_port);
+	
 	return S_OK;
 	return WSAEACCES;
 }
 
 // #84
-// wSystemLinkPort - network byte (big-endian) order
-INT WINAPI XNetSetSystemLinkPort(WORD wSystemLinkPort)
+// system_link_port_NBO - network byte (big-endian) order
+INT WINAPI XNetSetSystemLinkPort(uint16_t system_link_port_NBO)
 {
 	TRACE_FX();
-	//network byte (big-endian) to little-endian host
-	WORD hPort = ntohs(wSystemLinkPort);
-
-	//xlive_base_port = hPort;
-
+	// network byte (big-endian) to little-endian host.
+	uint16_t portHBO = ntohs(system_link_port_NBO);
+	
+	xlive_system_link_port = portHBO;
+	
+	if (IsUsingBasePort(xlive_base_port)) {
+		// TODO maybe need to set the OG port to this on the Core socket? Or need to redirect outbound packets to that port instead?
+		portHBO;
+	}
+	
 	return ERROR_SUCCESS;
 }
 
@@ -688,15 +756,45 @@ HRESULT WINAPI XNetGetCurrentAdapter(CHAR *pszAdapter, ULONG *pcchBuffer)
 }
 
 // #5296
-// assuming pwPort - network byte (big-endian) order
-HRESULT WINAPI XLiveGetLocalOnlinePort(WORD *pwPort)
+// assuming online_port_NBO - network byte (big-endian) order
+HRESULT WINAPI XLiveGetLocalOnlinePort(uint16_t *online_port_NBO)
 {
 	TRACE_FX();
-	if (!pwPort) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pwPort is NULL.", __func__);
+	if (!online_port_NBO) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s online_port_NBO is NULL.", __func__);
 		return E_INVALIDARG;
 	}
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	*pwPort = 0;
+	
+	if (IsUsingBasePort(xlive_base_port)) {
+		*online_port_NBO = htons(xlive_base_port);
+	}
+	else {
+		*online_port_NBO = htons(xlive_system_link_port);
+	}
+	
 	return S_OK;
+}
+
+BOOL InitXNet()
+{
+	xlive_net_startup_params.cfgSizeOfStruct = sizeof(XNetStartupParams);
+	xlive_net_startup_params.cfgFlags = 0;
+	xlive_net_startup_params.cfgSockMaxDgramSockets = 8;
+	xlive_net_startup_params.cfgSockMaxStreamSockets = 32;
+	xlive_net_startup_params.cfgSockDefaultRecvBufsizeInK = 16;
+	xlive_net_startup_params.cfgSockDefaultSendBufsizeInK = 16;
+	xlive_net_startup_params.cfgKeyRegMax = 8;
+	xlive_net_startup_params.cfgSecRegMax = 32;
+	xlive_net_startup_params.cfgQosDataLimitDiv4 = 64;
+	xlive_net_startup_params.cfgQosProbeTimeoutInSeconds = 2;
+	xlive_net_startup_params.cfgQosProbeRetries = 3;
+	xlive_net_startup_params.cfgQosSrvMaxSimultaneousResponses = 8;
+	xlive_net_startup_params.cfgQosPairWaitTimeInSeconds = 2;
+	
+	return TRUE;
+}
+
+BOOL UninitXNet()
+{
+	return TRUE;
 }

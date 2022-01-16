@@ -18,6 +18,8 @@
 #include "../xlive/net-entity.hpp"
 #include "../xlive/xuser.hpp"
 #include "../xlive/xsession.hpp"
+#include "../xlive/xnet.hpp"
+#include "../xlive/xnetqos.hpp"
 #include "../xlive/xcustom.hpp"
 #include "../xlive/xpresence.hpp"
 #include "../xlive/xmarketplace.hpp"
@@ -682,6 +684,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hwnd, UINT message, WPARAM wParam, LP
 			StopThreadHotkeys();
 			LiveOverLanAbort();
 			XLLNKeepAliveAbort();
+			XLiveThreadQosAbort();
 			exit(EXIT_SUCCESS);
 			break;
 		}
@@ -1061,12 +1064,15 @@ void InitCriticalSections()
 	InitializeCriticalSection(&xlive_critsec_presence_enumerators);
 	InitializeCriticalSection(&xlive_critsec_xnotify);
 	InitializeCriticalSection(&xlive_critsec_xsession);
+	InitializeCriticalSection(&xlive_critsec_qos_listeners);
+	InitializeCriticalSection(&xlive_critsec_qos_lookups);
 	InitializeCriticalSection(&xlive_critsec_xmarketplace);
 	InitializeCriticalSection(&xlive_critsec_xcontent);
 	InitializeCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	InitializeCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	InitializeCriticalSection(&xlive_critsec_fps_limit);
 	InitializeCriticalSection(&xlive_critsec_sockets);
+	InitializeCriticalSection(&xlive_critsec_xnet_session_keys);
 	InitializeCriticalSection(&xlive_critsec_broadcast_addresses);
 	InitializeCriticalSection(&xlln_critsec_debug_log);
 }
@@ -1085,12 +1091,15 @@ void UninitCriticalSections()
 	DeleteCriticalSection(&xlive_critsec_presence_enumerators);
 	DeleteCriticalSection(&xlive_critsec_xnotify);
 	DeleteCriticalSection(&xlive_critsec_xsession);
+	DeleteCriticalSection(&xlive_critsec_qos_listeners);
+	DeleteCriticalSection(&xlive_critsec_qos_lookups);
 	DeleteCriticalSection(&xlive_critsec_xmarketplace);
 	DeleteCriticalSection(&xlive_critsec_xcontent);
 	DeleteCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	DeleteCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	DeleteCriticalSection(&xlive_critsec_fps_limit);
 	DeleteCriticalSection(&xlive_critsec_sockets);
+	DeleteCriticalSection(&xlive_critsec_xnet_session_keys);
 	DeleteCriticalSection(&xlive_critsec_broadcast_addresses);
 	DeleteCriticalSection(&xlln_critsec_debug_log);
 }
