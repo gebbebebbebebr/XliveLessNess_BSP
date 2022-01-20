@@ -22,19 +22,241 @@ uint16_t xlive_system_link_port = 3074;
 BOOL xlive_netsocket_abort = FALSE;
 
 CRITICAL_SECTION xlive_critsec_sockets;
+// Key: transitorySocket.
 std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
+// Value: transitorySocket.
 static std::map<uint16_t, SOCKET> xlive_port_offset_sockets;
+// Key: perpetualSocket. Value: transitorySocket.
+std::map<SOCKET, SOCKET> xlive_xsocket_perpetual_to_transitory_socket;
 
-SOCKET xlln_socket_core = INVALID_SOCKET;
+SOCKET xlive_xsocket_perpetual_core_socket = INVALID_SOCKET;
+
+static void XLLNCreateCoreSocket();
+
+// Get transitorySocket (real socket) from perpetualSocket (fake handle).
+SOCKET XSocketGetTransitorySocket_(SOCKET perpetual_socket)
+{
+	SOCKET transitorySocket = INVALID_SOCKET;
+	
+	if (xlive_xsocket_perpetual_to_transitory_socket.count(perpetual_socket)) {
+		transitorySocket = xlive_xsocket_perpetual_to_transitory_socket[perpetual_socket];
+	}
+	
+	if (transitorySocket == INVALID_SOCKET) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s unknown perpetual_socket (0x%08x)."
+			, __func__
+			, perpetual_socket
+		);
+	}
+	
+	return transitorySocket;
+}
+// Get transitorySocket (real socket) from perpetualSocket (fake handle).
+SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket)
+{
+	SOCKET transitorySocket = INVALID_SOCKET;
+	
+	{
+		EnterCriticalSection(&xlive_critsec_sockets);
+		
+		if (xlive_xsocket_perpetual_to_transitory_socket.count(perpetual_socket)) {
+			transitorySocket = xlive_xsocket_perpetual_to_transitory_socket[perpetual_socket];
+		}
+		
+		LeaveCriticalSection(&xlive_critsec_sockets);
+	}
+	
+	if (transitorySocket == INVALID_SOCKET) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s unknown perpetual_socket (0x%08x)."
+			, __func__
+			, perpetual_socket
+		);
+	}
+	
+	return transitorySocket;
+}
+
+bool XSocketPerpetualSocketChangedError_(int errorSocket, SOCKET perpetual_socket, SOCKET transitory_socket)
+{
+	bool result = false;
+	
+	if (
+		(errorSocket == WSAEINTR || errorSocket == WSAENOTSOCK)
+		&& xlive_xsocket_perpetual_to_transitory_socket.count(perpetual_socket)
+		&& xlive_xsocket_perpetual_to_transitory_socket[perpetual_socket] != transitory_socket
+	) {
+		result = true;
+	}
+	
+	return result;
+}
+
+bool XSocketPerpetualSocketChangedError(int errorSocket, SOCKET perpetual_socket, SOCKET transitory_socket)
+{
+	bool result = false;
+	
+	{
+		EnterCriticalSection(&xlive_critsec_sockets);
+		
+		result = XSocketPerpetualSocketChangedError_(errorSocket, perpetual_socket, transitory_socket);
+		
+		LeaveCriticalSection(&xlive_critsec_sockets);
+	}
+	
+	return result;
+}
+
+uint8_t XSocketPerpetualSocketChanged_(SOCKET perpetual_socket, SOCKET transitory_socket)
+{
+	uint8_t result = 0;
+	
+	if (!xlive_xsocket_perpetual_to_transitory_socket.count(perpetual_socket)) {
+		result = 1;
+	}
+	else if (xlive_xsocket_perpetual_to_transitory_socket[perpetual_socket] != transitory_socket) {
+		result = 2;
+	}
+	
+	return result;
+}
+
+// TODO expose this feature.
+static void RebindAllSockets()
+{
+	EnterCriticalSection(&xlive_critsec_sockets);
+	
+	{
+		std::map<SOCKET_MAPPING_INFO*, SOCKET_MAPPING_INFO*> oldToNew;
+		
+		for (const auto &socketInfo : xlive_socket_info) {
+			SOCKET_MAPPING_INFO &socketMappingInfoOld = *socketInfo.second;
+			if (socketMappingInfoOld.protocol != IPPROTO_UDP) {
+				// TODO support more than just UDP (like TCP).
+				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_WARN
+					, "%s transitorySocket (0x%08x) protocol (%d) unsupported for rebinding."
+					, __func__
+					, socketMappingInfoOld.transitorySocket
+					, socketMappingInfoOld.protocol
+				);
+				continue;
+			}
+			
+			if (socketMappingInfoOld.portBindHBO == 0) {
+				// The port was never binded so doesn't have to be re-binded.
+				continue;
+			}
+			
+			SOCKET_MAPPING_INFO *socketMappingInfoNew = (oldToNew[&socketMappingInfoOld] = new SOCKET_MAPPING_INFO);
+			*socketMappingInfoNew = socketMappingInfoOld;
+			socketMappingInfoNew->transitorySocket = socket(AF_INET, socketMappingInfoNew->type, socketMappingInfoNew->protocol);
+			if (socketMappingInfoNew->transitorySocket == INVALID_SOCKET) {
+				int errorSocket = WSAGetLastError();
+				XLLN_DEBUG_LOG_ECODE(errorSocket, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s create socket error on perpetualSocket 0x%08x."
+					, __func__
+					, socketMappingInfoOld.perpetualSocket
+				);
+			}
+			
+			// If it was a random port, make sure when we rebind that it will be another random port since portBindHBO will be the port we will attempt to remake.
+			if (socketMappingInfoNew->portOgHBO == 0) {
+				socketMappingInfoNew->portBindHBO = 0;
+			}
+		}
+		
+		for (const auto &socketInfos : oldToNew) {
+			SOCKET_MAPPING_INFO &socketMappingInfoOld = *socketInfos.first;
+			SOCKET_MAPPING_INFO &socketMappingInfoNew = *socketInfos.second;
+			
+			xlive_socket_info[socketMappingInfoNew.transitorySocket] = &socketMappingInfoNew;
+			xlive_xsocket_perpetual_to_transitory_socket[socketMappingInfoNew.perpetualSocket] = socketMappingInfoNew.transitorySocket;
+			xlive_socket_info.erase(socketMappingInfoOld.transitorySocket);
+			
+			int resultShutdown = shutdown(socketMappingInfoOld.transitorySocket, SD_RECEIVE);
+			if (resultShutdown) {
+				int errorShutdown = WSAGetLastError();
+				XLLN_DEBUG_LOG_ECODE(errorShutdown, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s shutdown error on transitorySocket 0x%08x."
+					, __func__
+					, socketMappingInfoOld.transitorySocket
+				);
+			}
+			
+			int resultCloseSocket = closesocket(socketMappingInfoOld.transitorySocket);
+			if (resultCloseSocket) {
+				int errorCloseSocket = WSAGetLastError();
+				XLLN_DEBUG_LOG_ECODE(errorCloseSocket, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s close socket error on transitorySocket 0x%08x."
+					, __func__
+					, socketMappingInfoOld.transitorySocket
+				);
+			}
+		}
+		
+		for (const auto &socketInfos : oldToNew) {
+			SOCKET_MAPPING_INFO &socketMappingInfoOld = *socketInfos.first;
+			SOCKET_MAPPING_INFO &socketMappingInfoNew = *socketInfos.second;
+			
+			for (const auto &optionNameValue : *socketMappingInfoNew.socketOptions) {
+				int resultSetSockOpt = setsockopt(socketMappingInfoNew.transitorySocket, socketMappingInfoNew.protocol == IPPROTO_TCP ? IPPROTO_TCP : SOL_SOCKET, optionNameValue.first, (const char*)&optionNameValue.second, sizeof(uint32_t));
+				if (resultSetSockOpt) {
+					int errorSetSockOpt = WSAGetLastError();
+					XLLN_DEBUG_LOG_ECODE(errorSetSockOpt, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+						, "%s setsockopt failed to set option (0x%08x, 0x%08x) on new transitorySocket 0x%08x with error:"
+						, __func__
+						, optionNameValue.first
+						, optionNameValue.second
+						, socketMappingInfoNew.transitorySocket
+					);
+				}
+			}
+			
+			sockaddr_in socketBindAddress;
+			socketBindAddress.sin_family = AF_INET;
+			socketBindAddress.sin_addr.s_addr = htonl(INADDR_ANY);
+			socketBindAddress.sin_port = htons(socketMappingInfoNew.portBindHBO);
+			{
+				EnterCriticalSection(&xlive_critsec_network_adapter);
+				// TODO Should we perhaps not do this unless the user really wants to like if (xlive_init_preferred_network_adapter_name or config) is set?
+				if (xlive_network_adapter && xlive_network_adapter->unicastHAddr != INADDR_LOOPBACK) {
+					socketBindAddress.sin_addr.s_addr = htonl(xlive_network_adapter->unicastHAddr);
+				}
+				LeaveCriticalSection(&xlive_critsec_network_adapter);
+			}
+			SOCKET resultSocketBind = bind(socketMappingInfoNew.transitorySocket, (sockaddr*)&socketBindAddress, sizeof(socketBindAddress));
+			if (resultSocketBind) {
+				int errorBind = WSAGetLastError();
+				XLLN_DEBUG_LOG_ECODE(errorBind, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s bind error on new transitorySocket 0x%08x."
+					, __func__
+					, socketMappingInfoNew.transitorySocket
+				);
+			}
+			
+			delete &socketMappingInfoOld;
+		}
+	}
+	
+	XllnWndSocketsInvalidateSockets();
+	
+	LeaveCriticalSection(&xlive_critsec_sockets);
+}
 
 // #3
 SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 {
 	TRACE_FX();
 	if (af != AF_INET) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s af (%d) must be AF_INET (%d).", __func__, af, AF_INET);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s af (%d) must be AF_INET (%d)."
+			, __func__
+			, af
+			, AF_INET
+		);
 		WSASetLastError(WSAEAFNOSUPPORT);
-		return SOCKET_ERROR;
+		return INVALID_SOCKET;
 	}
 	if (type == 0 && protocol == 0) {
 		type = SOCK_STREAM;
@@ -53,378 +275,666 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 		protocol = IPPROTO_UDP;
 	}
 	if (type != SOCK_STREAM && type != SOCK_DGRAM) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s type (%d) must be either SOCK_STREAM (%d) or SOCK_DGRAM (%d).", __func__, type, SOCK_STREAM, SOCK_DGRAM);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s type (%d) must be either SOCK_STREAM (%d) or SOCK_DGRAM (%d)."
+			, __func__
+			, type
+			, SOCK_STREAM
+			, SOCK_DGRAM
+		);
 		WSASetLastError(WSAEOPNOTSUPP);
-		return SOCKET_ERROR;
+		return INVALID_SOCKET;
 	}
 
-	SOCKET result = socket(af, type, protocol);
+	SOCKET transitorySocket = socket(af, type, protocol);
+	int errorSocketCreate = WSAGetLastError();
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
 		, "%s 0x%08x. AF: %d. Type: %d. Protocol: %d."
 		, __func__
-		, result
+		, transitorySocket
 		, af
 		, type
 		, protocol
 	);
 
-	if (result == INVALID_SOCKET) {
-		DWORD errorSocketCreate = GetLastError();
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s create failed: 0x%08x. AF: %d. Type: %d. Protocol: %d."
+	if (transitorySocket == INVALID_SOCKET) {
+		XLLN_DEBUG_LOG_ECODE(errorSocketCreate, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s create socket failed AF: %d. Type: %d. Protocol: %d."
 			, __func__
-			, errorSocketCreate
 			, af
 			, type
 			, protocol
 		);
+		
+		WSASetLastError(errorSocketCreate);
+		return INVALID_SOCKET;
 	}
-	else {
-		if (vdp) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-				, "%s VDP socket created: 0x%08x."
-				, __func__
-				, result
-			);
-		}
-
-		SOCKET_MAPPING_INFO* socketMappingInfo = new SOCKET_MAPPING_INFO;
-		socketMappingInfo->socket = result;
-		socketMappingInfo->type = type;
-		socketMappingInfo->protocol = protocol;
-		socketMappingInfo->isVdpProtocol = vdp;
-
-		EnterCriticalSection(&xlive_critsec_sockets);
-		xlive_socket_info[result] = socketMappingInfo;
-		XllnWndSocketsInvalidateSockets();
-		LeaveCriticalSection(&xlive_critsec_sockets);
-	}
-
-	return result;
-}
-
-// #4
-INT WINAPI XSocketClose(SOCKET socket)
-{
-	TRACE_FX();
-	INT result = closesocket(socket);
-
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-		, "%s Socket: 0x%08x."
-		, __func__
-		, socket
-	);
-
-	if (result) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s error 0x%08x. Socket: 0x%08x."
+	
+	if (vdp) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+			, "%s VDP socket created: 0x%08x."
 			, __func__
-			, result
-			, socket
-		);
-	}
-
-	{
-		SOCKET_MAPPING_INFO *socketMappingInfo = 0;
-		EnterCriticalSection(&xlive_critsec_sockets);
-		if (xlive_socket_info.count(socket)) {
-			socketMappingInfo = xlive_socket_info[socket];
-			xlive_socket_info.erase(socket);
-			if (socketMappingInfo->portOffsetHBO != -1) {
-				xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
-			}
-		}
-		XllnWndSocketsInvalidateSockets();
-		LeaveCriticalSection(&xlive_critsec_sockets);
-
-		if (socketMappingInfo) {
-			delete socketMappingInfo;
-		}
-	}
-
-	return result;
-}
-
-// #5
-INT WINAPI XSocketShutdown(SOCKET socket, int how)
-{
-	TRACE_FX();
-	INT result = shutdown(socket, how);
-
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-		, "%s Socket: 0x%08x. how: %d."
-		, __func__
-		, socket
-		, how
-	);
-
-	if (result) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s error 0x%08x. Socket: 0x%08x. how: %d."
-			, __func__
-			, result
-			, socket
-			, how
+			, transitorySocket
 		);
 	}
 	
+	SOCKET perpetualSocket = (SOCKET)CreateMutexA(NULL, false, NULL);
+	
+	SOCKET_MAPPING_INFO* socketMappingInfo = new SOCKET_MAPPING_INFO;
+	socketMappingInfo->socketOptions = new std::map<int32_t, uint32_t>();
+	socketMappingInfo->transitorySocket = transitorySocket;
+	socketMappingInfo->perpetualSocket = perpetualSocket;
+	socketMappingInfo->type = type;
+	socketMappingInfo->protocol = protocol;
+	socketMappingInfo->isVdpProtocol = vdp;
+	
 	{
 		EnterCriticalSection(&xlive_critsec_sockets);
-		if (xlive_socket_info.count(socket)) {
-			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
+		
+		xlive_socket_info[transitorySocket] = socketMappingInfo;
+		xlive_xsocket_perpetual_to_transitory_socket[perpetualSocket] = transitorySocket;
+		
+		XllnWndSocketsInvalidateSockets();
+		
+		LeaveCriticalSection(&xlive_critsec_sockets);
+	}
+	
+	WSASetLastError(ERROR_SUCCESS);
+	return perpetualSocket;
+}
+
+// #4
+INT WINAPI XSocketClose(SOCKET perpetual_socket)
+{
+	TRACE_FX();
+	
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+		, "%s perpetual_socket 0x%08x."
+		, __func__
+		, perpetual_socket
+	);
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultCloseSocket = closesocket(transitorySocket);
+		int errorCloseSocket = WSAGetLastError();
+		
+		{
+			EnterCriticalSection(&xlive_critsec_sockets);
+			
+			if (resultCloseSocket) {
+				if (XSocketPerpetualSocketChangedError_(errorCloseSocket, perpetual_socket, transitorySocket)) {
+					LeaveCriticalSection(&xlive_critsec_sockets);
+					continue;
+				}
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				
+				XLLN_DEBUG_LOG_ECODE(errorCloseSocket, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s close socket error on socket (P,T) (0x%08x,0x%08x)."
+					, __func__
+					, perpetual_socket
+					, transitorySocket
+				);
+				
+				WSASetLastError(errorCloseSocket);
+				return SOCKET_ERROR;
+			}
+			
+			uint8_t resultPerpetualChanged = XSocketPerpetualSocketChanged_(perpetual_socket, transitorySocket);
+			if (resultPerpetualChanged) {
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				if (resultPerpetualChanged == 2) {
+					continue;
+				}
+				WSASetLastError(WSAENOTSOCK);
+				return SOCKET_ERROR;
+			}
+			
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
+			xlive_socket_info.erase(transitorySocket);
+			if (socketMappingInfo->portOffsetHBO != -1) {
+				xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
+			}
+			
+			bool createCoreSocket = false;
+			if (xlive_xsocket_perpetual_core_socket != INVALID_SOCKET && perpetual_socket != xlive_xsocket_perpetual_core_socket && transitorySocket == xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket]) {
+				createCoreSocket = true;
+				xlive_xsocket_perpetual_to_transitory_socket.erase(xlive_xsocket_perpetual_core_socket);
+				CloseHandle((HANDLE)xlive_xsocket_perpetual_core_socket);
+				xlive_xsocket_perpetual_core_socket = INVALID_SOCKET;
+			}
+			
+			xlive_xsocket_perpetual_to_transitory_socket.erase(perpetual_socket);
+			CloseHandle((HANDLE)perpetual_socket);
+			
+			XllnWndSocketsInvalidateSockets();
+			
+			LeaveCriticalSection(&xlive_critsec_sockets);
+			
+			if (socketMappingInfo->socketOptions) {
+				delete socketMappingInfo->socketOptions;
+			}
+			delete socketMappingInfo;
+			
+			if (createCoreSocket) {
+				XLLNCreateCoreSocket();
+			}
+		}
+		
+		WSASetLastError(errorCloseSocket);
+		return resultCloseSocket;
+	}
+}
+
+// #5
+INT WINAPI XSocketShutdown(SOCKET perpetual_socket, int how)
+{
+	TRACE_FX();
+	
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+		, "%s perpetual_socket 0x%08x. how: %d."
+		, __func__
+		, perpetual_socket
+		, how
+	);
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultShutdown = shutdown(transitorySocket, how);
+		int errorShutdown = WSAGetLastError();
+		
+		{
+			EnterCriticalSection(&xlive_critsec_sockets);
+			
+			if (resultShutdown) {
+				if (XSocketPerpetualSocketChangedError_(errorShutdown, perpetual_socket, transitorySocket)) {
+					LeaveCriticalSection(&xlive_critsec_sockets);
+					continue;
+				}
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				
+				XLLN_DEBUG_LOG_ECODE(errorShutdown, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s shutdown socket error on socket (P,T) (0x%08x,0x%08x) how (%d)."
+					, __func__
+					, perpetual_socket
+					, transitorySocket
+					, how
+				);
+				
+				WSASetLastError(errorShutdown);
+				return SOCKET_ERROR;
+			}
+			
+			uint8_t resultPerpetualChanged = XSocketPerpetualSocketChanged_(perpetual_socket, transitorySocket);
+			if (resultPerpetualChanged) {
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				if (resultPerpetualChanged == 2) {
+					continue;
+				}
+				WSASetLastError(WSAENOTSOCK);
+				return SOCKET_ERROR;
+			}
+			
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
 			if (socketMappingInfo->portOffsetHBO != -1) {
 				xlive_port_offset_sockets.erase(socketMappingInfo->portOffsetHBO);
 			}
 			socketMappingInfo->portBindHBO = 0;
+			
+			XllnWndSocketsInvalidateSockets();
+			
+			LeaveCriticalSection(&xlive_critsec_sockets);
 		}
-		XllnWndSocketsInvalidateSockets();
-		LeaveCriticalSection(&xlive_critsec_sockets);
+		
+		WSASetLastError(errorShutdown);
+		return resultShutdown;
 	}
-
-	return result;
 }
 
 // #6
-INT WINAPI XSocketIOCTLSocket(SOCKET socket, __int32 cmd, ULONG *argp)
+INT WINAPI XSocketIOCTLSocket(SOCKET perpetual_socket, __int32 cmd, ULONG *argp)
 {
 	TRACE_FX();
-	INT result = ioctlsocket(socket, cmd, argp);
-	return result;
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultIoctlSocket = ioctlsocket(transitorySocket, cmd, argp);
+		int errorIoctlSocket = WSAGetLastError();
+		
+		if (resultIoctlSocket && XSocketPerpetualSocketChangedError(errorIoctlSocket, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultIoctlSocket) {
+			XLLN_DEBUG_LOG_ECODE(errorIoctlSocket, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s ioctlsocket error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorIoctlSocket);
+		return resultIoctlSocket;
+	}
 }
 
 // #7
-INT WINAPI XSocketSetSockOpt(SOCKET socket, int level, int optname, const char *optval, int optlen)
+INT WINAPI XSocketSetSockOpt(SOCKET perpetual_socket, int level, int optname, const char *optval, int optlen)
 {
 	TRACE_FX();
-
-	if (level == SOL_SOCKET && optname == SO_BROADCAST && optlen) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "%s SO_BROADCAST 0x%02hhx."
-			, __func__
-			, *optval
-		);
-		EnterCriticalSection(&xlive_critsec_sockets);
-		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
-		socketMappingInfo->broadcast = *optval > 0;
-		XllnWndSocketsInvalidateSockets();
-		LeaveCriticalSection(&xlive_critsec_sockets);
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultSetSockOpt = setsockopt(transitorySocket, level, optname, optval, optlen);
+		int errorSetSockOpt = WSAGetLastError();
+		
+		{
+			EnterCriticalSection(&xlive_critsec_sockets);
+			
+			if (resultSetSockOpt) {
+				if (XSocketPerpetualSocketChangedError_(errorSetSockOpt, perpetual_socket, transitorySocket)) {
+					LeaveCriticalSection(&xlive_critsec_sockets);
+					continue;
+				}
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				
+				XLLN_DEBUG_LOG_ECODE(errorSetSockOpt, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s setsockopt error on socket (P,T) (0x%08x,0x%08x)."
+					, __func__
+					, perpetual_socket
+					, transitorySocket
+				);
+				
+				WSASetLastError(errorSetSockOpt);
+				return SOCKET_ERROR;
+			}
+			
+			uint8_t resultPerpetualChanged = XSocketPerpetualSocketChanged_(perpetual_socket, transitorySocket);
+			if (resultPerpetualChanged) {
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				if (resultPerpetualChanged == 2) {
+					continue;
+				}
+				WSASetLastError(WSAENOTSOCK);
+				return SOCKET_ERROR;
+			}
+			
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
+			
+			uint32_t optionValue = 0;
+			memcpy(&optionValue, optval, optlen > 4 ? 4 : optlen);
+			(*socketMappingInfo->socketOptions)[optname] = optionValue;
+			
+			if (level == SOL_SOCKET && optname == SO_BROADCAST) {
+				socketMappingInfo->broadcast = optionValue > 0;
+			}
+			
+			XllnWndSocketsInvalidateSockets();
+			
+			LeaveCriticalSection(&xlive_critsec_sockets);
+			
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "%s level (0x%08x) option name (0x%08x) value (0x%08x)."
+				, __func__
+				, level
+				, optname
+				, optionValue
+			);
+		}
+		
+		WSASetLastError(errorSetSockOpt);
+		return resultSetSockOpt;
 	}
-
-	INT result = setsockopt(socket, level, optname, optval, optlen);
-	if (result == SOCKET_ERROR) {
-		DWORD errorSocketOpt = GetLastError();
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s error 0x%08x on socket 0x%08x."
-			, __func__
-			, socket
-			, errorSocketOpt
-		);
-	}
-
-	return result;
 }
 
 // #8
-INT WINAPI XSocketGetSockOpt(SOCKET socket, int level, int optname, char *optval, int *optlen)
+INT WINAPI XSocketGetSockOpt(SOCKET perpetual_socket, int level, int optname, char *optval, int *optlen)
 {
 	TRACE_FX();
-	INT result = getsockopt(socket, level, optname, optval, optlen);
-	return result;
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultGetsockopt = getsockopt(transitorySocket, level, optname, optval, optlen);
+		int errorGetsockopt = WSAGetLastError();
+		
+		if (resultGetsockopt && XSocketPerpetualSocketChangedError(errorGetsockopt, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultGetsockopt) {
+			XLLN_DEBUG_LOG_ECODE(errorGetsockopt, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s getsockopt error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorGetsockopt);
+		return resultGetsockopt;
+	}
 }
 
 // #9
-INT WINAPI XSocketGetSockName(SOCKET socket, struct sockaddr *name, int *namelen)
+INT WINAPI XSocketGetSockName(SOCKET perpetual_socket, struct sockaddr *name, int *namelen)
 {
 	TRACE_FX();
-	INT result = getsockname(socket, name, namelen);
-	return result;
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultGetsockname = getsockname(transitorySocket, name, namelen);
+		int errorGetsockname = WSAGetLastError();
+		
+		if (resultGetsockname && XSocketPerpetualSocketChangedError(errorGetsockname, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultGetsockname) {
+			XLLN_DEBUG_LOG_ECODE(errorGetsockname, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s getsockname error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorGetsockname);
+		return resultGetsockname;
+	}
 }
 
 // #10
-INT WINAPI XSocketGetPeerName(SOCKET socket, struct sockaddr *name, int *namelen)
+INT WINAPI XSocketGetPeerName(SOCKET perpetual_socket, struct sockaddr *name, int *namelen)
 {
 	TRACE_FX();
-	INT result = getpeername(socket, name, namelen);
-	return result;
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultGetpeername = getsockname(transitorySocket, name, namelen);
+		int errorGetpeername = WSAGetLastError();
+		
+		if (resultGetpeername && XSocketPerpetualSocketChangedError(errorGetpeername, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultGetpeername) {
+			XLLN_DEBUG_LOG_ECODE(errorGetpeername, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s getpeername error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorGetpeername);
+		return resultGetpeername;
+	}
 }
 
 // #11
-SOCKET WINAPI XSocketBind(SOCKET socket, const struct sockaddr *name, int namelen)
+SOCKET WINAPI XSocketBind(SOCKET perpetual_socket, const struct sockaddr *name, int namelen)
 {
 	TRACE_FX();
-
+	
 	SOCKADDR_STORAGE sockAddrExternal;
 	int sockAddrExternalLen = sizeof(sockAddrExternal);
 	memcpy(&sockAddrExternal, name, sockAddrExternalLen < namelen ? sockAddrExternalLen : namelen);
-
+	
 	if (sockAddrExternal.ss_family != AF_INET && sockAddrExternal.ss_family != AF_INET6) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s Socket 0x%08x bind. Unknown socket address family 0x%04x."
+			, "%s Perpetual Socket 0x%08x bind on unsupported socket address family 0x%04hx."
 			, __func__
-			, socket
+			, perpetual_socket
 			, sockAddrExternal.ss_family
 		);
-
-		SOCKET result = bind(socket, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
-
-		if (result != ERROR_SUCCESS) {
-			DWORD errorSocketBind = GetLastError();
-
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s Socket 0x%08x with unknown socket address family 0x%04x had bind error: 0x%08x."
-				, __func__
-				, socket
-				, sockAddrExternal.ss_family
-				, errorSocketBind
-			);
-		}
-
-		return result;
+		
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
 	}
-
+	
 	uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
 	const uint16_t portOffset = portHBO % 100;
 	const uint16_t portBase = portHBO - portOffset;
 	uint16_t portShiftedHBO = 0;
-
+	
 	// If not a random port (0), and we are using base ports, and the offset value's base is not 0, then shift the port.
 	if (portHBO && IsUsingBasePort(xlive_base_port) && portBase % 1000 == 0) {
 		portShiftedHBO = xlive_base_port + portOffset;
 		SetSockAddrPort(&sockAddrExternal, portShiftedHBO);
 	}
-
-	if (sockAddrExternal.ss_family == AF_INET && ((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr == htonl(INADDR_ANY)) {
-		EnterCriticalSection(&xlive_critsec_network_adapter);
-		// TODO Should we perhaps not do this unless the user really wants to like if (xlive_init_preferred_network_adapter_name or config) is set?
-		if (xlive_network_adapter && xlive_network_adapter->unicastHAddr != INADDR_LOOPBACK) {
-			((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter->unicastHAddr);
+	
+	if (portShiftedHBO == (IsUsingBasePort(xlive_base_port) ? xlive_base_port : xlive_system_link_port) && perpetual_socket != xlive_xsocket_perpetual_core_socket) {
+		XLLNCloseCoreSocket();
+		
+		EnterCriticalSection(&xlive_critsec_sockets);
+		
+		xlive_xsocket_perpetual_core_socket = (SOCKET)CreateMutexA(NULL, false, NULL);
+		
+		SOCKET transitorySocketTitleSocket = xlive_xsocket_perpetual_to_transitory_socket[perpetual_socket];
+		xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket] = transitorySocketTitleSocket;
+		
+		XllnWndSocketsInvalidateSockets();
+		
+		LeaveCriticalSection(&xlive_critsec_sockets);
+		
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+			, "%s Perpetual Core Socket 0x%08x now points to socket (P,T) (0x%08x,0x%08x)."
+			, __func__
+			, xlive_xsocket_perpetual_core_socket
+			, perpetual_socket
+			, transitorySocketTitleSocket
+		);
+		
+		char sockOptValue = true;
+		INT resultSetSockOpt = XSocketSetSockOpt(xlive_xsocket_perpetual_core_socket, SOL_SOCKET, SO_BROADCAST, &sockOptValue, sizeof(sockOptValue));
+		if (resultSetSockOpt == SOCKET_ERROR) {
+			int errorSetSockOpt = WSAGetLastError();
+			XLLN_DEBUG_LOG_ECODE(errorSetSockOpt, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+				, "%s Failed to set Broadcast option on Core Socket with error:"
+				, __func__
+			);
 		}
-		LeaveCriticalSection(&xlive_critsec_network_adapter);
 	}
-
-	SOCKET result = bind(socket, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
-
-	if (result == ERROR_SUCCESS) {
-		uint16_t portBindHBO = portHBO;
-		INT result = getsockname(socket, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
-		if (result == ERROR_SUCCESS) {
-			portBindHBO = GetSockAddrPort(&sockAddrExternal);
-			if (portHBO != portBindHBO) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-					, "%s Socket 0x%08x bind port mapped from %hu to %hu."
+	
+	bool networkAddrAny = false;
+	while (1) {
+		if (networkAddrAny) {
+			((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(INADDR_ANY);
+		}
+		
+		if (sockAddrExternal.ss_family == AF_INET && ((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr == htonl(INADDR_ANY)) {
+			EnterCriticalSection(&xlive_critsec_network_adapter);
+			// TODO Should we perhaps not do this unless the user really wants to like if (xlive_init_preferred_network_adapter_name or config) is set?
+			if (xlive_network_adapter && xlive_network_adapter->unicastHAddr != INADDR_LOOPBACK) {
+				((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter->unicastHAddr);
+				networkAddrAny = true;
+			}
+			LeaveCriticalSection(&xlive_critsec_network_adapter);
+		}
+	
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		SOCKET resultSocketBind = bind(transitorySocket, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
+		int errorSocketBind = WSAGetLastError();
+		
+		{
+			EnterCriticalSection(&xlive_critsec_sockets);
+			
+			if (resultSocketBind) {
+				if (XSocketPerpetualSocketChangedError_(errorSocketBind, perpetual_socket, transitorySocket)) {
+					LeaveCriticalSection(&xlive_critsec_sockets);
+					continue;
+				}
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				
+				if (errorSocketBind == WSAEADDRINUSE) {
+					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+						, "%s socket (P,T) (0x%08x,0x%08x) bind error, another program has taken port. Base: %hu. Offset: %hu. New-shifted: %hu. Original: %hu."
+						, __func__
+						, perpetual_socket
+						, transitorySocket
+						, xlive_base_port
+						, portOffset
+						, portShiftedHBO
+						, portHBO
+					);
+				}
+				else {
+					XLLN_DEBUG_LOG_ECODE(errorSocketBind, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+						, "%s bind error on socket (P,T) (0x%08x,0x%08x). Base: %hu. Offset: %hu. New-shifted: %hu. Original: %hu."
+						, __func__
+						, perpetual_socket
+						, transitorySocket
+						, xlive_base_port
+						, portOffset
+						, portShiftedHBO
+						, portHBO
+					);
+				}
+				
+				WSASetLastError(errorSocketBind);
+				return SOCKET_ERROR;
+			}
+			
+			uint8_t resultPerpetualChanged = XSocketPerpetualSocketChanged_(perpetual_socket, transitorySocket);
+			if (resultPerpetualChanged) {
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				if (resultPerpetualChanged == 2) {
+					continue;
+				}
+				WSASetLastError(WSAENOTSOCK);
+				return SOCKET_ERROR;
+			}
+			
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
+			uint16_t portBindHBO = portHBO;
+			
+			INT resultGetsockname = getsockname(transitorySocket, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+			int errorGetsockname = WSAGetLastError();
+			if (!resultGetsockname) {
+				portBindHBO = GetSockAddrPort(&sockAddrExternal);
+			}
+			
+			socketMappingInfo->portBindHBO = portBindHBO;
+			socketMappingInfo->portOgHBO = portHBO;
+			if (portShiftedHBO) {
+				socketMappingInfo->portOffsetHBO = portOffset;
+				xlive_port_offset_sockets[portOffset] = perpetual_socket;
+			}
+			else {
+				socketMappingInfo->portOffsetHBO = -1;
+			}
+			
+			int protocol = socketMappingInfo->protocol;
+			bool isVdp = socketMappingInfo->isVdpProtocol;
+			
+			XllnWndSocketsInvalidateSockets();
+			
+			LeaveCriticalSection(&xlive_critsec_sockets);
+			
+			if (resultGetsockname) {
+				XLLN_DEBUG_LOG_ECODE(errorGetsockname, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s socket (P,T) (0x%08x,0x%08x) getsockname error bind port mapped from %hu to unknown address from getsockname."
 					, __func__
-					, socket
+					, perpetual_socket
+					, transitorySocket
 					, portHBO
-					, portBindHBO
 				);
 			}
-		}
-		else {
-			INT errorGetsockname = WSAGetLastError();
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s Socket 0x%08x bind port mapped from %hu to unknown address from getsockname with error 0x%08x."
+			
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
+				, "%s socket (P,T) (0x%08x,0x%08x) bind. Protocol: %s%d%s. Port: %hu -> %hu."
 				, __func__
-				, socket
+				, perpetual_socket
+				, transitorySocket
+				, protocol == IPPROTO_UDP ? "UDP:" : (protocol == IPPROTO_TCP ? "TCP:" : "")
+				, protocol
+				, isVdp ? " was VDP" : ""
 				, portHBO
-				, errorGetsockname
+				, portBindHBO
 			);
 		}
-
-		int protocol;
-		bool isVdp;
-		if (portShiftedHBO) {
-			EnterCriticalSection(&xlive_critsec_sockets);
-
-			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
-			socketMappingInfo->portBindHBO = portBindHBO;
-			socketMappingInfo->portOgHBO = portHBO;
-			socketMappingInfo->portOffsetHBO = portOffset;
-			protocol = socketMappingInfo->protocol;
-			isVdp = socketMappingInfo->isVdpProtocol;
-			xlive_port_offset_sockets[portOffset] = socket;
-
-			XllnWndSocketsInvalidateSockets();
-
-			LeaveCriticalSection(&xlive_critsec_sockets);
-		}
-		else {
-			EnterCriticalSection(&xlive_critsec_sockets);
-
-			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[socket];
-			socketMappingInfo->portBindHBO = portBindHBO;
-			socketMappingInfo->portOgHBO = portHBO;
-			socketMappingInfo->portOffsetHBO = -1;
-			protocol = socketMappingInfo->protocol;
-			isVdp = socketMappingInfo->isVdpProtocol;
-
-			XllnWndSocketsInvalidateSockets();
-
-			LeaveCriticalSection(&xlive_critsec_sockets);
-		}
-
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_INFO
-			, "%s Socket 0x%08x bind. Protocol: %s%d%s. Port: %hu."
-			, __func__
-			, socket
-			, protocol == IPPROTO_UDP ? "UDP:" : (protocol == IPPROTO_TCP ? "TCP:" : "")
-			, protocol
-			, isVdp ? " was VDP" : ""
-			, portHBO
-		);
+		
+		WSASetLastError(errorSocketBind);
+		return resultSocketBind;
 	}
-	else {
-		DWORD errorSocketBind = GetLastError();
-		if (errorSocketBind == WSAEADDRINUSE) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s Socket 0x%08x bind error, another program has taken port:\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
-				, __func__
-				, socket
-				, xlive_base_port
-				, portOffset
-				, portShiftedHBO
-				, portHBO
-			);
-		}
-		else {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s Socket 0x%08x bind error: 0x%08x.\nBase: %hu.\nOffset: %hu.\nNew-shifted: %hu.\nOriginal: %hu."
-				, __func__
-				, socket
-				, errorSocketBind
-				, xlive_base_port
-				, portOffset
-				, portShiftedHBO
-				, portHBO
-			);
-		}
-	}
-
-	return result;
 }
 
 // #12
-INT WINAPI XSocketConnect(SOCKET socket, const struct sockaddr *name, int namelen)
+INT WINAPI XSocketConnect(SOCKET perpetual_socket, const struct sockaddr *name, int namelen)
 {
 	TRACE_FX();
-
+	
 	SOCKADDR_STORAGE sockAddrExternal;
 	int sockAddrExternalLen = sizeof(sockAddrExternal);
 	memcpy(&sockAddrExternal, name, sockAddrExternalLen < namelen ? sockAddrExternalLen : namelen);
-
+	
+	if (sockAddrExternal.ss_family != AF_INET && sockAddrExternal.ss_family != AF_INET6) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s Perpetual Socket 0x%08x connect on unsupported socket address family 0x%04hx."
+			, __func__
+			, perpetual_socket
+			, sockAddrExternal.ss_family
+		);
+		
+		WSASetLastError(WSAEAFNOSUPPORT);
+		return SOCKET_ERROR;
+	}
+	
 	if (sockAddrExternal.ss_family == AF_INET) {
 		const uint32_t ipv4NBO = ((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr;
 		// This address may (hopefully) be an instanceId.
 		const uint32_t ipv4HBO = ntohl(ipv4NBO);
 		const uint16_t portHBO = GetSockAddrPort(&sockAddrExternal);
-
+		
 		uint32_t resultNetter = NetterEntityGetAddrByInstanceIdPort(&sockAddrExternal, ipv4HBO, portHBO);
 		if (resultNetter == ERROR_PORT_NOT_SET) {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "%s on socket 0x%08x NetterEntityGetAddrByInstanceIdPort ERROR_PORT_NOT_SET address/instanceId 0x%08x:%hu assuming %s."
+				, "%s on Perpetual Socket 0x%08x NetterEntityGetAddrByInstanceIdPort ERROR_PORT_NOT_SET address/instanceId 0x%08x:%hu assuming %s."
 				, __func__
-				, socket
+				, perpetual_socket
 				, ipv4HBO
 				, portHBO
 				, sockAddrInfo ? sockAddrInfo : ""
@@ -435,9 +945,9 @@ INT WINAPI XSocketConnect(SOCKET socket, const struct sockaddr *name, int namele
 		}
 		else if (resultNetter) {
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s on socket 0x%08x NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
+				, "%s on Perpetual Socket 0x%08x NetterEntityGetAddrByInstanceIdPort failed to find address 0x%08x:%hu with error 0x%08x."
 				, __func__
-				, socket
+				, perpetual_socket
 				, ipv4HBO
 				, portHBO
 				, resultNetter
@@ -446,9 +956,9 @@ INT WINAPI XSocketConnect(SOCKET socket, const struct sockaddr *name, int namele
 		else {
 			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-				, "%s on socket 0x%08x NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as %s."
+				, "%s on Perpetual Socket 0x%08x NetterEntityGetAddrByInstanceIdPort found address/instanceId 0x%08x:%hu as %s."
 				, __func__
-				, socket
+				, perpetual_socket
 				, ipv4HBO
 				, portHBO
 				, sockAddrInfo ? sockAddrInfo : ""
@@ -461,186 +971,350 @@ INT WINAPI XSocketConnect(SOCKET socket, const struct sockaddr *name, int namele
 	else {
 		char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "%s on socket 0x%08x connecting to address %s."
+			, "%s on Perpetual Socket 0x%08x connecting to address %s."
 			, __func__
-			, socket
+			, perpetual_socket
 			, sockAddrInfo ? sockAddrInfo : ""
 		);
 		if (sockAddrInfo) {
 			free(sockAddrInfo);
 		}
 	}
-
-	INT result = connect(socket, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
-
-	if (result) {
-		INT errorSendTo = WSAGetLastError();
-		char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s on socket 0x%08x sendto() failed to send to address %s with error 0x%08x."
-			, __func__
-			, socket
-			, sockAddrInfo ? sockAddrInfo : ""
-			, errorSendTo
-		);
-		if (sockAddrInfo) {
-			free(sockAddrInfo);
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
 		}
+		
+		INT resultConnect = connect(transitorySocket, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
+		int errorConnect = WSAGetLastError();
+		
+		if (resultConnect && XSocketPerpetualSocketChangedError(errorConnect, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultConnect) {
+			char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+			XLLN_DEBUG_LOG_ECODE(errorConnect, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s connect error on socket (P,T) (0x%08x,0x%08x) to address %s."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+				, sockAddrInfo ? sockAddrInfo : ""
+			);
+			if (sockAddrInfo) {
+				free(sockAddrInfo);
+			}
+		}
+		
+		WSASetLastError(errorConnect);
+		return resultConnect;
 	}
-
-	return result;
 }
 
 // #13
-INT WINAPI XSocketListen(SOCKET socket, int backlog)
+INT WINAPI XSocketListen(SOCKET perpetual_socket, int backlog)
 {
 	TRACE_FX();
-	INT result = listen(socket, backlog);
-	return result;
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultListen = listen(transitorySocket, backlog);
+		int errorListen = WSAGetLastError();
+		
+		if (resultListen && XSocketPerpetualSocketChangedError(errorListen, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultListen) {
+			XLLN_DEBUG_LOG_ECODE(errorListen, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s listen error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorListen);
+		return resultListen;
+	}
 }
 
 // #14
-SOCKET WINAPI XSocketAccept(SOCKET socket, struct sockaddr *addr, int *addrlen)
+SOCKET WINAPI XSocketAccept(SOCKET perpetual_socket, struct sockaddr *addr, int *addrlen)
 {
 	TRACE_FX();
-	SOCKET result = accept(socket, addr, addrlen);
-	return result;
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		SOCKET resultAccept = accept(transitorySocket, addr, addrlen);
+		int errorAccept = WSAGetLastError();
+		
+		if (resultAccept == INVALID_SOCKET && XSocketPerpetualSocketChangedError(errorAccept, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultAccept == INVALID_SOCKET) {
+			if (errorAccept != WSAEWOULDBLOCK) {
+				XLLN_DEBUG_LOG_ECODE(errorAccept, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s accept error on socket (P,T) (0x%08x,0x%08x)."
+					, __func__
+					, perpetual_socket
+					, transitorySocket
+				);
+			}
+		}
+		
+		WSASetLastError(errorAccept);
+		return resultAccept;
+	}
 }
 
 // #15
 INT WINAPI XSocketSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, const struct timeval *timeout)
 {
 	TRACE_FX();
-	INT result = select(nfds, readfds, writefds, exceptfds, timeout);
-	return result;
+	
+	INT resultSelect = select(nfds, readfds, writefds, exceptfds, timeout);
+	int errorSelect = WSAGetLastError();
+	if (resultSelect) {
+		XLLN_DEBUG_LOG_ECODE(errorSelect, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s select error."
+			, __func__
+		);
+	}
+	
+	WSASetLastError(errorSelect);
+	return resultSelect;
 }
 
 // #18
-INT WINAPI XSocketRecv(SOCKET socket, char * buf, int len, int flags)
+INT WINAPI XSocketRecv(SOCKET perpetual_socket, char *buf, int len, int flags)
 {
 	TRACE_FX();
 	if (flags) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s flags must be 0.", __func__);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, __func__
+			, perpetual_socket
+		);
+		
 		WSASetLastError(WSAEOPNOTSUPP);
 		return SOCKET_ERROR;
 	}
-	INT result = recv(socket, buf, len, flags);
-	if (result == SOCKET_ERROR) {
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultDataRecvSize = recv(transitorySocket, buf, len, flags);
 		int errorRecv = WSAGetLastError();
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s socket (0x%08x) recv failed with error 0x%08x."
-			, __func__
-			, socket
-			, errorRecv
-		);
+		
+		if (resultDataRecvSize == SOCKET_ERROR && XSocketPerpetualSocketChangedError(errorRecv, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultDataRecvSize == SOCKET_ERROR) {
+			XLLN_DEBUG_LOG_ECODE(errorRecv, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s recv error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		else {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "%s socket (P,T) (0x%08x,0x%08x) data received size 0x%08x."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+				, resultDataRecvSize
+			);
+		}
+		
 		WSASetLastError(errorRecv);
+		return resultDataRecvSize;
 	}
-	else {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "%s socket (0x%08x)."
-			, __func__
-			, socket
-		);
-	}
-	return result;
 }
 
 // #20
-INT WINAPI XSocketRecvFrom(SOCKET socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen)
+INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen)
 {
 	TRACE_FX();
 	if (flags) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s flags must be 0.", __func__);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, __func__
+			, perpetual_socket
+		);
+		
 		WSASetLastError(WSAEOPNOTSUPP);
 		return SOCKET_ERROR;
 	}
-	SOCKADDR_STORAGE sockAddrExternal;
-	int sockAddrExternalLen = sizeof(sockAddrExternal);
-	INT resultDataRecvSize = recvfrom(socket, dataBuffer, dataBufferSize, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
-	if (resultDataRecvSize <= 0) {
-		return resultDataRecvSize;
+	
+	while (1) {
+		SOCKADDR_STORAGE sockAddrExternal;
+		int sockAddrExternalLen = sizeof(sockAddrExternal);
+		
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultDataRecvSize = recvfrom(transitorySocket, dataBuffer, dataBufferSize, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+		int errorRecvFrom = WSAGetLastError();
+		
+		if (resultDataRecvSize == SOCKET_ERROR && XSocketPerpetualSocketChangedError(errorRecvFrom, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultDataRecvSize <= 0) {
+			if (errorRecvFrom != WSAEWOULDBLOCK) {
+				XLLN_DEBUG_LOG_ECODE(errorRecvFrom, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s recv error on socket (P,T) (0x%08x,0x%08x)."
+					, __func__
+					, perpetual_socket
+					, transitorySocket
+				);
+			}
+			
+			WSASetLastError(errorRecvFrom);
+			return resultDataRecvSize;
+		}
+		
+		INT resultDataRecvSizeFromHelper = XSocketRecvFromHelper(resultDataRecvSize, perpetual_socket, dataBuffer, dataBufferSize, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
+		if (resultDataRecvSizeFromHelper == 0) {
+			continue;
+		}
+		
+		WSASetLastError(errorRecvFrom);
+		return resultDataRecvSizeFromHelper;
 	}
-	INT result = XSocketRecvFromHelper(resultDataRecvSize, socket, dataBuffer, dataBufferSize, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
-	if (result == 0) { // && resultDataRecvSize > 0
-		WSASetLastError(WSAEWOULDBLOCK);
-		return SOCKET_ERROR;
-	}
-	return result;
 }
 
 // #22
-INT WINAPI XSocketSend(SOCKET socket, const char *buf, int len, int flags)
+INT WINAPI XSocketSend(SOCKET perpetual_socket, const char *buf, int len, int flags)
 {
 	TRACE_FX();
 	if (flags) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s flags must be 0.", __func__);
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, __func__
+			, perpetual_socket
+		);
+		
 		WSASetLastError(WSAEOPNOTSUPP);
 		return SOCKET_ERROR;
 	}
-	INT result = send(socket, buf, len, flags);
-	if (result == SOCKET_ERROR) {
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultDataSendSize = send(transitorySocket, buf, len, flags);
 		int errorSend = WSAGetLastError();
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s socket (0x%08x) send failed with error 0x%08x."
-			, __func__
-			, socket
-			, errorSend
-		);
+		
+		if (resultDataSendSize == SOCKET_ERROR && XSocketPerpetualSocketChangedError(errorSend, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultDataSendSize == SOCKET_ERROR) {
+			XLLN_DEBUG_LOG_ECODE(errorSend, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s send error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		else {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "%s socket (P,T) (0x%08x,0x%08x) data to send size 0x%08x sent size 0x%08x."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+				, len
+				, resultDataSendSize
+			);
+		}
+		
 		WSASetLastError(errorSend);
+		return resultDataSendSize;
 	}
-	else {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "%s socket (0x%08x)."
-			, __func__
-			, socket
-		);
-	}
-	return result;
 }
 
 // #24
-INT WINAPI XSocketSendTo(SOCKET socket, const char *dataBuffer, int dataSendSize, int flags, sockaddr *to, int tolen)
+INT WINAPI XSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int dataSendSize, int flags, sockaddr *to, int tolen)
 {
 	TRACE_FX();
-	INT resultSentSize = SOCKET_ERROR;
-
+	if (flags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, __func__
+			, perpetual_socket
+		);
+		
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
+	
 	const int packetSizeHeaderType = sizeof(XLLNNetPacketType::TYPE);
-
+	
 	int newPacketBufferTitleDataSize = packetSizeHeaderType + dataSendSize;
-
+	
 	// Check overflow condition.
 	if (newPacketBufferTitleDataSize < 0) {
 		WSASetLastError(WSAEMSGSIZE);
 		return SOCKET_ERROR;
 	}
-
+	
 	const uint32_t ipv4NBO = ((struct sockaddr_in*)to)->sin_addr.s_addr;
 	// This address may (hopefully) be an instanceId.
 	const uint32_t ipv4HBO = ntohl(ipv4NBO);
-
+	
 	uint8_t *newPacketBufferTitleData = new uint8_t[newPacketBufferTitleDataSize];
 	int newPacketBufferTitleDataAlreadyProcessedOffset = 0;
-
+	
 	XLLNNetPacketType::TYPE &newPacketTitleDataType = *(XLLNNetPacketType::TYPE*)&newPacketBufferTitleData[newPacketBufferTitleDataAlreadyProcessedOffset];
 	newPacketBufferTitleDataAlreadyProcessedOffset += packetSizeHeaderType;
 	newPacketTitleDataType = (((SOCKADDR_STORAGE*)to)->ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
-
+	
 	memcpy(&newPacketBufferTitleData[newPacketBufferTitleDataAlreadyProcessedOffset], dataBuffer, dataSendSize);
-
-	resultSentSize = XllnSocketSendTo(socket, (char*)newPacketBufferTitleData, newPacketBufferTitleDataSize, flags, to, tolen);
-
+	
+	INT resultDataSendSize = XllnSocketSendTo(perpetual_socket, (char*)newPacketBufferTitleData, newPacketBufferTitleDataSize, flags, to, tolen);
+	int errorSendTo = WSAGetLastError();
+	
 	delete[] newPacketBufferTitleData;
-
-	if (resultSentSize > 0) {
-		int32_t unsentDataSize = newPacketBufferTitleDataSize - resultSentSize;
+	
+	if (resultDataSendSize > 0) {
+		int32_t unsentDataSize = newPacketBufferTitleDataSize - resultDataSendSize;
 		int32_t newPacketDataSizeDifference = newPacketBufferTitleDataSize - dataSendSize;
-		resultSentSize = dataSendSize - unsentDataSize;
-		if (resultSentSize <= newPacketDataSizeDifference) {
-			resultSentSize = 0;
+		resultDataSendSize = dataSendSize - unsentDataSize;
+		if (resultDataSendSize <= newPacketDataSizeDifference) {
+			resultDataSendSize = 0;
 		}
 	}
-
-	return resultSentSize;
+	
+	WSASetLastError(errorSendTo);
+	return resultDataSendSize;
 }
 
 // #26
@@ -752,17 +1426,70 @@ USHORT WINAPI XSocketHTONS(USHORT hostshort)
 	return result;
 }
 
-void XLLNCreateCoreSocket()
+void XLLNCloseCoreSocket()
 {
-	SOCKET socket = XSocketCreate(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (socket == INVALID_SOCKET) {
+	EnterCriticalSection(&xlive_critsec_sockets);
+
+	if (xlive_xsocket_perpetual_core_socket == INVALID_SOCKET) {
+		LeaveCriticalSection(&xlive_critsec_sockets);
+		return;
+	}
+
+	SOCKET transitorySocket = xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket];
+
+	SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
+	if (socketMappingInfo->perpetualSocket != xlive_xsocket_perpetual_core_socket) {
+		xlive_xsocket_perpetual_to_transitory_socket.erase(xlive_xsocket_perpetual_core_socket);
+		XllnWndSocketsInvalidateSockets();
+		LeaveCriticalSection(&xlive_critsec_sockets);
+		return;
+	}
+
+	LeaveCriticalSection(&xlive_critsec_sockets);
+
+	INT resultSocketShutdown = XSocketShutdown(xlive_xsocket_perpetual_core_socket, SD_RECEIVE);
+	if (resultSocketShutdown) {
+		int errorSocketShutdown = WSAGetLastError();
+		XLLN_DEBUG_LOG_ECODE(errorSocketShutdown, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+			, "%s Failed to shutdown Core Socket with error:"
+			, __func__
+		);
+	}
+
+	INT resultSocketClose = XSocketClose(xlive_xsocket_perpetual_core_socket);
+	if (resultSocketClose) {
+		int errorSocketClose = WSAGetLastError();
+		XLLN_DEBUG_LOG_ECODE(errorSocketClose, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+			, "%s Failed to close Core Socket with error:"
+			, __func__
+		);
+	}
+
+	xlive_xsocket_perpetual_core_socket = INVALID_SOCKET;
+}
+
+static void XLLNCreateCoreSocket()
+{
+	XLLNCloseCoreSocket();
+	
+	xlive_xsocket_perpetual_core_socket = XSocketCreate(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	if (xlive_xsocket_perpetual_core_socket == INVALID_SOCKET) {
+		int errorSocketCreate = WSAGetLastError();
+		XLLN_DEBUG_LOG_ECODE(errorSocketCreate, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+			, "%s Failed to create Core Socket with error:"
+			, __func__
+		);
 		return;
 	}
 	
 	char sockOptValue = true;
-	INT resultSetSockOpt = XSocketSetSockOpt(socket, SOL_SOCKET, SO_BROADCAST, &sockOptValue, sizeof(sockOptValue));
+	INT resultSetSockOpt = XSocketSetSockOpt(xlive_xsocket_perpetual_core_socket, SOL_SOCKET, SO_BROADCAST, &sockOptValue, sizeof(sockOptValue));
 	if (resultSetSockOpt == SOCKET_ERROR) {
-		XSocketClose(socket);
+		int errorSetSockOpt = WSAGetLastError();
+		XLLN_DEBUG_LOG_ECODE(errorSetSockOpt, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+			, "%s Failed to set Broadcast option on Core Socket with error:"
+			, __func__
+		);
 		return;
 	}
 	
@@ -775,31 +1502,16 @@ void XLLNCreateCoreSocket()
 	else {
 		socketBindAddress.sin_port = htons(xlive_system_link_port);
 	}
-	SOCKET resultSocketBind = XSocketBind(socket, (sockaddr*)&socketBindAddress, sizeof(socketBindAddress));
-	if (resultSocketBind != ERROR_SUCCESS) {
-		XSocketClose(socket);
+	SOCKET resultSocketBind = XSocketBind(xlive_xsocket_perpetual_core_socket, (sockaddr*)&socketBindAddress, sizeof(socketBindAddress));
+	if (resultSocketBind) {
+		int errorSocketBind = WSAGetLastError();
+		XLLN_DEBUG_LOG_ECODE(errorSocketBind, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
+			, "%s Failed to bind Core Socket to port %hu with error:"
+			, __func__
+			, ntohs(socketBindAddress.sin_port)
+		);
 		return;
 	}
-	
-	EnterCriticalSection(&xlive_critsec_sockets);
-	xlln_socket_core = socket;
-	LeaveCriticalSection(&xlive_critsec_sockets);
-}
-
-void XLLNCloseCoreSocket()
-{
-	SOCKET socket;
-	EnterCriticalSection(&xlive_critsec_sockets);
-	socket = xlln_socket_core;
-	xlln_socket_core = INVALID_SOCKET;
-	LeaveCriticalSection(&xlive_critsec_sockets);
-	
-	if (socket == INVALID_SOCKET) {
-		return;
-	}
-	
-	XSocketShutdown(socket, SD_RECEIVE);
-	XSocketClose(socket);
 }
 
 BOOL InitXSocket()
@@ -807,6 +1519,7 @@ BOOL InitXSocket()
 	XLLNCreateCoreSocket();
 	XLLNKeepAliveStart();
 	XLiveThreadQosStart();
+	
 	return TRUE;
 }
 
@@ -815,5 +1528,6 @@ BOOL UninitXSocket()
 	XLiveThreadQosStop();
 	XLLNCloseCoreSocket();
 	XLLNKeepAliveStop();
+	
 	return TRUE;
 }

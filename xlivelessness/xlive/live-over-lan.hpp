@@ -98,7 +98,6 @@ VOID LiveOverLanStartBroadcast();
 VOID LiveOverLanStopBroadcast();
 VOID LiveOverLanStartEmpty();
 VOID LiveOverLanStopEmpty();
-bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo);
 
 extern CRITICAL_SECTION xlln_critsec_liveoverlan_sessions;
 extern CRITICAL_SECTION xlln_critsec_liveoverlan_broadcast;

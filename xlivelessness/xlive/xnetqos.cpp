@@ -479,19 +479,14 @@ static void ThreadXLiveQoS()
 	
 	std::mutex mutexPause;
 	while (1) {
-		
-		SOCKET_MAPPING_INFO socketInfoLiveOverLan;
-		if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
-			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-				, "%s LiveOverLan socket not found!"
-				, __func__
-			);
-			return;
-		}
-		
 		sockAddrExternal.ss_family = AF_INET;
 		(*(sockaddr_in*)&sockAddrExternal).sin_addr.s_addr = htonl(INADDR_BROADCAST);
-		(*(sockaddr_in*)&sockAddrExternal).sin_port = htons(socketInfoLiveOverLan.portOgHBO);
+		if (IsUsingBasePort(xlive_base_port)) {
+			(*(sockaddr_in*)&sockAddrExternal).sin_port = htons(xlive_base_port);
+		}
+		else {
+			(*(sockaddr_in*)&sockAddrExternal).sin_port = htons(xlive_system_link_port);
+		}
 		
 		packetQosRequest.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
 		
@@ -565,7 +560,7 @@ static void ThreadXLiveQoS()
 					qosPendingLookup->qosTransitInfo[iXnQoS].timeLastCommSent = std::chrono::high_resolution_clock::now();
 					
 					XllnSocketSendTo(
-						socketInfoLiveOverLan.socket
+						xlive_xsocket_perpetual_core_socket
 						, (char*)packetBuffer
 						, packetSize
 						, 0
@@ -588,7 +583,7 @@ static void ThreadXLiveQoS()
 	delete[] packetBuffer;
 }
 
-void XLiveQosReceiveRequest(XLLNNetPacketType::QOS_REQUEST *packetQosRequest, SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen)
+void XLiveQosReceiveRequest(XLLNNetPacketType::QOS_REQUEST *packetQosRequest, SOCKET perpetual_socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen)
 {
 	EnterCriticalSection(&xlive_critsec_qos_listeners);
 	
@@ -632,8 +627,8 @@ void XLiveQosReceiveRequest(XLLNNetPacketType::QOS_REQUEST *packetQosRequest, SO
 			memcpy(&packetBuffer[packetSizeHeaderType + packetSizeTypeQosResponse], qosListenerInfo->pData, qosListenerInfo->dataSize);
 		}
 		
-		sendto(
-			socket
+		SendToPerpetualSocket(
+			perpetual_socket
 			, (char*)packetBuffer
 			, packetSize
 			, 0

@@ -32,65 +32,6 @@ static std::atomic<bool> liveoverlan_break_sleep = FALSE;
 std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions_xlocator;
 std::map<uint32_t, LIVE_SESSION_REMOTE*> liveoverlan_remote_sessions_xsession;
 
-bool GetLiveOverLanSocketInfo(SOCKET_MAPPING_INFO *socketInfo)
-{
-	SOCKET_MAPPING_INFO *socketInfoSearch = 0;
-	{
-		EnterCriticalSection(&xlive_critsec_sockets);
-
-		for (auto const &socketInfoPair : xlive_socket_info) {
-			if (socketInfoPair.second->broadcast) {
-				if (socketInfoSearch) {
-					if (socketInfoSearch->portOffsetHBO == -1) {
-						// Only use the socket if the port is smaller in value.
-						if (socketInfoPair.second->portOffsetHBO == -1) {
-							if (socketInfoPair.second->portOgHBO == 0 && socketInfoSearch->portOgHBO != 0) {
-								continue;
-							}
-							else if (socketInfoSearch->portOgHBO != 0 && socketInfoSearch->portOgHBO != 0) {
-								if (socketInfoPair.second->portOgHBO > socketInfoSearch->portOgHBO) {
-									continue;
-								}
-							}
-							else if (socketInfoSearch->portOgHBO == 0 && socketInfoSearch->portOgHBO == 0) {
-								if (socketInfoPair.second->portBindHBO > socketInfoSearch->portBindHBO) {
-									continue;
-								}
-							}
-						}
-					}
-					else {
-						if (socketInfoPair.second->portOffsetHBO == -1) {
-							continue;
-						}
-						// Only use the socket if the port is smaller in value.
-						else if (socketInfoPair.second->portOffsetHBO > socketInfoSearch->portOffsetHBO) {
-							continue;
-						}
-					}
-				}
-				socketInfoSearch = socketInfoPair.second;
-			}
-		}
-		
-		if (!socketInfoSearch) {
-			for (auto const &socketInfoPair : xlive_socket_info) {
-				if (socketInfoPair.second->socket == xlln_socket_core) {
-					socketInfoSearch = socketInfoPair.second;
-					break;
-				}
-			}
-		}
-		
-		if (socketInfoSearch) {
-			memcpy(socketInfo, socketInfoSearch, sizeof(SOCKET_MAPPING_INFO));
-		}
-
-		LeaveCriticalSection(&xlive_critsec_sockets);
-	}
-	return socketInfoSearch != 0;
-}
-
 void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid)
 {
 	EnterCriticalSection(&xlln_critsec_liveoverlan_broadcast);
@@ -99,38 +40,34 @@ void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid)
 	}
 	LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	
-	SOCKET_MAPPING_INFO socketInfoLiveOverLan;
-	if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-			, "%s LiveOverLan socket not found!"
-			, __func__
-		);
-		return;
-	}
-
 	SOCKADDR_IN SendStruct;
-	SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
+	if (IsUsingBasePort(xlive_base_port)) {
+		SendStruct.sin_port = htons(xlive_base_port);
+	}
+	else {
+		SendStruct.sin_port = htons(xlive_system_link_port);
+	}
 	SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 	SendStruct.sin_family = AF_INET;
 	
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
-		, "%s broadcast local sessions unadvertise to socket 0x%08x to port %hu."
+		, "%s broadcast local sessions unadvertise to core socket 0x%08x to port %hu."
 		, __func__
-		, socketInfoLiveOverLan.socket
-		, socketInfoLiveOverLan.portOgHBO
+		, xlive_xsocket_perpetual_core_socket
+		, ntohs(SendStruct.sin_port)
 	);
 	
 	const int packetSizeHeaderType = sizeof(XLLNNetPacketType::TYPE);
 	const int packetSizeLiveOverLanUnadvertise = sizeof(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE);
 	const int packetSize = packetSizeHeaderType + packetSizeLiveOverLanUnadvertise;
-
+	
 	uint8_t *packetBuffer = new uint8_t[packetSize];
 	packetBuffer[0] = XLLNNetPacketType::tLIVE_OVER_LAN_UNADVERTISE;
 	XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE &liveOverLanUnadvertise = *(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE*)&packetBuffer[packetSizeHeaderType];
 	liveOverLanUnadvertise.xuid = xuid;
 
 	XllnSocketSendTo(
-		socketInfoLiveOverLan.socket
+		xlive_xsocket_perpetual_core_socket
 		, (char*)packetBuffer
 		, packetSize
 		, 0
@@ -232,26 +169,21 @@ static void LiveOverLanBroadcastLocalSession()
 		return;
 	}
 	
-	SOCKET_MAPPING_INFO socketInfoLiveOverLan;
-	if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
-			, "%s LiveOverLan socket not found!"
-			, __func__
-		);
-		LeaveCriticalSection(&xlln_critsec_liveoverlan_broadcast);
-		return;
-	}
-
 	SOCKADDR_IN SendStruct;
-	SendStruct.sin_port = htons(socketInfoLiveOverLan.portOgHBO);
+	if (IsUsingBasePort(xlive_base_port)) {
+		SendStruct.sin_port = htons(xlive_base_port);
+	}
+	else {
+		SendStruct.sin_port = htons(xlive_system_link_port);
+	}
 	SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 	SendStruct.sin_family = AF_INET;
 	
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
 		, "%s broadcast local session(s) to socket 0x%08x to port %hu."
 		, __func__
-		, socketInfoLiveOverLan.socket
-		, socketInfoLiveOverLan.portOgHBO
+		, xlive_xsocket_perpetual_core_socket
+		, ntohs(SendStruct.sin_port)
 	);
 	
 	if (xlive_xlocator_local_session) {
@@ -259,7 +191,7 @@ static void LiveOverLanBroadcastLocalSession()
 		uint32_t liveSessionSerialisedPacketSize;
 		if (LiveOverLanSerialiseLiveSessionIntoNetPacket(xlive_xlocator_local_session, &liveSessionSerialisedPacket, &liveSessionSerialisedPacketSize)) {
 			XllnSocketSendTo(
-				socketInfoLiveOverLan.socket
+				xlive_xsocket_perpetual_core_socket
 				, (char*)liveSessionSerialisedPacket
 				, liveSessionSerialisedPacketSize
 				, 0
@@ -280,7 +212,7 @@ static void LiveOverLanBroadcastLocalSession()
 			uint32_t liveSessionSerialisedPacketSize;
 			if (LiveOverLanSerialiseLiveSessionIntoNetPacket(entry.second->liveSession, &liveSessionSerialisedPacket, &liveSessionSerialisedPacketSize)) {
 				XllnSocketSendTo(
-					socketInfoLiveOverLan.socket
+					xlive_xsocket_perpetual_core_socket
 					, (char*)liveSessionSerialisedPacket
 					, liveSessionSerialisedPacketSize
 					, 0

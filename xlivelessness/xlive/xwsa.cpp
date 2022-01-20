@@ -1,11 +1,12 @@
 #include <winsock2.h>
 #include "xdefs.hpp"
 #include "xwsa.hpp"
+#include "xsocket.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../xlln/xlln.hpp"
 
 // #1
-INT WINAPI XWSAStartup(WORD wVersionRequested, LPWSADATA lpWSAData)
+INT WINAPI XWSAStartup(WORD wVersionRequested, WSADATA *lpWSAData)
 {
 	TRACE_FX();
 	INT result = WSAStartup(wVersionRequested, lpWSAData);
@@ -31,91 +32,126 @@ INT WINAPI XWSACleanup()
 }
 
 // #16
-BOOL WINAPI XWSAGetOverlappedResult(SOCKET s, LPWSAOVERLAPPED lpOverlapped, LPDWORD lpcbTransfer, BOOL fWait, LPDWORD lpdwFlags)
+BOOL WINAPI XWSAGetOverlappedResult(SOCKET perpetual_socket, WSAOVERLAPPED *lpOverlapped, DWORD *lpcbTransfer, BOOL fWait, DWORD *lpdwFlags)
 {
 	TRACE_FX();
-	return WSAGetOverlappedResult(s, lpOverlapped, lpcbTransfer, fWait, lpdwFlags);
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		BOOL resultGetOverlappedResult = WSAGetOverlappedResult(transitorySocket, lpOverlapped, lpcbTransfer, fWait, lpdwFlags);
+		int errorGetOverlappedResult = WSAGetLastError();
+		
+		if (!resultGetOverlappedResult && XSocketPerpetualSocketChangedError(errorGetOverlappedResult, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (!resultGetOverlappedResult) {
+			XLLN_DEBUG_LOG_ECODE(errorGetOverlappedResult, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s GetOverlappedResult error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorGetOverlappedResult);
+		return resultGetOverlappedResult;
+	}
 }
 
 // #17
-int WINAPI XWSACancelOverlappedIO(SOCKET socket)
+int WINAPI XWSACancelOverlappedIO(SOCKET perpetual_socket)
 {
 	TRACE_FX();
-	if (!socket) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s socket is NULL.", __func__);
+	if (perpetual_socket == INVALID_SOCKET) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s perpetual_socket is INVALID_SOCKET.", __func__);
 		WSASetLastError(WSAENOTSOCK);
 		return SOCKET_ERROR;
 	}
-	if (socket == INVALID_SOCKET) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s socket is INVALID_SOCKET.", __func__);
+	SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+	if (transitorySocket == INVALID_SOCKET) {
 		WSASetLastError(WSAENOTSOCK);
 		return SOCKET_ERROR;
 	}
 	
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	//return WSACancelAsyncRequest(socket);
+	// TODO keep track of the (only one should exist at a time per socket or one per send and recv = 2? per socket) overlapped event from recv or send and lookup here to use in the cancel call.
+	//return WSACancelAsyncRequest(hEvent);
 	WSASetLastError(WSASYSCALLFAILURE);
 	return SOCKET_ERROR;
 }
 
 // #19
 int WINAPI XWSARecv(
-	SOCKET s,
-	LPWSABUF lpBuffers,
-	DWORD dwBufferCount,
-	LPDWORD lpNumberOfBytesRecvd,
-	LPDWORD lpFlags,
-	LPWSAOVERLAPPED lpOverlapped,
-	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+	SOCKET perpetual_socket
+	, WSABUF *lpBuffers
+	, DWORD dwBufferCount
+	, DWORD *lpNumberOfBytesRecvd
+	, DWORD *lpFlags
+	, WSAOVERLAPPED *lpOverlapped
+	, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
+)
 {
 	TRACE_FX();
-	return WSARecv(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return WSARecv(perpetual_socket, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
 }
 
 // #21
 int WINAPI XWSARecvFrom(
-	SOCKET s,
-	LPWSABUF lpBuffers,
-	DWORD dwBufferCount,
-	LPDWORD lpNumberOfBytesRecvd,
-	LPDWORD lpFlags,
-	struct sockaddr FAR *lpFrom,
-	LPINT lpFromlen,
-	LPWSAOVERLAPPED lpOverlapped,
-	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+	SOCKET perpetual_socket
+	, WSABUF *lpBuffers
+	, DWORD dwBufferCount
+	, DWORD *lpNumberOfBytesRecvd
+	, DWORD *lpFlags
+	, struct sockaddr FAR *lpFrom
+	, INT *lpFromlen
+	, WSAOVERLAPPED *lpOverlapped
+	, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
+)
 {
 	TRACE_FX();
-	return WSARecvFrom(s, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpFrom, lpFromlen, lpOverlapped, lpCompletionRoutine);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return WSARecvFrom(perpetual_socket, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpFrom, lpFromlen, lpOverlapped, lpCompletionRoutine);
 }
 
 // #23
 int WINAPI XWSASend(
-	SOCKET s,
-	LPWSABUF lpBuffers,
-	DWORD dwBufferCount,
-	LPDWORD lpNumberOfBytesSent,
-	DWORD dwFlags,
-	LPWSAOVERLAPPED lpOverlapped,
-	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+	SOCKET perpetual_socket
+	, WSABUF *lpBuffers
+	, DWORD dwBufferCount
+	, DWORD *lpNumberOfBytesSent
+	, DWORD dwFlags
+	, WSAOVERLAPPED *lpOverlapped
+	, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
+)
 {
 	TRACE_FX();
-	return WSASend(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpOverlapped, lpCompletionRoutine);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return WSASend(perpetual_socket, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpOverlapped, lpCompletionRoutine);
 }
 
 // #25
 int WINAPI XWSASendTo(
-	SOCKET s,
-	LPWSABUF lpBuffers,
-	DWORD dwBufferCount,
-	LPDWORD lpNumberOfBytesSent,
-	DWORD dwFlags,
-	const struct sockaddr FAR *lpTo,
-	int iToLen,
-	LPWSAOVERLAPPED lpOverlapped,
-	LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
+	SOCKET perpetual_socket
+	, WSABUF *lpBuffers
+	, DWORD dwBufferCount
+	, DWORD *lpNumberOfBytesSent
+	, DWORD dwFlags
+	, const struct sockaddr FAR *lpTo
+	, int iToLen
+	, WSAOVERLAPPED *lpOverlapped
+	, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine
+)
 {
 	TRACE_FX();
-	return WSASendTo(s, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpTo, iToLen, lpOverlapped, lpCompletionRoutine);
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	return WSASendTo(perpetual_socket, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpTo, iToLen, lpOverlapped, lpCompletionRoutine);
 }
 
 // #28
@@ -162,15 +198,67 @@ DWORD WINAPI XWSAWaitForMultipleEvents(DWORD cEvents, const WSAEVENT FAR *lphEve
 }
 
 // #34
-INT WINAPI XWSAFDIsSet(SOCKET fd, fd_set *set)
+INT WINAPI XWSAFDIsSet(SOCKET perpetual_socket, fd_set *set)
 {
 	TRACE_FX();
-	return __WSAFDIsSet(fd, set);
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultFDIsSet = __WSAFDIsSet(transitorySocket, set);
+		int errorFDIsSet = WSAGetLastError();
+		
+		if (resultFDIsSet == 0 && XSocketPerpetualSocketChangedError(errorFDIsSet, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultFDIsSet == 0) {
+			XLLN_DEBUG_LOG_ECODE(errorFDIsSet, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s FDIsSet error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorFDIsSet);
+		return resultFDIsSet;
+	}
 }
 
 // #35
-int WINAPI XWSAEventSelect(SOCKET s, WSAEVENT hEventObject, long lNetworkEvents)
+int WINAPI XWSAEventSelect(SOCKET perpetual_socket, WSAEVENT hEventObject, long lNetworkEvents)
 {
 	TRACE_FX();
-	return WSAEventSelect(s, hEventObject, lNetworkEvents);
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultEventSelect = WSAEventSelect(transitorySocket, hEventObject, lNetworkEvents);
+		int errorEventSelect = WSAGetLastError();
+		
+		if (resultEventSelect && XSocketPerpetualSocketChangedError(errorEventSelect, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultEventSelect) {
+			XLLN_DEBUG_LOG_ECODE(errorEventSelect, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s EventSelect error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorEventSelect);
+		return resultEventSelect;
+	}
 }

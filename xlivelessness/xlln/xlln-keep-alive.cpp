@@ -50,27 +50,15 @@ static void ThreadKeepAlive()
 			if (broadcastEntity.lastComm > timeToSendKeepAlive) {
 				continue;
 			}
-
-			SOCKET_MAPPING_INFO socketInfoLiveOverLan;
-			if (!GetLiveOverLanSocketInfo(&socketInfoLiveOverLan)) {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR, "XLLNKeepAlive socket not found!");
-			}
-			else {
-				XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_DEBUG
-					, "XLLNKeepAlive socket: 0x%08x."
-					, socketInfoLiveOverLan.socket
-				);
-
-				sendto(
-					socketInfoLiveOverLan.socket
-					, (char*)hubRequestPacketBuffer
-					, (int)hubRequestPacketBufferSize
-					, 0
-					, (const sockaddr*)&broadcastEntity.sockaddr
-					, sizeof(broadcastEntity.sockaddr)
-				);
-			}
-
+			
+			SendToPerpetualSocket(
+				xlive_xsocket_perpetual_core_socket
+				, (char*)hubRequestPacketBuffer
+				, (int)hubRequestPacketBufferSize
+				, 0
+				, (const sockaddr*)&broadcastEntity.sockaddr
+				, sizeof(broadcastEntity.sockaddr)
+			);
 		}
 
 		LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
@@ -87,35 +75,44 @@ static void ThreadCoreSocket()
 {
 	std::mutex mutexPause;
 	while (1) {
-		SOCKET socket;
+		bool shouldRecv = false;
+		
 		EnterCriticalSection(&xlive_critsec_sockets);
-		socket = xlln_socket_core;
+		
+		SOCKET transitorySocket = xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket];
+		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
+		if (socketMappingInfo->perpetualSocket == xlive_xsocket_perpetual_core_socket) {
+			shouldRecv = true;
+		}
+		
 		LeaveCriticalSection(&xlive_critsec_sockets);
 		
-		// The function already captures XLLN packets so anything else we can just ignore anyway. All we need is a thread to trigger the read from the socket.
-		const int dataBufferSize = 1024;
-		char dataBuffer[dataBufferSize];
-		SOCKADDR_STORAGE sockAddrExternal;
-		int sockAddrExternalLen = sizeof(sockAddrExternal);
-		while (1) {
-			int resultRecvFromDataSize = XSocketRecvFrom(socket, dataBuffer, dataBufferSize, 0, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
-			if (resultRecvFromDataSize > 0) {
-				// Empty the socket of queued packets.
-				continue;
-			}
-			if (resultRecvFromDataSize == SOCKET_ERROR) {
-				int resultErrorRecvFrom = WSAGetLastError();
-				if (resultErrorRecvFrom == WSAEWOULDBLOCK) {
-					// Normal error. No more data.
-					break;
+		if (shouldRecv) {
+			// The function already captures XLLN packets so anything else we can just ignore anyway. All we need is a thread to trigger the read from the socket.
+			const int dataBufferSize = 1024;
+			char dataBuffer[dataBufferSize];
+			SOCKADDR_STORAGE sockAddrExternal;
+			int sockAddrExternalLen = sizeof(sockAddrExternal);
+			while (1) {
+				int resultRecvFromDataSize = XSocketRecvFrom(xlive_xsocket_perpetual_core_socket, dataBuffer, dataBufferSize, 0, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+				if (resultRecvFromDataSize > 0) {
+					// Empty the socket of queued packets.
+					continue;
 				}
+				if (resultRecvFromDataSize == SOCKET_ERROR) {
+					int resultErrorRecvFrom = WSAGetLastError();
+					if (resultErrorRecvFrom == WSAEWOULDBLOCK) {
+						// Normal error. No more data.
+						break;
+					}
+				}
+				// Perhaps log error here.
+				break;
 			}
-			// Perhaps log error here.
-			break;
 		}
 		
 		std::unique_lock<std::mutex> lock(mutexPause);
-		xlln_core_socket_cond.wait_for(lock, std::chrono::milliseconds(10), []() { return xlln_keep_alive_exit == TRUE; });
+		xlln_core_socket_cond.wait_for(lock, std::chrono::seconds(1), []() { return xlln_keep_alive_exit == TRUE; });
 		if (xlln_keep_alive_exit) {
 			break;
 		}

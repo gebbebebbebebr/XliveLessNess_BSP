@@ -18,7 +18,7 @@ extern CRITICAL_SECTION xlive_critsec_qos_listeners;
 extern std::map<uint64_t, QOS_LISTENER_INFO*> xlive_qos_listeners;
 extern CRITICAL_SECTION xlive_critsec_qos_lookups;
 
-void XLiveQosReceiveRequest(XLLNNetPacketType::QOS_REQUEST *packetQosRequest, SOCKET socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen);
+void XLiveQosReceiveRequest(XLLNNetPacketType::QOS_REQUEST *packetQosRequest, SOCKET perpetual_socket, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen);
 void XLiveQosReceiveResponse(XLLNNetPacketType::QOS_RESPONSE *packetQosResponse);
 void XLiveThreadQosStart();
 void XLiveThreadQosStop();

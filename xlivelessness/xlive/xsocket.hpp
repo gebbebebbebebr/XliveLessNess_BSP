@@ -9,7 +9,8 @@ extern uint16_t xlive_system_link_port;
 extern BOOL xlive_netsocket_abort;
 
 struct SOCKET_MAPPING_INFO {
-	SOCKET socket = 0;
+	SOCKET transitorySocket = INVALID_SOCKET;
+	SOCKET perpetualSocket = INVALID_SOCKET;
 	int32_t type = 0;
 	int32_t protocol = 0;
 	bool isVdpProtocol = false;
@@ -17,13 +18,22 @@ struct SOCKET_MAPPING_INFO {
 	uint16_t portBindHBO = 0;
 	int16_t portOffsetHBO = -1;
 	bool broadcast = false;
+	// Key: optname. Value: optval.
+	// Note: optname keys will either be SO or TCP options depending on if this is a UDP or TCP socket.
+	std::map<int32_t, uint32_t> *socketOptions = 0;
 };
 
 extern CRITICAL_SECTION xlive_critsec_sockets;
 extern std::map<SOCKET, SOCKET_MAPPING_INFO*> xlive_socket_info;
-extern SOCKET xlln_socket_core;
+extern std::map<SOCKET, SOCKET> xlive_xsocket_perpetual_to_transitory_socket;
+extern SOCKET xlive_xsocket_perpetual_core_socket;
 
-INT WINAPI XSocketRecvFrom(SOCKET socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen);
+SOCKET XSocketGetTransitorySocket_(SOCKET perpetual_socket);
+SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket);
+bool XSocketPerpetualSocketChangedError_(int errorSocket, SOCKET perpetual_socket, SOCKET transitory_socket);
+bool XSocketPerpetualSocketChangedError(int errorSocket, SOCKET perpetual_socket, SOCKET transitory_socket);
+uint8_t XSocketPerpetualSocketChanged_(SOCKET perpetual_socket, SOCKET transitory_socket);
+INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen);
 
 void XLLNCloseCoreSocket();
 BOOL InitXSocket();

@@ -40,7 +40,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 		FillRgn(hdc, bgRgn, hBrush);
 		DeleteObject(bgRgn);
 		DeleteObject(hBrush);
-
+		
 		{
 			char *textLabel = IsUsingBasePort(xlive_base_port)
 				? FormMallocString(
@@ -54,13 +54,30 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 				free(textLabel);
 			}
 		}
-
+		
+		{
+			EnterCriticalSection(&xlive_critsec_sockets);
+			char *textLabel = xlive_xsocket_perpetual_core_socket == INVALID_SOCKET
+				? 0
+				: FormMallocString(
+					"Core Socket (P,T): (0x%08x,0x%08x)."
+					, xlive_xsocket_perpetual_core_socket
+					, xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket]
+				);
+			LeaveCriticalSection(&xlive_critsec_sockets);
+			const char *labelToUse = textLabel ? textLabel : "Core Socket: INVALID_SOCKET.";
+			TextOutA(hdc, 200, 10, labelToUse, strlen(labelToUse));
+			if (textLabel) {
+				free(textLabel);
+			}
+		}
+		
 		EndPaint(xlln_hwnd_sockets, &ps);
 		
 		ListView_DeleteAllItems(hwndListView);
 		{
 			EnterCriticalSection(&xlive_critsec_sockets);
-
+			
 			std::vector<SOCKET_MAPPING_INFO*> socketsOrderedByPort;
 			for (auto const &socketInfo : xlive_socket_info) {
 				size_t j = 0;
@@ -79,29 +96,30 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 					socketsOrderedByPort.push_back(socketInfo.second);
 				}
 			}
-
+			
 			for (size_t i = 0; i < socketsOrderedByPort.size(); i++) {
 				SOCKET_MAPPING_INFO *socketInfo = socketsOrderedByPort[i];
-
+				
 				wchar_t *textItemLabel;
 				size_t j = 0;
 				CreateItem(hwndListView, i);
 #define AddSocketItemColumn(format, ...) textItemLabel = FormMallocString(format, __VA_ARGS__); ListView_SetItemText(hwndListView, i, j++, textItemLabel); free(textItemLabel)
 				
-				AddSocketItemColumn(L"0x%08x", socketInfo->socket);
+				AddSocketItemColumn(L"0x%08x", socketInfo->perpetualSocket);
+				AddSocketItemColumn(L"0x%08x", socketInfo->transitorySocket);
+				AddSocketItemColumn(L"%d", socketInfo->type);
 				AddSocketItemColumn(L"%hs(%d)"
 					, socketInfo->protocol == IPPROTO_UDP ? "UDP" : (socketInfo->protocol == IPPROTO_TCP ? "TCP" : "")
 					, socketInfo->protocol
 				);
 				AddSocketItemColumn(L"%hs", socketInfo->isVdpProtocol ? "Y" : "");
 				AddSocketItemColumn(L"%hs", socketInfo->broadcast ? "Y" : "");
-				AddSocketItemColumn(L"%d", socketInfo->type);
 				AddSocketItemColumn(L"%hu", socketInfo->portOgHBO);
 				AddSocketItemColumn(L"%hd", socketInfo->portOffsetHBO);
 				AddSocketItemColumn(L"%hu", socketInfo->portBindHBO);
 				
 			}
-
+			
 			LeaveCriticalSection(&xlive_critsec_sockets);
 		}
 	}
@@ -128,17 +146,19 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 
 		hwndListView = CreateWindowA(WC_LISTVIEWA, "",
 			WS_VISIBLE | WS_BORDER | WS_CHILD | LVS_REPORT,
-			10, 30, 500, 310,
+			10, 30, 640, 310,
 			hWnd, (HMENU)MYWINDOW_LST_SOCKETS, xlln_hModule, 0);
 
-		CreateColumn(hwndListView, 1, L"Socket", 70);
-		CreateColumn(hwndListView, 2, L"Protocol", 60);
-		CreateColumn(hwndListView, 3, L"was VDP", 60);
-		CreateColumn(hwndListView, 4, L"Broadcast", 70);
-		CreateColumn(hwndListView, 5, L"Type", 40);
-		CreateColumn(hwndListView, 6, L"Port", 50);
-		CreateColumn(hwndListView, 7, L"Port Offset", 70);
-		CreateColumn(hwndListView, 8, L"Bind Port", 65);
+		size_t j = 0;
+		CreateColumn(hwndListView, ++j, L"Perpetual Socket", 105);
+		CreateColumn(hwndListView, ++j, L"Transitory Socket", 110);
+		CreateColumn(hwndListView, ++j, L"Type", 40);
+		CreateColumn(hwndListView, ++j, L"Protocol", 60);
+		CreateColumn(hwndListView, ++j, L"was VDP", 60);
+		CreateColumn(hwndListView, ++j, L"Broadcast", 70);
+		CreateColumn(hwndListView, ++j, L"Port", 50);
+		CreateColumn(hwndListView, ++j, L"Port Offset", 70);
+		CreateColumn(hwndListView, ++j, L"Bind Port", 65);
 
 	}
 	else if (message == WM_DESTROY) {
@@ -180,7 +200,7 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 	const wchar_t *windowTitle = L"XLLN Sockets";
 
 	HWND hwdParent = NULL;
-	xlln_hwnd_sockets = CreateWindowExW(0, windowclassname, windowTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 550, 400, hwdParent, 0, hModule, NULL);
+	xlln_hwnd_sockets = CreateWindowExW(0, windowclassname, windowTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 675, 400, hwdParent, 0, hModule, NULL);
 
 	InitCommonControls();
 

@@ -703,6 +703,7 @@ INT WINAPI XNetSetSystemLinkPort(uint16_t system_link_port_NBO)
 	// network byte (big-endian) to little-endian host.
 	uint16_t portHBO = ntohs(system_link_port_NBO);
 	
+	// TODO need to rebind Core Socket if changed and not using Base Port.
 	xlive_system_link_port = portHBO;
 	
 	if (IsUsingBasePort(xlive_base_port)) {
