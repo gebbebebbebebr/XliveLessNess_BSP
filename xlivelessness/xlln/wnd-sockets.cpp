@@ -26,12 +26,12 @@ void XllnWndSocketsInvalidateSockets()
 static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	if (message == WM_PAINT) {
-
+		
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(xlln_hwnd_sockets, &ps);
 		SetTextColor(hdc, RGB(0, 0, 0));
 		SetBkColor(hdc, 0x00C8C8C8);
-
+		
 		HBRUSH hBrush = CreateSolidBrush(0x00C8C8C8);
 		SelectObject(hdc, hBrush);
 		RECT bgRect;
@@ -41,6 +41,19 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 		DeleteObject(bgRgn);
 		DeleteObject(hBrush);
 		
+		if (xlive_netsocket_abort) {
+			SetTextColor(hdc, RGB(0xFF, 0, 0));
+			const char *labelToUse = "NET SOCKET ABORT.";
+			TextOutA(hdc, 10, 10, labelToUse, strlen(labelToUse));
+		}
+		else {
+			SetTextColor(hdc, RGB(0, 0xCA, 0));
+			const char *labelToUse = "Sockets Enabled.";
+			TextOutA(hdc, 10, 10, labelToUse, strlen(labelToUse));
+		}
+		
+		SetTextColor(hdc, RGB(0, 0, 0));
+		
 		{
 			char *textLabel = IsUsingBasePort(xlive_base_port)
 				? FormMallocString(
@@ -49,7 +62,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 				)
 				: 0;
 			const char *labelToUse = textLabel ? textLabel : "Base Port: Not in use.";
-			TextOutA(hdc, 10, 10, labelToUse, strlen(labelToUse));
+			TextOutA(hdc, 170, 10, labelToUse, strlen(labelToUse));
 			if (textLabel) {
 				free(textLabel);
 			}
@@ -66,7 +79,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 				);
 			LeaveCriticalSection(&xlive_critsec_sockets);
 			const char *labelToUse = textLabel ? textLabel : "Core Socket: INVALID_SOCKET.";
-			TextOutA(hdc, 200, 10, labelToUse, strlen(labelToUse));
+			TextOutA(hdc, 340, 10, labelToUse, strlen(labelToUse));
 			if (textLabel) {
 				free(textLabel);
 			}
@@ -148,7 +161,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 			WS_VISIBLE | WS_BORDER | WS_CHILD | LVS_REPORT,
 			10, 30, 640, 310,
 			hWnd, (HMENU)MYWINDOW_LST_SOCKETS, xlln_hModule, 0);
-
+		
 		size_t j = 0;
 		CreateColumn(hwndListView, ++j, L"Perpetual Socket", 105);
 		CreateColumn(hwndListView, ++j, L"Transitory Socket", 110);
@@ -159,7 +172,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 		CreateColumn(hwndListView, ++j, L"Port", 50);
 		CreateColumn(hwndListView, ++j, L"Port Offset", 70);
 		CreateColumn(hwndListView, ++j, L"Bind Port", 65);
-
+		
 	}
 	else if (message == WM_DESTROY) {
 		PostQuitMessage(0);
@@ -169,7 +182,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 		// Stupid textbox causes the window to close.
 		return 0;
 	}
-
+	
 	return DefWindowProcW(hWnd, message, wParam, lParam);
 }
 

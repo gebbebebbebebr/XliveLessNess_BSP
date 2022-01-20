@@ -2,6 +2,7 @@
 #include "xdefs.hpp"
 #include "packet-handler.hpp"
 #include "live-over-lan.hpp"
+#include "../xlln/xlln.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../utils/utils.hpp"
 #include "../utils/util-socket.hpp"
@@ -716,27 +717,52 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 			}
 		}
 		
-		bool broadcastOverriden = false;
 		{
 			EnterCriticalSection(&xlive_critsec_broadcast_addresses);
 			
-			if (xlive_broadcast_addresses.size()) {
-				broadcastOverriden = true;
-				for (const XLLNBroadcastEntity::BROADCAST_ENTITY &broadcastEntity : xlive_broadcast_addresses) {
-					memcpy(&sockAddrExternal, &broadcastEntity.sockaddr, sockAddrExternalLen);
-					if (sockAddrExternal.ss_family == AF_INET) {
-						if (ntohs(((sockaddr_in*)&sockAddrExternal)->sin_port) == 0) {
-							((sockaddr_in*)&sockAddrExternal)->sin_port = htons(portHBO);
+			// Add broadcast address with wildcard port if no addresses exist.
+			while (!xlive_broadcast_addresses.size()) {
+				LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
+				SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_BROADCAST, ":0");
+				EnterCriticalSection(&xlive_critsec_broadcast_addresses);
+			}
+			
+			for (const XLLNBroadcastEntity::BROADCAST_ENTITY &broadcastEntity : xlive_broadcast_addresses) {
+				memcpy(&sockAddrExternal, &broadcastEntity.sockaddr, sockAddrExternalLen);
+				uint16_t *portBroadcastNBO = 0;
+				if (sockAddrExternal.ss_family == AF_INET) {
+					portBroadcastNBO = (uint16_t*)&(((sockaddr_in*)&sockAddrExternal)->sin_port);
+					
+					if (((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr == htonl(INADDR_BROADCAST)) {
+						EnterCriticalSection(&xlive_critsec_network_adapter);
+						if (xlive_network_adapter) {
+							((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter->hBroadcast);
 						}
+						LeaveCriticalSection(&xlive_critsec_network_adapter);
 					}
-					else if (sockAddrExternal.ss_family == AF_INET6) {
-						if (ntohs(((sockaddr_in6*)&sockAddrExternal)->sin6_port) == 0) {
-							((sockaddr_in6*)&sockAddrExternal)->sin6_port = htons(portHBO);
-						}
-					}
-					else {
-						// If it is not IPv4 or IPv6 then do not sent it.
-						continue;
+				}
+				else if (sockAddrExternal.ss_family == AF_INET6) {
+					portBroadcastNBO = (uint16_t*)&(((sockaddr_in6*)&sockAddrExternal)->sin6_port);
+				}
+				else {
+					// If it is not IPv4 or IPv6 then do not sent it.
+					continue;
+				}
+				
+				bool portBroadcastForRange = IsUsingBasePort(xlive_base_port) && ntohs(*portBroadcastNBO) == 0;
+				
+				if (!portBroadcastForRange && ntohs(*portBroadcastNBO) == 0) {
+					*portBroadcastNBO = htons(portHBO);
+				}
+				
+				uint32_t portRange = xlive_base_port_broadcast_spacing_start;
+				uint32_t portRangePrev = portRange;
+				
+				while (1) {
+					if (portBroadcastForRange) {
+						const uint16_t portOffset = portHBO % 100;
+						const uint16_t portBase = portHBO - portOffset;
+						*portBroadcastNBO = htons(portRange + portOffset);
 					}
 					
 					{
@@ -752,64 +778,26 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 						}
 					}
 					
-					SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
-					resultDataSendSize = sendto(transitorySocket, dataBuffer, dataSendSize, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
+					resultDataSendSize = SendToPerpetualSocket(perpetual_socket, dataBuffer, dataSendSize, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
+					
+					if (!portBroadcastForRange) {
+						break;
+					}
+					
+					portRange += xlive_base_port_broadcast_spacing_increment;
+					
+					if (portRange < portRangePrev) {
+						// Overflow.
+						break;
+					}
+					if (portRange > xlive_base_port_broadcast_spacing_end) {
+						// passed the end.
+						break;
+					}
 				}
 			}
 			
 			LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
-		}
-		
-		if (!broadcastOverriden) {
-			sockAddrExternal.ss_family = AF_INET;
-			{
-				EnterCriticalSection(&xlive_critsec_network_adapter);
-				if (xlive_network_adapter) {
-					((struct sockaddr_in*)&sockAddrExternal)->sin_addr.s_addr = htonl(xlive_network_adapter->hBroadcast);
-				}
-				LeaveCriticalSection(&xlive_critsec_network_adapter);
-			}
-			if (IsUsingBasePort(xlive_base_port)) {
-				const uint16_t portOffset = portHBO % 100;
-				const uint16_t portBase = portHBO - portOffset;
-				
-				for (uint16_t portBaseInc = 1000; portBaseInc <= 6000; portBaseInc += 1000) {
-					((struct sockaddr_in*)&sockAddrExternal)->sin_port = htons(portBaseInc + portOffset);
-					
-					{
-						char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
-						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-							, "%s Perpetual Socket (0x%08x) broadcasting packet to %s."
-							, __func__
-							, perpetual_socket
-							, sockAddrInfo ? sockAddrInfo : ""
-						);
-						if (sockAddrInfo) {
-							free(sockAddrInfo);
-						}
-					}
-					
-					SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
-					resultDataSendSize = sendto(transitorySocket, dataBuffer, dataSendSize, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
-				}
-			}
-			else {
-				{
-					char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-						, "%s Perpetual Socket (0x%08x) broadcasting packet to %s."
-						, __func__
-						, perpetual_socket
-						, sockAddrInfo ? sockAddrInfo : ""
-					);
-					if (sockAddrInfo) {
-						free(sockAddrInfo);
-					}
-				}
-				
-				SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
-				resultDataSendSize = sendto(transitorySocket, dataBuffer, dataSendSize, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
-			}
 		}
 		
 		resultDataSendSize = dataSendSize;

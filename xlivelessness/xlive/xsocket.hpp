@@ -4,6 +4,9 @@
 
 #define IsUsingBasePort(base_port) (base_port != 0 && base_port != 0xFFFF)
 extern uint16_t xlive_base_port;
+extern uint16_t xlive_base_port_broadcast_spacing_start;
+extern uint16_t xlive_base_port_broadcast_spacing_increment;
+extern uint16_t xlive_base_port_broadcast_spacing_end;
 extern HANDLE xlive_base_port_mutex;
 extern uint16_t xlive_system_link_port;
 extern BOOL xlive_netsocket_abort;

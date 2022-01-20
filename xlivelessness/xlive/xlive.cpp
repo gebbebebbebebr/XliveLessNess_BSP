@@ -455,14 +455,19 @@ HRESULT WINAPI XLiveInput(XLIVE_INPUT_INFO *pPii)
 VOID WINAPI XLiveUninitialize()
 {
 	TRACE_FX();
-
+	
 	xlive_initialised = FALSE;
-
+	
 	INT errorXSession = UninitXSession();
 	INT errorXRender = UninitXRender();
 	INT errorXNet = UninitXNet();
 	INT errorNetEntity = UninitNetEntity();
 	INT errorXSocket = UninitXSocket();
+	
+	if (xlive_base_port_mutex) {
+		CloseHandle(xlive_base_port_mutex);
+		xlive_base_port_mutex = 0;
+	}
 }
 
 // #5010: This function is deprecated.
@@ -1403,20 +1408,20 @@ HANDLE WINAPI XNotifyCreateListener(ULONGLONG qwAreas)
 HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLiveVersion)
 {
 	TRACE_FX();
-
+	
 	// if (IsDebuggerPresent())
 	// return E_DEBUGGER_PRESENT;
-
+	
 	while (xlive_debug_pause && !IsDebuggerPresent()) {
 		Sleep(500L);
 	}
-
+	
 	srand((unsigned int)time(NULL));
-
+	
 	if (pPii->wLivePortOverride > 0) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO pPii->wLivePortOverride.", __func__);
 	}
-
+	
 	EnterCriticalSection(&xlive_critsec_network_adapter);
 	if (pPii->pszAdapterName && pPii->pszAdapterName[0]) {
 		if (xlive_init_preferred_network_adapter_name) {
@@ -1425,51 +1430,51 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 		xlive_init_preferred_network_adapter_name = CloneString(pPii->pszAdapterName);
 	}
 	LeaveCriticalSection(&xlive_critsec_network_adapter);
-
+	
 	INT errorNetworkAdapter = RefreshNetworkAdapters();
-
+	
 	if (broadcastAddrInput) {
 		char *temp = CloneString(broadcastAddrInput);
 		ParseBroadcastAddrInput(temp);
 		delete[] temp;
 	}
-
+	
 	if (IsUsingBasePort(xlive_base_port)) {
-		wchar_t mutexName[40];
-		DWORD errorMutex;
-		HANDLE mutex = xlive_base_port_mutex;
-		xlive_base_port -= 1000;
-		do {
-			if (mutex) {
-				errorMutex = CloseHandle(mutex);
-				mutex = 0;
-			}
-			xlive_base_port += 1000;
-			if (xlive_base_port > 65000) {
-				xlive_netsocket_abort = TRUE;
-				xlive_base_port = 1000;
-				break;
-			}
-			swprintf(mutexName, 40, L"Global\\XLiveLessNessBasePort#%hu", xlive_base_port);
-			mutex = CreateMutexW(0, TRUE, mutexName);
-			errorMutex = GetLastError();
-		} while (errorMutex != ERROR_SUCCESS);
-
-		xlive_base_port_mutex = mutex;
-
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_INFO
-			, "XLive Base Port %hu."
-			, xlive_base_port
-		);
+		if (xlive_base_port_mutex) {
+			CloseHandle(xlive_base_port_mutex);
+			xlive_base_port_mutex = 0;
+		}
+		
+		char *mutexName = FormMallocString("Global\\XLiveLessNessBasePort#%hu", xlive_base_port);
+		xlive_base_port_mutex = CreateMutexA(0, TRUE, mutexName);
+		if (!xlive_base_port_mutex) {
+			uint32_t errorMutex = GetLastError();
+			XLLN_DEBUG_LOG_ECODE(errorMutex, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s Failed to obtain Base Port mutex for port %hu with error:"
+				, __func__
+				, xlive_base_port
+			);
+			
+			xlive_netsocket_abort = TRUE;
+			XLLNCloseCoreSocket();
+		}
 	}
-
+	else {
+		if (xlln_local_instance_index > 1) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG | XLLN_LOG_LEVEL_WARN
+				, "%s Warning: Multi-instance active but Base Port is not in use so you might have port binding or local broadcasting issues."
+				, __func__
+			);
+		}
+	}
+	
 	INT errorXSocket = InitXSocket();
 	CreateLocalUser();
 	INT errorNetEntity = InitNetEntity();
 	INT errorXNet = InitXNet();
 	INT errorXRender = InitXRender();
 	INT errorXSession = InitXSession();
-
+	
 	HRESULT errorD3D = S_OK;
 	if (pPii->pD3D) {
 		errorD3D = D3DOnCreateDevice(pPii->pD3D, pPii->pD3DPP);
@@ -1477,11 +1482,11 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	if (FAILED(errorD3D)) {
 		return errorD3D;
 	}
-
+	
 	if (xlive_auto_login_on_xliveinitialize) {
 		ShowXLLN(XLLN_SHOW_LOGIN);
 	}
-
+	
 	xlive_initialised = TRUE;
 	return S_OK;
 }

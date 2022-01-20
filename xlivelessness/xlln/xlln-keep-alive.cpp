@@ -79,10 +79,12 @@ static void ThreadCoreSocket()
 		
 		EnterCriticalSection(&xlive_critsec_sockets);
 		
-		SOCKET transitorySocket = xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket];
-		SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
-		if (socketMappingInfo->perpetualSocket == xlive_xsocket_perpetual_core_socket) {
-			shouldRecv = true;
+		if (xlive_xsocket_perpetual_core_socket != INVALID_SOCKET) {
+			SOCKET transitorySocket = xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket];
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
+			if (socketMappingInfo->perpetualSocket == xlive_xsocket_perpetual_core_socket) {
+				shouldRecv = true;
+			}
 		}
 		
 		LeaveCriticalSection(&xlive_critsec_sockets);

@@ -17,6 +17,9 @@
 #define IPPROTO_VDP 254
 
 uint16_t xlive_base_port = 0;
+uint16_t xlive_base_port_broadcast_spacing_start = 2000;
+uint16_t xlive_base_port_broadcast_spacing_increment = 100;
+uint16_t xlive_base_port_broadcast_spacing_end = 2400;
 HANDLE xlive_base_port_mutex = 0;
 uint16_t xlive_system_link_port = 3074;
 BOOL xlive_netsocket_abort = FALSE;
@@ -1471,6 +1474,10 @@ void XLLNCloseCoreSocket()
 static void XLLNCreateCoreSocket()
 {
 	XLLNCloseCoreSocket();
+	
+	if (xlive_netsocket_abort) {
+		return;
+	}
 	
 	xlive_xsocket_perpetual_core_socket = XSocketCreate(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (xlive_xsocket_perpetual_core_socket == INVALID_SOCKET) {

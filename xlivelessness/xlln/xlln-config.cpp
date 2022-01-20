@@ -22,6 +22,7 @@ static const char XllnConfigVersion[] = DLL_VERSION_STR;
 typedef struct {
 	bool keepInvalidLines = false;
 	bool saveValuesRead = true;
+	bool readConfigFromOtherInstance = false;
 	std::vector<char*> badConfigEntries;
 	std::vector<char*> otherConfigHeaderEntries;
 	std::vector<char*> readSettings;
@@ -136,10 +137,62 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 					uint16_t tempuint16;
 					if (sscanf_s(value, "%hu", &tempuint16) == 1) {
 						if (configContext.saveValuesRead) {
-							if (tempuint16 == 0) {
-								tempuint16 = 0xFFFF;
+							if (configContext.readConfigFromOtherInstance) {
+								xlive_base_port = xlive_base_port_broadcast_spacing_start + ((xlln_local_instance_index - 1) * xlive_base_port_broadcast_spacing_increment);
 							}
-							xlive_base_port = tempuint16;
+							else {
+								if (tempuint16 == 0) {
+									tempuint16 = 0xFFFF;
+								}
+								xlive_base_port = tempuint16;
+							}
+						}
+					}
+					else {
+						incorrect = true;
+					}
+				}
+				else if (SettingNameMatches("xlive_base_port_broadcast_spacing")) {
+					uint16_t tempuint16Start, tempuint16Increment, tempuint16End;
+					if (
+						sscanf_s(value, "%hu,%hu,%hu", &tempuint16Start, &tempuint16Increment, &tempuint16End) == 3
+						&& tempuint16Start != 0 && tempuint16Start != 0xFFFF
+						&& tempuint16Increment != 0 && tempuint16Increment != 0xFFFF
+						&& tempuint16End != 0 && tempuint16End != 0xFFFF
+					) {
+						uint16_t portRange = tempuint16Start;
+						uint16_t portRangePrev;
+						while (1) {
+							portRangePrev = portRange;
+							portRange += tempuint16Increment;
+							if (portRange < portRangePrev) {
+								// Overflow.
+								portRange = 0;
+								break;
+							}
+							if (portRange > tempuint16End) {
+								// misaligned and passed the end.
+								portRange = 0;
+								break;
+							}
+							if (portRange == tempuint16End) {
+								break;
+							}
+						}
+						
+						if (portRange) {
+							if (configContext.saveValuesRead) {
+								xlive_base_port_broadcast_spacing_start = tempuint16Start;
+								xlive_base_port_broadcast_spacing_increment = tempuint16Increment;
+								xlive_base_port_broadcast_spacing_end = tempuint16End;
+								
+								if (configContext.readConfigFromOtherInstance) {
+									xlive_base_port = xlive_base_port_broadcast_spacing_start + ((xlln_local_instance_index - 1) * xlive_base_port_broadcast_spacing_increment);
+								}
+							}
+						}
+						else {
+							incorrect = true;
 						}
 					}
 					else {
@@ -149,7 +202,7 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 				else if (SettingNameMatches("xlive_net_disable")) {
 					uint32_t tempuint32;
 					if (sscanf_s(value, "%u", &tempuint32) == 1) {
-						if (configContext.saveValuesRead) {
+						if (configContext.saveValuesRead && !xlive_netsocket_abort) {
 							xlive_netsocket_abort = tempuint32 > 0;
 						}
 					}
@@ -309,7 +362,7 @@ static int interpretConfigSetting(const char *fileLine, const char *version, siz
 static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG_CONTEXT *configContext)
 {
 	FILE* fileConfig = 0;
-
+	
 	uint32_t err = _wfopen_s(&fileConfig, file_config_path, L"wb");
 	if (err) {
 		return err;
@@ -320,11 +373,11 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 
 	WriteText("#--- XLiveLessNess Configuration File ---");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlln_debug_log_blacklist:");
 	WriteText("\n# A comma separated list of trace function names to ignore in the logging to reduce spam.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlln_debuglog_level:");
 	WriteText("\n# Saves the log level from last use (stored in Hexadecimal).");
 	WriteText("\n# DEFAULT value: 0x873F.");
@@ -344,7 +397,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# - D - Debug - Function, variable and operation logging.");
 	WriteText("\n# - T - Trace - Function call tracing.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_hotkey_id_guide:");
 	WriteText("\n# Valid values: 0x0 to 0xFFFF.");
 	WriteText("\n#   0x0 - Turns off the hotkey.");
@@ -354,7 +407,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# The following link documents the keyboard Virtual-Key (VK) codes available for use:");
 	WriteText("\n# https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_fps_limit:");
 	WriteText("\n# Valid values: 0 to (2^32 - 1).");
 	WriteText("\n#   0 - Disables the built in limiter.");
@@ -362,7 +415,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# The frequency (times per second) that XLiveRender is permitted to execute.");
 	WriteText("\n# XLiveRender is typically used in Title render loops so this value can be considered as an FPS limit.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_base_port:");
 	WriteText("\n# Valid values: 0 to 65535.");
 	WriteText("\n#   0, 65535 - (DEFAULT) Disables the base port override mechanism.");
@@ -375,33 +428,46 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n#   - if the the base port is 65534 and the Title attempts to use the port 1002 (offset +2), then it will be mapped to 65536 which isn't a valid 16-bit integer (overflow) and is actually port 0. Port 0 is not a valid port which is an indicator for any port available and the operating system will select one at random which is also bad news.");
 	WriteText("\n#   - if the the base port is 65534 and the Title attempts to use the port 1003 (offset +3), then it will be mapped to 65537 which is actually port 1.");
 	WriteText("\n");
-
+	
+	WriteText("\n# xlive_base_port_broadcast_spacing:");
+	WriteText("\n# Valid values: 1 to 65534, 1 to 65534, 1 to 65534.");
+	WriteText("\n#   2000,100,2400 - (DEFAULT) (RECOMMENDED).");
+	WriteText("\n# This is only used if xlive_base_port is enabled.");
+	WriteText("\n# The 1st number is the port to start at (inclusive).");
+	WriteText("\n# The 2nd number is the number to increment by.");
+	WriteText("\n# The 3rd number is the port to end at (inclusive).");
+	WriteText("\n# The port number series created by this range is used when broadcasting packets to local networks. This is important when you or someone else locally is running multiple instances of a Title and needs to be notified that your or their host / game lobby is available to join.");
+	WriteText("\n# The default generates the following series: 2000, 2100, 2200, 2300, 2400.");
+	WriteText("\n# Therefore by default only 5 instances are supported (unless an XLLN-Hub server is used). This range could be increased but would result in greater network data usage / spam and for the normal user 5 should be plenty.");
+	WriteText("\n# Additionally, the start and increment values are used as the new xlive_base_port for new multi-instances when they do not have an existing config file (the end value does not stop this incrementing).");
+	WriteText("\n");
+	
 	WriteText("\n# xlive_net_disable:");
 	WriteText("\n# Valid values:");
 	WriteText("\n#   0 - (DEFAULT) All network functionality related to xlive functions is enabled.");
 	WriteText("\n#   1 - All network functionality related to xlive functions is disabled.");
 	WriteText("\n# Allows turning off xlive network functionality.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_xhv_engine_enabled:");
 	WriteText("\n# Valid values:");
 	WriteText("\n#   0 - (DEFAULT) The XHV Engine will not run.");
 	WriteText("\n#   1 - The XHV Engine is enabled for use.");
 	WriteText("\n# Allows activating the XHV Engine which is used for voice chat.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_network_adapter:");
 	WriteText("\n# Example value: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}");
 	WriteText("\n# The network adapter to use if it is available. If it is not available or this setting is blank then it will be auto-selected.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_ignore_title_network_adapter:");
 	WriteText("\n# Valid values:");
 	WriteText("\n#   0 - (DEFAULT) Factors in the Title's preference for available network adapters.");
 	WriteText("\n#   1 - Ignores the setting from the Title.");
 	WriteText("\n# On startup in XLiveInitialize(...) the title specifies its preferred network adapter to use (if any). This setting can ignore its preference.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_broadcast_address:");
 	WriteText("\n# A comma separated list of network addresses to send broadcast packets to.");
 	WriteText("\n# All addresses are comma, separated. Do not use spaces at all.");
@@ -410,27 +476,27 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# So an example of a comma separated list of a domain name, IPv4 (local address broadcast) and an IPv6 address is as follows:");
 	WriteText("\n# glitchyscripts.com:1100,192.168.0.255:1100,[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:1100");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_auto_login_on_xliveinitialize:");
 	WriteText("\n# Valid values:");
 	WriteText("\n#   0 - (DEFAULT) No action.");
 	WriteText("\n#   1 - Any users set with xlive_user_auto_login_p? will always be logged in automatically, otherwise if none set then the XLLN window will open.");
 	WriteText("\n# This property triggers when the TITLE calls XLiveInitialize/Ex(...) which is generally very early in any TITLE initialisation sequence.");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_username_p1...:");
 	WriteText("\n# Max username length is 15 characters.");
 	WriteText("\n# The username for each local profile to use.");
 	WriteText("\n# This option does not apply when logging in from XLLN-Modules via XLLNLogin(...).");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_user_live_enabled_p1...:");
 	WriteText("\n# Valid values:");
 	WriteText("\n#   0 - The user will be signed in to a local offline account.");
 	WriteText("\n#   1 - The user will be signed in to an online LIVE account.");
 	WriteText("\n# This option does not apply when logging in from XLLN-Modules via XLLNLogin(...).");
 	WriteText("\n");
-
+	
 	WriteText("\n# xlive_user_auto_login_p1...:");
 	WriteText("\n# Valid values:");
 	WriteText("\n#   0 - Do not sign in automatically.");
@@ -438,7 +504,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# Whether the user will be automatically signed in when the Title calls XShowSigninUI(...) and there are no other users already logged in.");
 	WriteText("\n# This option does not apply when logging in from XLLN-Modules via XLLNLogin(...).");
 	WriteText("\n");
-
+	
 	WriteText("\n");
 	WriteTextF("\n[%s:%s]", XllnConfigHeader, XllnConfigVersion);
 	WriteText("\nxlln_debug_log_blacklist = ");
@@ -454,6 +520,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteTextF("\nxlive_hotkey_id_guide = 0x%04x", (uint16_t)xlive_hotkey_id_guide);
 	WriteTextF("\nxlive_fps_limit = %u", (uint32_t)xlive_fps_limit);
 	WriteTextF("\nxlive_base_port = %hu", xlive_base_port == 0xFFFF ? 0 : xlive_base_port);
+	WriteTextF("\nxlive_base_port_broadcast_spacing = %hu,%hu,%hu", xlive_base_port_broadcast_spacing_start, xlive_base_port_broadcast_spacing_increment, xlive_base_port_broadcast_spacing_end);
 	WriteTextF("\nxlive_net_disable = %u", xlive_netsocket_abort ? 1 : 0);
 	WriteTextF("\nxlive_xhv_engine_enabled = %u", xlive_xhv_engine_enabled ? 1 : 0);
 	WriteTextF("\nxlive_network_adapter = %s", xlive_config_preferred_network_adapter_name ? xlive_config_preferred_network_adapter_name : "");
@@ -466,7 +533,7 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 		WriteTextF("\nxlive_user_auto_login_p%u = %u", iUser + 1, xlive_users_auto_login[iUser] ? 1 : 0);
 	}
 	WriteText("\n\n");
-
+	
 	if (configContext) {
 		for (char *&badEntry : configContext->badConfigEntries) {
 			WriteText(badEntry);
@@ -483,9 +550,9 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 			WriteText("\n");
 		}
 	}
-
+	
 	fclose(fileConfig);
-
+	
 	return ERROR_SUCCESS;
 }
 
@@ -495,7 +562,8 @@ static uint32_t XllnConfig(bool save_config)
 	uint32_t result = ERROR_FUNCTION_FAILED;
 	errno_t errorFopen = ERROR_SUCCESS;
 	FILE* fileConfig = 0;
-
+	
+	// Use exec argument path if provided.
 	if (xlln_file_config_path) {
 		errorFopen = _wfopen_s(&fileConfig, xlln_file_config_path, L"rb");
 		if (!fileConfig) {
@@ -509,18 +577,23 @@ static uint32_t XllnConfig(bool save_config)
 			}
 		}
 	}
-
+	
 	wchar_t *configAutoPath = 0;
 	wchar_t *configAutoFallbackPath1 = 0;
 	wchar_t *configAutoFallbackPath2 = 0;
+	bool readConfigFromOtherInstance = false;
+	// Do not use auto paths if an exec arg path was provided.
 	if (!fileConfig && !xlln_file_config_path) {
 		wchar_t* appdataPath = 0;
 		errno_t errorEnvVar = _wdupenv_s(&appdataPath, NULL, L"LOCALAPPDATA");
 		if (errorEnvVar) {
 			XLLN_DEBUG_LOG_ECODE(errorEnvVar, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "%s %%LOCALAPPDATA%% path unable to be resolved with error:", __func__);
 		}
-
+		
 		for (uint32_t searchInstanceIndex = xlln_local_instance_index; searchInstanceIndex != 0; searchInstanceIndex--) {
+			if (searchInstanceIndex != xlln_local_instance_index) {
+				readConfigFromOtherInstance = true;
+			}
 			bool appdataDirectory = false;
 			do {
 				if (configAutoPath) {
@@ -554,34 +627,35 @@ static uint32_t XllnConfig(bool save_config)
 				break;
 			}
 		}
-
+		
 		if (appdataPath) {
 			free(appdataPath);
 		}
 	}
-
+	
 	INTERPRET_CONFIG_CONTEXT *interpretationContext = 0;
 	if (fileConfig) {
 		interpretationContext = new INTERPRET_CONFIG_CONTEXT;
 		interpretationContext->keepInvalidLines = true;
 		interpretationContext->saveValuesRead = !save_config;
-
+		interpretationContext->readConfigFromOtherInstance = readConfigFromOtherInstance;
+		
 		ReadIniFile(fileConfig, true, XllnConfigHeader, XllnConfigVersion, interpretConfigSetting, (void*)interpretationContext);
-
+		
 		for (char *&readSettingName : interpretationContext->readSettings) {
 			delete[] readSettingName;
 		}
 		interpretationContext->readSettings.clear();
-
+		
 		fclose(fileConfig);
 		fileConfig = 0;
 	}
-
+	
 	if (configAutoPath) {
 		free(configAutoPath);
 		configAutoPath = 0;
 	}
-
+	
 	for (uint8_t i = 0; i < 2; i++) {
 		wchar_t *saveToConfigFilePath = 0;
 		if (xlln_file_config_path) {
@@ -594,7 +668,7 @@ static uint32_t XllnConfig(bool save_config)
 		else if (i == 1) {
 			saveToConfigFilePath = configAutoFallbackPath2;
 		}
-
+		
 		if (saveToConfigFilePath) {
 			wchar_t *saveToConfigPath = PathFromFilename(saveToConfigFilePath);
 			uint32_t errorMkdir = EnsureDirectoryExists(saveToConfigPath);
@@ -629,7 +703,7 @@ static uint32_t XllnConfig(bool save_config)
 		delete[] configAutoFallbackPath2;
 		configAutoFallbackPath2 = 0;
 	}
-
+	
 	if (interpretationContext) {
 		for (char *&badEntry : interpretationContext->badConfigEntries) {
 			delete[] badEntry;
@@ -640,7 +714,7 @@ static uint32_t XllnConfig(bool save_config)
 		}
 		interpretationContext->otherConfigHeaderEntries.clear();
 	}
-
+	
 	return result;
 }
 

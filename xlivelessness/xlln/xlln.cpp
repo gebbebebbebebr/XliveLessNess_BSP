@@ -495,73 +495,84 @@ void ParseBroadcastAddrInput(char *jlbuffer)
 		if (comma) {
 			comma[0] = 0;
 		}
-
+		
 		char *colon = strrchr(current, ':');
 		if (colon) {
 			colon[0] = 0;
-
+			
 			if (current[0] == '[') {
 				current = &current[1];
 				if (colon[-1] == ']') {
 					colon[-1] = 0;
 				}
 			}
-
+			
 			uint16_t portHBO = 0;
 			if (sscanf_s(&colon[1], "%hu", &portHBO) == 1) {
-				addrinfo hints;
-				memset(&hints, 0, sizeof(hints));
-
-				hints.ai_family = PF_UNSPEC;
-				hints.ai_socktype = SOCK_DGRAM;
-				hints.ai_protocol = IPPROTO_UDP;
-
-				struct in6_addr serveraddr;
-				int rc = inet_pton(AF_INET, current, &serveraddr);
-				if (rc == 1) {
-					hints.ai_family = AF_INET;
-					hints.ai_flags |= AI_NUMERICHOST;
+				if (current[0] == 0) {
+					broadcastEntity.lastComm = 0;
+					broadcastEntity.entityType = XLLNBroadcastEntity::TYPE::tBROADCAST_ADDR;
+					memset(&broadcastEntity.sockaddr, 0, sizeof(broadcastEntity.sockaddr));
+					(*(struct sockaddr_in*)&broadcastEntity.sockaddr).sin_family = AF_INET;
+					(*(struct sockaddr_in*)&broadcastEntity.sockaddr).sin_addr.s_addr = htonl(INADDR_BROADCAST);
+					(*(struct sockaddr_in*)&broadcastEntity.sockaddr).sin_port = htons(portHBO);
+					xlive_broadcast_addresses.push_back(broadcastEntity);
 				}
 				else {
-					rc = inet_pton(AF_INET6, current, &serveraddr);
+					addrinfo hints;
+					memset(&hints, 0, sizeof(hints));
+					
+					hints.ai_family = PF_UNSPEC;
+					hints.ai_socktype = SOCK_DGRAM;
+					hints.ai_protocol = IPPROTO_UDP;
+					
+					struct in6_addr serveraddr;
+					int rc = inet_pton(AF_INET, current, &serveraddr);
 					if (rc == 1) {
-						hints.ai_family = AF_INET6;
+						hints.ai_family = AF_INET;
 						hints.ai_flags |= AI_NUMERICHOST;
 					}
-				}
-
-				addrinfo *res;
-				int error = getaddrinfo(current, NULL, &hints, &res);
-				if (!error) {
-					memset(&broadcastEntity.sockaddr, 0, sizeof(broadcastEntity.sockaddr));
-					broadcastEntity.entityType = XLLNBroadcastEntity::TYPE::tUNKNOWN;
-					broadcastEntity.lastComm = 0;
-
-					addrinfo *nextRes = res;
-					while (nextRes) {
-						if (nextRes->ai_family == AF_INET) {
-							memcpy(&broadcastEntity.sockaddr, res->ai_addr, res->ai_addrlen);
-							(*(struct sockaddr_in*)&broadcastEntity.sockaddr).sin_port = htons(portHBO);
-							broadcastEntity.entityType = IsBroadcastAddress(&broadcastEntity.sockaddr) ? XLLNBroadcastEntity::TYPE::tBROADCAST_ADDR : XLLNBroadcastEntity::TYPE::tUNKNOWN;
-							xlive_broadcast_addresses.push_back(broadcastEntity);
-							break;
-						}
-						else if (nextRes->ai_family == AF_INET6) {
-							memcpy(&broadcastEntity.sockaddr, res->ai_addr, res->ai_addrlen);
-							(*(struct sockaddr_in6*)&broadcastEntity.sockaddr).sin6_port = htons(portHBO);
-							xlive_broadcast_addresses.push_back(broadcastEntity);
-							break;
-						}
-						else {
-							nextRes = nextRes->ai_next;
+					else {
+						rc = inet_pton(AF_INET6, current, &serveraddr);
+						if (rc == 1) {
+							hints.ai_family = AF_INET6;
+							hints.ai_flags |= AI_NUMERICHOST;
 						}
 					}
-
-					freeaddrinfo(res);
+					
+					addrinfo *res;
+					int error = getaddrinfo(current, NULL, &hints, &res);
+					if (!error) {
+						memset(&broadcastEntity.sockaddr, 0, sizeof(broadcastEntity.sockaddr));
+						broadcastEntity.entityType = XLLNBroadcastEntity::TYPE::tUNKNOWN;
+						broadcastEntity.lastComm = 0;
+						
+						addrinfo *nextRes = res;
+						while (nextRes) {
+							if (nextRes->ai_family == AF_INET) {
+								memcpy(&broadcastEntity.sockaddr, res->ai_addr, res->ai_addrlen);
+								(*(struct sockaddr_in*)&broadcastEntity.sockaddr).sin_port = htons(portHBO);
+								broadcastEntity.entityType = IsBroadcastAddress(&broadcastEntity.sockaddr) ? XLLNBroadcastEntity::TYPE::tBROADCAST_ADDR : XLLNBroadcastEntity::TYPE::tUNKNOWN;
+								xlive_broadcast_addresses.push_back(broadcastEntity);
+								break;
+							}
+							else if (nextRes->ai_family == AF_INET6) {
+								memcpy(&broadcastEntity.sockaddr, res->ai_addr, res->ai_addrlen);
+								(*(struct sockaddr_in6*)&broadcastEntity.sockaddr).sin6_port = htons(portHBO);
+								xlive_broadcast_addresses.push_back(broadcastEntity);
+								break;
+							}
+							else {
+								nextRes = nextRes->ai_next;
+							}
+						}
+						
+						freeaddrinfo(res);
+					}
 				}
 			}
 		}
-
+		
 		if (comma) {
 			current = &comma[1];
 		}
