@@ -765,8 +765,8 @@ SOCKET WINAPI XSocketBind(SOCKET perpetual_socket, const struct sockaddr *name, 
 			, transitorySocketTitleSocket
 		);
 		
-		char sockOptValue = true;
-		INT resultSetSockOpt = XSocketSetSockOpt(xlive_xsocket_perpetual_core_socket, SOL_SOCKET, SO_BROADCAST, &sockOptValue, sizeof(sockOptValue));
+		uint32_t sockOptValue = 1;
+		INT resultSetSockOpt = XSocketSetSockOpt(xlive_xsocket_perpetual_core_socket, SOL_SOCKET, SO_BROADCAST, (const char *)&sockOptValue, sizeof(sockOptValue));
 		if (resultSetSockOpt == SOCKET_ERROR) {
 			int errorSetSockOpt = WSAGetLastError();
 			XLLN_DEBUG_LOG_ECODE(errorSetSockOpt, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR
@@ -1489,8 +1489,14 @@ static void XLLNCreateCoreSocket()
 		return;
 	}
 	
-	char sockOptValue = true;
-	INT resultSetSockOpt = XSocketSetSockOpt(xlive_xsocket_perpetual_core_socket, SOL_SOCKET, SO_BROADCAST, &sockOptValue, sizeof(sockOptValue));
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
+		, "%s Perpetual Core Socket created as 0x%08x."
+		, __func__
+		, xlive_xsocket_perpetual_core_socket
+	);
+	
+	uint32_t sockOptValue = 1;
+	INT resultSetSockOpt = XSocketSetSockOpt(xlive_xsocket_perpetual_core_socket, SOL_SOCKET, SO_BROADCAST, (const char *)&sockOptValue, sizeof(sockOptValue));
 	if (resultSetSockOpt == SOCKET_ERROR) {
 		int errorSetSockOpt = WSAGetLastError();
 		XLLN_DEBUG_LOG_ECODE(errorSetSockOpt, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_ERROR

@@ -43,9 +43,9 @@ VOID SendUnknownUserAskRequest(SOCKET perpetual_socket, const char* data, int da
 	{
 		char *sockAddrInfo = GET_SOCKADDR_INFO(sockAddrExternal);
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-			, "%s Send %s to %s on socket (0x%08x)."
+			, "%s Send %s to %s on Perpetual Socket (0x%08x)."
 			, __func__
-			, isAsking ? "UNKNOWN_USER_ASK" : "UNKNOWN_USER_REPLY"
+			, XLLNNetPacketType::TYPE_NAMES[isAsking ? XLLNNetPacketType::tUNKNOWN_USER_ASK : XLLNNetPacketType::tUNKNOWN_USER_REPLY]
 			, sockAddrInfo ? sockAddrInfo : ""
 			, perpetual_socket
 		);
