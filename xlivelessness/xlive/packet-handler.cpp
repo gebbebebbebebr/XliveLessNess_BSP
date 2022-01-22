@@ -749,9 +749,10 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 					continue;
 				}
 				
-				bool portBroadcastForRange = IsUsingBasePort(xlive_base_port) && ntohs(*portBroadcastNBO) == 0;
+				bool portBroadcastForRange = ntohs(*portBroadcastNBO) == 0;
+				bool portBroadcastForCore = portBroadcastForRange;
 				
-				if (!portBroadcastForRange && ntohs(*portBroadcastNBO) == 0) {
+				if (!portBroadcastForRange) {
 					*portBroadcastNBO = htons(portHBO);
 				}
 				
@@ -760,9 +761,17 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 				
 				while (1) {
 					if (portBroadcastForRange) {
-						const uint16_t portOffset = portHBO % 100;
-						const uint16_t portBase = portHBO - portOffset;
-						*portBroadcastNBO = htons(portRange + portOffset);
+						if (IsUsingBasePort(xlive_base_port)) {
+							const uint16_t portOffset = portHBO % 100;
+							const uint16_t portBase = portHBO - portOffset;
+							*portBroadcastNBO = htons(portRange + portOffset);
+						}
+						else {
+							*portBroadcastNBO = htons(portRange);
+						}
+					}
+					else if (!portBroadcastForRange && portBroadcastForCore) {
+						*portBroadcastNBO = htons(xlive_port_online);
 					}
 					
 					{
@@ -788,11 +797,13 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 					
 					if (portRange < portRangePrev) {
 						// Overflow.
-						break;
+						portBroadcastForRange = false;
+						continue;
 					}
 					if (portRange > xlive_base_port_broadcast_spacing_end) {
 						// passed the end.
-						break;
+						portBroadcastForRange = false;
+						continue;
 					}
 				}
 			}

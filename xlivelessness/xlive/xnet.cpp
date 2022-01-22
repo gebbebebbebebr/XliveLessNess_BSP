@@ -689,7 +689,7 @@ INT WINAPI XNetGetSystemLinkPort(uint16_t *system_link_port_NBO)
 	}
 	// TODO XNetGetSystemLinkPort XEX_PRIVILEGE_CROSSPLATFORM_SYSTEM_LINK.
 	
-	*system_link_port_NBO = htons(xlive_system_link_port);
+	*system_link_port_NBO = htons(xlive_port_system_link);
 	
 	return S_OK;
 	return WSAEACCES;
@@ -703,13 +703,9 @@ INT WINAPI XNetSetSystemLinkPort(uint16_t system_link_port_NBO)
 	// network byte (big-endian) to little-endian host.
 	uint16_t portHBO = ntohs(system_link_port_NBO);
 	
-	// TODO need to rebind Core Socket if changed and not using Base Port.
-	xlive_system_link_port = portHBO;
+	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 	
-	if (IsUsingBasePort(xlive_base_port)) {
-		// TODO maybe need to set the OG port to this on the Core socket? Or need to redirect outbound packets to that port instead?
-		portHBO;
-	}
+	xlive_port_system_link = portHBO;
 	
 	return ERROR_SUCCESS;
 }
@@ -770,7 +766,7 @@ HRESULT WINAPI XLiveGetLocalOnlinePort(uint16_t *online_port_NBO)
 		*online_port_NBO = htons(xlive_base_port);
 	}
 	else {
-		*online_port_NBO = htons(xlive_system_link_port);
+		*online_port_NBO = htons(xlive_port_online);
 	}
 	
 	return S_OK;

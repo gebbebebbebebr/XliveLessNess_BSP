@@ -45,7 +45,7 @@ void LiveOverLanBroadcastLocalSessionUnadvertise(const XUID xuid)
 		SendStruct.sin_port = htons(xlive_base_port);
 	}
 	else {
-		SendStruct.sin_port = htons(xlive_system_link_port);
+		SendStruct.sin_port = htons(xlive_port_online);
 	}
 	SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 	SendStruct.sin_family = AF_INET;
@@ -174,7 +174,7 @@ static void LiveOverLanBroadcastLocalSession()
 		SendStruct.sin_port = htons(xlive_base_port);
 	}
 	else {
-		SendStruct.sin_port = htons(xlive_system_link_port);
+		SendStruct.sin_port = htons(xlive_port_online);
 	}
 	SendStruct.sin_addr.s_addr = htonl(INADDR_BROADCAST);
 	SendStruct.sin_family = AF_INET;

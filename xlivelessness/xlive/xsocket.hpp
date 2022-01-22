@@ -8,7 +8,8 @@ extern uint16_t xlive_base_port_broadcast_spacing_start;
 extern uint16_t xlive_base_port_broadcast_spacing_increment;
 extern uint16_t xlive_base_port_broadcast_spacing_end;
 extern HANDLE xlive_base_port_mutex;
-extern uint16_t xlive_system_link_port;
+extern uint16_t xlive_port_online;
+extern uint16_t xlive_port_system_link;
 extern BOOL xlive_netsocket_abort;
 
 struct SOCKET_MAPPING_INFO {

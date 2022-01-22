@@ -432,7 +432,6 @@ static uint32_t SaveXllnConfig(const wchar_t *file_config_path, INTERPRET_CONFIG
 	WriteText("\n# xlive_base_port_broadcast_spacing:");
 	WriteText("\n# Valid values: 1 to 65534, 1 to 65534, 1 to 65534.");
 	WriteText("\n#   2000,100,2400 - (DEFAULT) (RECOMMENDED).");
-	WriteText("\n# This is only used if xlive_base_port is enabled.");
 	WriteText("\n# The 1st number is the port to start at (inclusive).");
 	WriteText("\n# The 2nd number is the number to increment by.");
 	WriteText("\n# The 3rd number is the port to end at (inclusive).");

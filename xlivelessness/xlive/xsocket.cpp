@@ -21,7 +21,8 @@ uint16_t xlive_base_port_broadcast_spacing_start = 2000;
 uint16_t xlive_base_port_broadcast_spacing_increment = 100;
 uint16_t xlive_base_port_broadcast_spacing_end = 2400;
 HANDLE xlive_base_port_mutex = 0;
-uint16_t xlive_system_link_port = 3074;
+uint16_t xlive_port_online = 3074;
+uint16_t xlive_port_system_link = 0;
 BOOL xlive_netsocket_abort = FALSE;
 
 CRITICAL_SECTION xlive_critsec_sockets;
@@ -743,7 +744,7 @@ SOCKET WINAPI XSocketBind(SOCKET perpetual_socket, const struct sockaddr *name, 
 		SetSockAddrPort(&sockAddrExternal, portShiftedHBO);
 	}
 	
-	if (portShiftedHBO == (IsUsingBasePort(xlive_base_port) ? xlive_base_port : xlive_system_link_port) && perpetual_socket != xlive_xsocket_perpetual_core_socket) {
+	if (portShiftedHBO == (IsUsingBasePort(xlive_base_port) ? xlive_base_port : xlive_port_online) && perpetual_socket != xlive_xsocket_perpetual_core_socket) {
 		XLLNCloseCoreSocket();
 		
 		EnterCriticalSection(&xlive_critsec_sockets);
@@ -1513,7 +1514,7 @@ static void XLLNCreateCoreSocket()
 		socketBindAddress.sin_port = htons(xlive_base_port);
 	}
 	else {
-		socketBindAddress.sin_port = htons(xlive_system_link_port);
+		socketBindAddress.sin_port = htons(xlive_port_online);
 	}
 	SOCKET resultSocketBind = XSocketBind(xlive_xsocket_perpetual_core_socket, (sockaddr*)&socketBindAddress, sizeof(socketBindAddress));
 	if (resultSocketBind) {

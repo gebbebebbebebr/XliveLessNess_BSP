@@ -485,7 +485,7 @@ static void ThreadXLiveQoS()
 			(*(sockaddr_in*)&sockAddrExternal).sin_port = htons(xlive_base_port);
 		}
 		else {
-			(*(sockaddr_in*)&sockAddrExternal).sin_port = htons(xlive_system_link_port);
+			(*(sockaddr_in*)&sockAddrExternal).sin_port = htons(xlive_port_online);
 		}
 		
 		packetQosRequest.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
@@ -540,11 +540,15 @@ static void ThreadXLiveQoS()
 						const uint16_t portNBO = qosPendingLookup->xnAddrs[iXnQoS].wPortOnline;
 						// This address may (hopefully) be an instanceId.
 						const uint32_t ipv4HBO = ntohl(ipv4NBO);
-						const uint16_t portHBO = ntohs(portNBO);
-
+						uint16_t portHBO = ntohs(portNBO);
+						
+						if (!IsUsingBasePort(portHBO)) {
+							portHBO = xlive_port_online;
+						}
+						
 						sockAddrExternal.ss_family = AF_INET;
 						(*(sockaddr_in*)&sockAddrExternal).sin_addr.s_addr = ipv4NBO;
-						(*(sockaddr_in*)&sockAddrExternal).sin_port = portNBO;
+						(*(sockaddr_in*)&sockAddrExternal).sin_port = htons(portHBO);
 						
 						packetQosRequest.sessionId = *(uint64_t*)(&qosPendingLookup->xnKids[iXnQoS]);
 					}
