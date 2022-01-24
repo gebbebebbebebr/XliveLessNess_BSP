@@ -28,41 +28,46 @@ static void ThreadKeepAlive()
 	hubRequestPacketBuffer[0] = XLLNNetPacketType::TYPE::tHUB_REQUEST;
 	XLLNNetPacketType::HUB_REQUEST_PACKET *hubRequest = (XLLNNetPacketType::HUB_REQUEST_PACKET*)&hubRequestPacketBuffer[sizeof(XLLNNetPacketType::TYPE)];
 	hubRequest->xllnVersion = (DLL_VERSION_MAJOR << 24) + (DLL_VERSION_MINOR << 16) + (DLL_VERSION_REVISION << 8) + DLL_VERSION_BUILD;
-	hubRequest->instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
 	hubRequest->titleId = xlive_title_id;
 	hubRequest->titleVersion = xlive_title_version;
-
+	
 	std::mutex mutexPause;
 	while (1) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_INFO
 			, "%s continuing. Keeping any Hub connections alive."
 			, __func__
 		);
-		EnterCriticalSection(&xlive_critsec_broadcast_addresses);
-
-		__time64_t ltime;
-		_time64(&ltime);//seconds since epoch.
-		__time64_t timeToSendKeepAlive = ltime - 30;
-		for (auto const &broadcastEntity : xlive_broadcast_addresses) {
-			if (broadcastEntity.entityType != XLLNBroadcastEntity::TYPE::tHUB_SERVER && broadcastEntity.entityType != XLLNBroadcastEntity::TYPE::tUNKNOWN) {
-				continue;
-			}
-			if (broadcastEntity.lastComm > timeToSendKeepAlive) {
-				continue;
+		
+		hubRequest->instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
+		hubRequest->portBaseHBO = xlive_base_port;
+		
+		if (hubRequest->instanceId) {
+			EnterCriticalSection(&xlive_critsec_broadcast_addresses);
+			
+			__time64_t ltime;
+			_time64(&ltime);//seconds since epoch.
+			__time64_t timeToSendKeepAlive = ltime - 30;
+			for (auto const &broadcastEntity : xlive_broadcast_addresses) {
+				if (broadcastEntity.entityType != XLLNBroadcastEntity::TYPE::tHUB_SERVER && broadcastEntity.entityType != XLLNBroadcastEntity::TYPE::tUNKNOWN) {
+					continue;
+				}
+				if (broadcastEntity.lastComm > timeToSendKeepAlive) {
+					continue;
+				}
+				
+				SendToPerpetualSocket(
+					xlive_xsocket_perpetual_core_socket
+					, (char*)hubRequestPacketBuffer
+					, (int)hubRequestPacketBufferSize
+					, 0
+					, (const sockaddr*)&broadcastEntity.sockaddr
+					, sizeof(broadcastEntity.sockaddr)
+				);
 			}
 			
-			SendToPerpetualSocket(
-				xlive_xsocket_perpetual_core_socket
-				, (char*)hubRequestPacketBuffer
-				, (int)hubRequestPacketBufferSize
-				, 0
-				, (const sockaddr*)&broadcastEntity.sockaddr
-				, sizeof(broadcastEntity.sockaddr)
-			);
+			LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
 		}
-
-		LeaveCriticalSection(&xlive_critsec_broadcast_addresses);
-
+		
 		std::unique_lock<std::mutex> lock(mutexPause);
 		xlln_keep_alive_cond.wait_for(lock, std::chrono::seconds(5), []() { return xlln_keep_alive_exit == TRUE; });
 		if (xlln_keep_alive_exit) {

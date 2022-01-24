@@ -17,6 +17,7 @@ namespace XLLNNetPacketType {
 		"HUB_REPLY",
 		"QOS_REQUEST",
 		"QOS_RESPONSE",
+		"HUB_OUT_OF_BAND",
 	};
 	typedef enum : uint8_t {
 		tUNKNOWN = 0,
@@ -32,6 +33,7 @@ namespace XLLNNetPacketType {
 		tHUB_REPLY,
 		tQOS_REQUEST,
 		tQOS_RESPONSE,
+		tHUB_OUT_OF_BAND,
 	} TYPE;
 
 #pragma pack(push, 1) // Save then set byte alignment setting.
@@ -40,7 +42,7 @@ namespace XLLNNetPacketType {
 		char *Identifier;
 		DWORD *FuncPtr;
 	} RECVFROM_CUSTOM_HANDLER_REGISTER;
-
+	
 	typedef struct {
 		uint32_t instanceId = 0; // a generated UUID for that instance.
 		uint16_t portBaseHBO = 0; // Base Port of the instance. Host Byte Order.
@@ -48,31 +50,32 @@ namespace XLLNNetPacketType {
 		int16_t socketInternalPortOffsetHBO = 0;
 		uint32_t instanceIdConsumeRemaining = 0; // the instanceId that should be consuming the rest of the data on this packet.
 	} NET_USER_PACKET;
-
+	
 	typedef struct {
 		SOCKADDR_STORAGE originSockAddr;
 		NET_USER_PACKET netter;
 		// The data following this is the forwarded packet data.
 	} PACKET_FORWARDED;
-
+	
 	typedef struct {
 		NET_USER_PACKET netter;
 		// The data following this is the forwarded packet data.
 	} UNKNOWN_USER;
-
+	
 	typedef struct {
 		uint32_t xllnVersion = 0; // version of the requester.
 		uint32_t instanceId = 0; // Instance ID of the requester.
 		uint32_t titleId = 0;
 		uint32_t titleVersion = 0;
+		uint32_t portBaseHBO = 0;
 	} HUB_REQUEST_PACKET;
-
+	
 	typedef struct {
 		uint8_t isHubServer = 0; // boolean.
 		uint32_t xllnVersion = 0; // version of the replier.
 		uint32_t recommendedInstanceId = 0; // the Instance ID that should be used instead (in case of collisions).
 	} HUB_REPLY_PACKET;
-
+	
 	typedef struct {
 		uint8_t sessionType = 0;
 		XUID xuid = 0;
@@ -93,6 +96,12 @@ namespace XLLNNetPacketType {
 		uint8_t enabled = 0;
 		uint16_t sizeData = 0; // the amount of data appended to the end of this packet type.
 	} QOS_RESPONSE;
+	
+	typedef struct {
+		uint32_t instanceId = 0;
+		uint8_t portOffsetHBO = 0xFF;
+		uint16_t portOriginalHBO = 0;
+	} HUB_OUT_OF_BAND;
 
 #pragma pack(pop) // Return to original alignment setting.
 
@@ -111,13 +120,13 @@ namespace XLLNBroadcastEntity {
 		tHUB_SERVER,
 		tOTHER_CLIENT,
 	} TYPE;
-
+	
 	typedef struct {
 		SOCKADDR_STORAGE sockaddr;
 		__time64_t lastComm = 0;
 		TYPE entityType = TYPE::tUNKNOWN;
 	} BROADCAST_ENTITY;
-
+	
 }
 
 extern CRITICAL_SECTION xlive_critsec_broadcast_addresses;

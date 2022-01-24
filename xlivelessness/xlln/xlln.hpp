@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <map>
 
 #define XLLN_SHOW_HIDE 0
 #define XLLN_SHOW_HOME 1
@@ -41,35 +42,13 @@
 #define MYMENU_NETWORK_ADAPTER_SEPARATOR		(WM_APP + 169)
 #define MYMENU_NETWORK_ADAPTERS					(WM_APP + 170)
 
-DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
-DWORD WINAPI XLLNLogout(DWORD dwUserIndex);
-void InitCriticalSections();
-void UninitCriticalSections();
-bool InitXLLN(HMODULE hModule);
-bool UninitXLLN();
-uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId);
-uint32_t ShowXLLN(DWORD dwShowType);
-void UpdateUserInputBoxes(DWORD dwUserIndex);
-INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
-void ParseBroadcastAddrInput(char *jlbuffer);
-
-int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth);
-int CreateItem(HWND hwndListView, int iItem);
-
-extern HINSTANCE xlln_hModule;
-extern HWND xlln_window_hwnd;
-extern uint32_t xlln_local_instance_index;
-extern HMENU hMenu_network_adapters;
-extern BOOL xlln_debug;
-extern char *broadcastAddrInput;
-
 namespace XLLNModifyPropertyTypes {
-	const char* const TypeNames[]{
-	"UNKNOWN",
-	"FPS_LIMIT",
-	"LiveOverLan_BROADCAST_HANDLER",
-	"RECVFROM_CUSTOM_HANDLER_REGISTER",
-	"RECVFROM_CUSTOM_HANDLER_UNREGISTER",
+	const char* const TypeNames[] {
+		"UNKNOWN",
+		"FPS_LIMIT",
+		"LiveOverLan_BROADCAST_HANDLER",
+		"RECVFROM_CUSTOM_HANDLER_REGISTER",
+		"RECVFROM_CUSTOM_HANDLER_UNREGISTER",
 	};
 	typedef enum : BYTE {
 		tUNKNOWN = 0,
@@ -86,9 +65,40 @@ namespace XLLNModifyPropertyTypes {
 #pragma pack(pop) // Return to original alignment setting.
 }
 
+struct BASE_PORT_OFFSET_MAPPING {
+	int8_t priority = 0;
+	uint8_t offset = 0;
+	uint16_t original = 0;
+};
+
+extern HINSTANCE xlln_hModule;
+extern HWND xlln_window_hwnd;
+extern uint32_t xlln_local_instance_index;
+extern HMENU hMenu_network_adapters;
+extern BOOL xlln_debug;
+extern char *broadcastAddrInput;
+extern CRITICAL_SECTION xlln_critsec_base_port_offset_mappings;
+extern std::map<uint8_t, BASE_PORT_OFFSET_MAPPING*> xlln_base_port_mappings_offset;
+extern std::map<uint16_t, BASE_PORT_OFFSET_MAPPING*> xlln_base_port_mappings_original;
+
 // #41140
 typedef DWORD(WINAPI *tXLLNLogin)(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
 // #41141
 typedef DWORD(WINAPI *tXLLNLogout)(DWORD dwUserIndex);
 // #41142
 typedef DWORD(WINAPI *tXLLNModifyProperty)(XLLNModifyPropertyTypes::TYPE propertyId, DWORD *newValue, DWORD *oldValue);
+
+DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
+DWORD WINAPI XLLNLogout(DWORD dwUserIndex);
+void InitCriticalSections();
+void UninitCriticalSections();
+bool InitXLLN(HMODULE hModule);
+bool UninitXLLN();
+uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId);
+uint32_t ShowXLLN(DWORD dwShowType);
+void UpdateUserInputBoxes(DWORD dwUserIndex);
+INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
+void ParseBroadcastAddrInput(char *jlbuffer);
+
+int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth);
+int CreateItem(HWND hwndListView, int iItem);

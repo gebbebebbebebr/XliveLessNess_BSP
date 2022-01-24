@@ -15,6 +15,7 @@
 #include "xlocator.hpp"
 #include <ctime>
 #include <WS2tcpip.h>
+#include <set>
 
 CRITICAL_SECTION xlive_critsec_broadcast_addresses;
 std::vector<XLLNBroadcastEntity::BROADCAST_ENTITY> xlive_broadcast_addresses;
@@ -729,6 +730,7 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 			
 			for (const XLLNBroadcastEntity::BROADCAST_ENTITY &broadcastEntity : xlive_broadcast_addresses) {
 				memcpy(&sockAddrExternal, &broadcastEntity.sockaddr, sockAddrExternalLen);
+				
 				uint16_t *portBroadcastNBO = 0;
 				if (sockAddrExternal.ss_family == AF_INET) {
 					portBroadcastNBO = (uint16_t*)&(((sockaddr_in*)&sockAddrExternal)->sin_port);
@@ -749,35 +751,82 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 					continue;
 				}
 				
-				bool portBroadcastForRange = ntohs(*portBroadcastNBO) == 0;
-				bool portBroadcastForCore = portBroadcastForRange;
-				
-				if (!portBroadcastForRange) {
-					*portBroadcastNBO = htons(portHBO);
+				uint8_t portBaseOffset = portHBO % 100;
+				if (!IsUsingBasePort(xlive_base_port)) {
+					portBaseOffset = 0xFF;
+					{
+						EnterCriticalSection(&xlln_critsec_base_port_offset_mappings);
+						
+						if (xlln_base_port_mappings_original.count(portHBO)) {
+							BASE_PORT_OFFSET_MAPPING *mappingOriginal = xlln_base_port_mappings_original[portHBO];
+							portBaseOffset = mappingOriginal->offset;
+						}
+						
+						LeaveCriticalSection(&xlln_critsec_base_port_offset_mappings);
+					}
 				}
 				
-				uint32_t portRange = xlive_base_port_broadcast_spacing_start;
-				uint32_t portRangePrev = portRange;
-				
-				while (1) {
-					if (portBroadcastForRange) {
-						if (IsUsingBasePort(xlive_base_port)) {
-							const uint16_t portOffset = portHBO % 100;
-							const uint16_t portBase = portHBO - portOffset;
-							*portBroadcastNBO = htons(portRange + portOffset);
-						}
-						else {
-							*portBroadcastNBO = htons(portRange);
-						}
+				if (broadcastEntity.entityType == XLLNBroadcastEntity::tHUB_SERVER) {
+					const uint16_t portBroadcastToHBO = ntohs(*portBroadcastNBO);
+					
+					bool isCoreSocket = false;
+					if (perpetual_socket == xlive_xsocket_perpetual_core_socket) {
+						isCoreSocket = true;
 					}
-					else if (!portBroadcastForRange && portBroadcastForCore) {
-						*portBroadcastNBO = htons(xlive_port_online);
+					else {
+						EnterCriticalSection(&xlive_critsec_sockets);
+						
+						if (
+							xlive_xsocket_perpetual_to_transitory_socket.count(perpetual_socket)
+							&& xlive_xsocket_perpetual_to_transitory_socket.count(xlive_xsocket_perpetual_core_socket)
+							&& xlive_xsocket_perpetual_to_transitory_socket[perpetual_socket] == xlive_xsocket_perpetual_to_transitory_socket[xlive_xsocket_perpetual_core_socket]
+						) {
+							isCoreSocket = true;
+						}
+						
+						LeaveCriticalSection(&xlive_critsec_sockets);
 					}
+					
+					if (!isCoreSocket) {
+						const int packetSizeHeaderType = sizeof(XLLNNetPacketType::TYPE);
+						const int packetSizeTypeHubOutOfBand = sizeof(XLLNNetPacketType::HUB_OUT_OF_BAND);
+						const int packetSize = packetSizeHeaderType + packetSizeTypeHubOutOfBand + dataSendSize;
+						
+						uint8_t *packetBuffer = new uint8_t[packetSize];
+						packetBuffer[0] = XLLNNetPacketType::tHUB_OUT_OF_BAND;
+						XLLNNetPacketType::HUB_OUT_OF_BAND &packetHubOutOfBand = *(XLLNNetPacketType::HUB_OUT_OF_BAND*)&packetBuffer[packetSizeHeaderType];
+						packetHubOutOfBand.instanceId = ntohl(xlive_local_xnAddr.inaOnline.s_addr);
+						packetHubOutOfBand.portOffsetHBO = portBaseOffset;
+						packetHubOutOfBand.portOriginalHBO = portHBO;
+						
+						memcpy(&packetBuffer[packetSizeHeaderType + packetSizeTypeHubOutOfBand], dataBuffer, dataSendSize);
+						
+						resultDataSendSize = SendToPerpetualSocket(perpetual_socket, (const char*)packetBuffer, packetSize, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
+						
+						delete[] packetBuffer;
+						
+						{
+							char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+							XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+								, "%s Perpetual Socket (0x%08x) broadcasted OOB packet to XLLN-Hub %s."
+								, __func__
+								, perpetual_socket
+								, sockAddrInfo ? sockAddrInfo : ""
+							);
+							if (sockAddrInfo) {
+								free(sockAddrInfo);
+							}
+						}
+						
+						continue;
+					}
+					
+					resultDataSendSize = SendToPerpetualSocket(perpetual_socket, dataBuffer, dataSendSize, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 					
 					{
 						char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
 						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
-							, "%s Perpetual Socket (0x%08x) broadcasting packet to %s."
+							, "%s Perpetual Socket (0x%08x) broadcasted packet to XLLN-Hub %s."
 							, __func__
 							, perpetual_socket
 							, sockAddrInfo ? sockAddrInfo : ""
@@ -787,23 +836,50 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 						}
 					}
 					
+					continue;
+				}
+				
+				std::set<uint16_t> portsToBroadcastToHBO;
+				
+				portsToBroadcastToHBO.insert(portHBO);
+				portsToBroadcastToHBO.insert(xlive_port_online);
+				
+				uint32_t portRange = xlive_base_port_broadcast_spacing_start;
+				uint32_t portRangePrev = portRange;
+				
+				if (portBaseOffset != 0xFF) {
+					while (1) {
+						portsToBroadcastToHBO.insert(portRange + portBaseOffset);
+						
+						portRange += xlive_base_port_broadcast_spacing_increment;
+						
+						if (portRange < portRangePrev) {
+							// Overflow.
+							break;
+						}
+						if (portRange > xlive_base_port_broadcast_spacing_end) {
+							// passed the end.
+							break;
+						}
+					}
+				}
+				
+				for (const uint16_t &portToBroadcastToHBO : portsToBroadcastToHBO) {
+					*portBroadcastNBO = htons(portToBroadcastToHBO);
+					
 					resultDataSendSize = SendToPerpetualSocket(perpetual_socket, dataBuffer, dataSendSize, 0, (const sockaddr*)&sockAddrExternal, sockAddrExternalLen);
 					
-					if (!portBroadcastForRange) {
-						break;
-					}
-					
-					portRange += xlive_base_port_broadcast_spacing_increment;
-					
-					if (portRange < portRangePrev) {
-						// Overflow.
-						portBroadcastForRange = false;
-						continue;
-					}
-					if (portRange > xlive_base_port_broadcast_spacing_end) {
-						// passed the end.
-						portBroadcastForRange = false;
-						continue;
+					{
+						char *sockAddrInfo = GET_SOCKADDR_INFO(&sockAddrExternal);
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+							, "%s Perpetual Socket (0x%08x) broadcasted packet to %s."
+							, __func__
+							, perpetual_socket
+							, sockAddrInfo ? sockAddrInfo : ""
+						);
+						if (sockAddrInfo) {
+							free(sockAddrInfo);
+						}
 					}
 				}
 			}

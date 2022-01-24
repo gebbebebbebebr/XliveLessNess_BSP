@@ -288,3 +288,4 @@ EXPORTS
 	XLLNDebugLog @41143
 	XLLNDebugLogF @41144
 	XLLNGetXLLNStoragePath @41145
+	XLLNSetBasePortOffsetMapping @41146

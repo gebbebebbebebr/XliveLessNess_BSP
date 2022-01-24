@@ -50,6 +50,10 @@ static std::map<DWORD, char*> xlive_recvfrom_handler_funcs;
 
 char *broadcastAddrInput = 0;
 
+CRITICAL_SECTION xlln_critsec_base_port_offset_mappings;
+std::map<uint8_t, BASE_PORT_OFFSET_MAPPING*> xlln_base_port_mappings_offset;
+std::map<uint16_t, BASE_PORT_OFFSET_MAPPING*> xlln_base_port_mappings_original;
+
 int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth)
 {
 	LVCOLUMN lvc;
@@ -430,6 +434,53 @@ uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *resu
 		}
 		delete[] configPath;
 	}
+	return ERROR_SUCCESS;
+}
+
+// #41146
+uint32_t __stdcall XLLNSetBasePortOffsetMapping(uint8_t *port_offsets, uint16_t *port_originals, uint8_t port_mappings_size)
+{
+	if (!port_offsets) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (!port_originals) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	if (port_mappings_size >= 100) {
+		// There cannot be more than 0-99 offset mappings.
+		return ERROR_INVALID_PARAMETER;
+	}
+	
+	EnterCriticalSection(&xlln_critsec_base_port_offset_mappings);
+	
+	for (uint8_t i = 0; i < port_mappings_size; i++) {
+		uint8_t &portOffset = port_offsets[i];
+		uint16_t &portOriginal = port_originals[i];
+		
+		BASE_PORT_OFFSET_MAPPING *mappingOffset = 0;
+		if (xlln_base_port_mappings_offset.count(portOffset)) {
+			mappingOffset = xlln_base_port_mappings_offset[portOffset];
+		}
+		else {
+			mappingOffset = xlln_base_port_mappings_offset[portOffset] = new BASE_PORT_OFFSET_MAPPING;
+		}
+		
+		if (xlln_base_port_mappings_original.count(portOriginal)) {
+			BASE_PORT_OFFSET_MAPPING *mappingOriginal = xlln_base_port_mappings_original[portOriginal];
+			if (mappingOffset != mappingOriginal) {
+				xlln_base_port_mappings_offset.erase(mappingOriginal->offset);
+				delete mappingOriginal;
+			}
+		}
+		
+		xlln_base_port_mappings_original[portOriginal] = mappingOffset;
+		
+		mappingOffset->offset = portOffset;
+		mappingOffset->original = portOriginal;
+	}
+	
+	LeaveCriticalSection(&xlln_critsec_base_port_offset_mappings);
+	
 	return ERROR_SUCCESS;
 }
 
@@ -1085,6 +1136,7 @@ void InitCriticalSections()
 	InitializeCriticalSection(&xlive_critsec_sockets);
 	InitializeCriticalSection(&xlive_critsec_xnet_session_keys);
 	InitializeCriticalSection(&xlive_critsec_broadcast_addresses);
+	InitializeCriticalSection(&xlln_critsec_base_port_offset_mappings);
 	InitializeCriticalSection(&xlln_critsec_debug_log);
 }
 
@@ -1112,6 +1164,7 @@ void UninitCriticalSections()
 	DeleteCriticalSection(&xlive_critsec_sockets);
 	DeleteCriticalSection(&xlive_critsec_xnet_session_keys);
 	DeleteCriticalSection(&xlive_critsec_broadcast_addresses);
+	DeleteCriticalSection(&xlln_critsec_base_port_offset_mappings);
 	DeleteCriticalSection(&xlln_critsec_debug_log);
 }
 
@@ -1253,17 +1306,30 @@ bool UninitXLLN()
 {
 	uint32_t errorXllnWndConnections = UninitXllnWndConnections();
 	uint32_t errorXllnWndSockets = UninitXllnWndSockets();
-
+	
 	INT resultWsaCleanup = WSACleanup();
-
+	
+	{
+		EnterCriticalSection(&xlln_critsec_base_port_offset_mappings);
+		
+		for (const auto &mappingElement : xlln_base_port_mappings_offset) {
+			BASE_PORT_OFFSET_MAPPING *mapping = mappingElement.second;
+			delete mapping;
+		}
+		xlln_base_port_mappings_offset.empty();
+		xlln_base_port_mappings_original.empty();
+		
+		LeaveCriticalSection(&xlln_critsec_base_port_offset_mappings);
+	}
+	
 	uint32_t errorXllnConfig = UninitXllnConfig();
-
+	
 	uint32_t errorXllnDebugLog = UninitDebugLog();
-
+	
 	if (broadcastAddrInput) {
 		delete[] broadcastAddrInput;
 		broadcastAddrInput = 0;
 	}
-
+	
 	return true;
 }
