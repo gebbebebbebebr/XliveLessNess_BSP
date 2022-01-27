@@ -21,7 +21,24 @@ CRITICAL_SECTION xlive_critsec_xnet_session_keys;
 // Key: sessionId / xnkid.
 static std::map<uint64_t, XNKEY*> xlive_xnet_session_keys;
 
-void UnregisterSecureAddr(const IN_ADDR ina)
+static void ResetXNetStartupParams()
+{
+	xlive_net_startup_params.cfgSizeOfStruct = sizeof(XNetStartupParams);
+	xlive_net_startup_params.cfgFlags = 0;
+	xlive_net_startup_params.cfgSockMaxDgramSockets = 8;
+	xlive_net_startup_params.cfgSockMaxStreamSockets = 32;
+	xlive_net_startup_params.cfgSockDefaultRecvBufsizeInK = 16;
+	xlive_net_startup_params.cfgSockDefaultSendBufsizeInK = 16;
+	xlive_net_startup_params.cfgKeyRegMax = 8;
+	xlive_net_startup_params.cfgSecRegMax = 32;
+	xlive_net_startup_params.cfgQosDataLimitDiv4 = 64;
+	xlive_net_startup_params.cfgQosProbeTimeoutInSeconds = 2;
+	xlive_net_startup_params.cfgQosProbeRetries = 3;
+	xlive_net_startup_params.cfgQosSrvMaxSimultaneousResponses = 8;
+	xlive_net_startup_params.cfgQosPairWaitTimeInSeconds = 2;
+}
+
+static void UnregisterSecureAddr(const IN_ADDR ina)
 {
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
 }
@@ -31,6 +48,9 @@ void UnregisterSecureAddr(const IN_ADDR ina)
 INT WINAPI XNetStartup(const XNetStartupParams *pxnsp)
 {
 	TRACE_FX();
+	
+	ResetXNetStartupParams();
+	
 	if (pxnsp && pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams)) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pxnsp->cfgSizeOfStruct != sizeof(XNetStartupParams)) (%u != %u).", __func__, pxnsp->cfgSizeOfStruct, sizeof(XNetStartupParams));
 		return ERROR_INVALID_PARAMETER;
@@ -41,7 +61,42 @@ INT WINAPI XNetStartup(const XNetStartupParams *pxnsp)
 	}
 	
 	if (pxnsp) {
-		xlive_net_startup_params = *pxnsp;
+		if (pxnsp->cfgFlags) {
+			xlive_net_startup_params.cfgFlags = pxnsp->cfgFlags;
+		}
+		if (pxnsp->cfgSockMaxDgramSockets) {
+			xlive_net_startup_params.cfgSockMaxDgramSockets = pxnsp->cfgSockMaxDgramSockets;
+		}
+		if (pxnsp->cfgSockMaxStreamSockets) {
+			xlive_net_startup_params.cfgSockMaxStreamSockets = pxnsp->cfgSockMaxStreamSockets;
+		}
+		if (pxnsp->cfgSockDefaultRecvBufsizeInK) {
+			xlive_net_startup_params.cfgSockDefaultRecvBufsizeInK = pxnsp->cfgSockDefaultRecvBufsizeInK;
+		}
+		if (pxnsp->cfgSockDefaultSendBufsizeInK) {
+			xlive_net_startup_params.cfgSockDefaultSendBufsizeInK = pxnsp->cfgSockDefaultSendBufsizeInK;
+		}
+		if (pxnsp->cfgKeyRegMax) {
+			xlive_net_startup_params.cfgKeyRegMax = pxnsp->cfgKeyRegMax;
+		}
+		if (pxnsp->cfgSecRegMax) {
+			xlive_net_startup_params.cfgSecRegMax = pxnsp->cfgSecRegMax;
+		}
+		if (pxnsp->cfgQosDataLimitDiv4) {
+			xlive_net_startup_params.cfgQosDataLimitDiv4 = pxnsp->cfgQosDataLimitDiv4;
+		}
+		if (pxnsp->cfgQosProbeTimeoutInSeconds) {
+			xlive_net_startup_params.cfgQosProbeTimeoutInSeconds = pxnsp->cfgQosProbeTimeoutInSeconds;
+		}
+		if (pxnsp->cfgQosProbeRetries) {
+			xlive_net_startup_params.cfgQosProbeRetries = pxnsp->cfgQosProbeRetries;
+		}
+		if (pxnsp->cfgQosSrvMaxSimultaneousResponses) {
+			xlive_net_startup_params.cfgQosSrvMaxSimultaneousResponses = pxnsp->cfgQosSrvMaxSimultaneousResponses;
+		}
+		if (pxnsp->cfgQosPairWaitTimeInSeconds) {
+			xlive_net_startup_params.cfgQosPairWaitTimeInSeconds = pxnsp->cfgQosPairWaitTimeInSeconds;
+		}
 	}
 	
 	xlive_net_initialized = TRUE;
@@ -58,6 +113,9 @@ INT WINAPI XNetCleanup()
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLive Online is not initialised.", __func__);
 		return WSANOTINITIALISED;
 	}
+	
+	ResetXNetStartupParams();
+	
 	return ERROR_SUCCESS;
 }
 
@@ -774,19 +832,7 @@ HRESULT WINAPI XLiveGetLocalOnlinePort(uint16_t *online_port_NBO)
 
 BOOL InitXNet()
 {
-	xlive_net_startup_params.cfgSizeOfStruct = sizeof(XNetStartupParams);
-	xlive_net_startup_params.cfgFlags = 0;
-	xlive_net_startup_params.cfgSockMaxDgramSockets = 8;
-	xlive_net_startup_params.cfgSockMaxStreamSockets = 32;
-	xlive_net_startup_params.cfgSockDefaultRecvBufsizeInK = 16;
-	xlive_net_startup_params.cfgSockDefaultSendBufsizeInK = 16;
-	xlive_net_startup_params.cfgKeyRegMax = 8;
-	xlive_net_startup_params.cfgSecRegMax = 32;
-	xlive_net_startup_params.cfgQosDataLimitDiv4 = 64;
-	xlive_net_startup_params.cfgQosProbeTimeoutInSeconds = 2;
-	xlive_net_startup_params.cfgQosProbeRetries = 3;
-	xlive_net_startup_params.cfgQosSrvMaxSimultaneousResponses = 8;
-	xlive_net_startup_params.cfgQosPairWaitTimeInSeconds = 2;
+	ResetXNetStartupParams();
 	
 	return TRUE;
 }
