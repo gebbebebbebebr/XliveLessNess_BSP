@@ -1155,6 +1155,8 @@ INT WINAPI XSocketRecv(SOCKET perpetual_socket, char *buf, int len, int flags)
 	}
 }
 
+static uint16_t xlive_xsocket_large_data_buffer_size = 1024;
+
 // #20
 INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen)
 {
@@ -1170,17 +1172,34 @@ INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBu
 		return SOCKET_ERROR;
 	}
 	
+	uint8_t *largeDataBuffer = 0;
+	if (xlive_xsocket_large_data_buffer_size && dataBufferSize > 0 && dataBufferSize < xlive_xsocket_large_data_buffer_size) {
+		largeDataBuffer = new uint8_t[xlive_xsocket_large_data_buffer_size];
+	}
+	
 	while (1) {
 		SOCKADDR_STORAGE sockAddrExternal;
 		int sockAddrExternalLen = sizeof(sockAddrExternal);
 		
 		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
 		if (transitorySocket == INVALID_SOCKET) {
+			if (largeDataBuffer) {
+				delete[] largeDataBuffer;
+				largeDataBuffer = 0;
+			}
+			
 			WSASetLastError(WSAENOTSOCK);
 			return SOCKET_ERROR;
 		}
 		
-		INT resultDataRecvSize = recvfrom(transitorySocket, dataBuffer, dataBufferSize, flags, (sockaddr*)&sockAddrExternal, &sockAddrExternalLen);
+		INT resultDataRecvSize = recvfrom(
+			transitorySocket
+			, largeDataBuffer ? (char*)largeDataBuffer : dataBuffer
+			, largeDataBuffer ? xlive_xsocket_large_data_buffer_size : dataBufferSize
+			, flags
+			, (sockaddr*)&sockAddrExternal
+			, &sockAddrExternalLen
+		);
 		int errorRecvFrom = WSAGetLastError();
 		
 		if (resultDataRecvSize == SOCKET_ERROR && XSocketPerpetualSocketChangedError(errorRecvFrom, perpetual_socket, transitorySocket)) {
@@ -1197,13 +1216,44 @@ INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBu
 				);
 			}
 			
+			if (largeDataBuffer) {
+				delete[] largeDataBuffer;
+				largeDataBuffer = 0;
+			}
+			
 			WSASetLastError(errorRecvFrom);
 			return resultDataRecvSize;
 		}
 		
-		INT resultDataRecvSizeFromHelper = XSocketRecvFromHelper(resultDataRecvSize, perpetual_socket, dataBuffer, dataBufferSize, flags, &sockAddrExternal, sockAddrExternalLen, from, fromlen);
+		INT resultDataRecvSizeFromHelper = XSocketRecvFromHelper(
+			resultDataRecvSize
+			, perpetual_socket
+			, largeDataBuffer ? (char*)largeDataBuffer : dataBuffer
+			, largeDataBuffer ? xlive_xsocket_large_data_buffer_size : dataBufferSize
+			, flags
+			, &sockAddrExternal
+			, sockAddrExternalLen
+			, from
+			, fromlen
+		);
 		if (resultDataRecvSizeFromHelper == 0) {
 			continue;
+		}
+		
+		if (resultDataRecvSizeFromHelper > 0 && largeDataBuffer) {
+			if (resultDataRecvSizeFromHelper > dataBufferSize) {
+				delete[] largeDataBuffer;
+				largeDataBuffer = 0;
+				WSASetLastError(WSAEMSGSIZE);
+				return SOCKET_ERROR;
+			}
+			
+			memcpy(dataBuffer, largeDataBuffer, resultDataRecvSizeFromHelper);
+		}
+		
+		if (largeDataBuffer) {
+			delete[] largeDataBuffer;
+			largeDataBuffer = 0;
 		}
 		
 		WSASetLastError(errorRecvFrom);
