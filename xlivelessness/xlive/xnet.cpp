@@ -153,8 +153,7 @@ INT WINAPI XNetCreateKey(XNKID *pxnkid, XNKEY *pxnkey)
 	memset(pxnkey, 0XAA, sizeof(XNKEY));
 
 	pxnkid->ab[0] &= ~XNET_XNKID_MASK;
-	pxnkid->ab[0] |= XNET_XNKID_SYSTEM_LINK;
-	// pxnkid->ab[0] |= XNET_XNKID_SYSTEM_LINK_XPLAT;
+	pxnkid->ab[0] |= XNET_XNKID_SYSTEM_LINK_XPLAT;
 	
 	return S_OK;
 }
@@ -175,11 +174,10 @@ INT WINAPI XNetRegisterKey(const XNKID *pxnkid, const XNKEY *pxnkey)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s pxnkey is NULL.", __func__);
 		return WSAEFAULT;
 	}
-	// These checks break creating a Halo 2 LAN lobby.
-	//if (!XNetXnKidIsOnlinePeer(pxnkid) && !XNetXnKidIsOnlineTitleServer(pxnkid) && !XNetXnKidIsSystemLinkXPlat(pxnkid)) {
-	//	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNetXnKidFlag(pxnkid) (0x%02x) is not XNET_XNKID_ONLINE_PEER, XNET_XNKID_ONLINE_TITLESERVER or XNET_XNKID_SYSTEM_LINK_XPLAT.", __func__, XNetXnKidFlag(pxnkid));
-	//	return E_INVALIDARG;
-	//}
+	if (!XNetXnKidIsOnlinePeer(pxnkid) && !XNetXnKidIsOnlineTitleServer(pxnkid) && !XNetXnKidIsSystemLinkXPlat(pxnkid)) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XNetXnKidFlag(pxnkid) (0x%02x) is not XNET_XNKID_ONLINE_PEER, XNET_XNKID_ONLINE_TITLESERVER or XNET_XNKID_SYSTEM_LINK_XPLAT.", __func__, XNetXnKidFlag(pxnkid));
+		return E_INVALIDARG;
+	}
 	
 	const uint64_t &sessionId = *(uint64_t*)pxnkid;
 	
