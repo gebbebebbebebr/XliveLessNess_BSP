@@ -192,6 +192,24 @@ DWORD WINAPI XLLNDebugLog(DWORD logLevel, const char *message)
 	return ERROR_SUCCESS;
 }
 
+// #41147
+uint32_t __stdcall XLLNGetDebugLogLevel(uint32_t *log_level)
+{
+	if (!log_level) {
+		return ERROR_INVALID_PARAMETER;
+	}
+	
+	*log_level = 0;
+	
+	if (!xlln_debug) {
+		return ERROR_FUNCTION_FAILED;
+	}
+	
+	*log_level = xlln_debuglog_level;
+	
+	return ERROR_SUCCESS;
+}
+
 /*
 std::string formattestthing(const char *const format, ...)
 {

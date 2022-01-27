@@ -40,8 +40,8 @@ static HMENU xlln_window_hMenu = NULL;
 uint32_t xlln_local_instance_index = 0;
 HMENU hMenu_network_adapters = 0;
 
-static DWORD xlln_login_player = 0;
-static DWORD xlln_login_player_h[] = { MYMENU_LOGIN1, MYMENU_LOGIN2, MYMENU_LOGIN3, MYMENU_LOGIN4 };
+static uint32_t xlln_login_player = 0;
+static uint32_t xlln_login_player_h[] = { MYMENU_LOGIN1, MYMENU_LOGIN2, MYMENU_LOGIN3, MYMENU_LOGIN4 };
 
 BOOL xlln_debug = FALSE;
 
@@ -250,16 +250,19 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 
 
 // #41140
-DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername)
+uint32_t WINAPI XLLNLogin(uint32_t dwUserIndex, BOOL bLiveEnabled, uint32_t dwUserId, const CHAR *szUsername)
 {
 	TRACE_FX();
-	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT)
+	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
 		return ERROR_NO_SUCH_USER;
-	if (szUsername && (!*szUsername || strlen(szUsername) > XUSER_MAX_NAME_LENGTH))
+	}
+	if (szUsername && (!*szUsername || strlen(szUsername) > XUSER_MAX_NAME_LENGTH)) {
 		return ERROR_INVALID_ACCOUNT_NAME;
-	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn)
+	}
+	if (xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn) {
 		return ERROR_ALREADY_ASSIGNED;
-
+	}
+	
 	if (szUsername) {
 		memcpy(xlive_users_info[dwUserIndex]->szUserName, szUsername, XUSER_NAME_SIZE);
 		xlive_users_info[dwUserIndex]->szUserName[XUSER_NAME_SIZE] = 0;
@@ -271,39 +274,39 @@ DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, con
 			resultNamegen = namegen(xlive_users_info[dwUserIndex]->szUserName, XUSER_NAME_SIZE, "<!DdM|!DdV|!Dd|!m|!BVC|!BdC !DdM|!DdV|!Dd|!m|!BVC|!BdC>|<!DdM|!DdV|!Dd|!m|!BVC|!BdC>", &seedNamegen);
 		} while (resultNamegen == NAMEGEN_TRUNCATED || xlive_users_info[dwUserIndex]->szUserName[0] == 0);
 	}
-
+	
 	if (!dwUserId) {
 		// Not including the null terminator.
 		uint32_t usernameSize = strlen(xlive_users_info[dwUserIndex]->szUserName);
 		dwUserId = crc32buf((uint8_t*)xlive_users_info[dwUserIndex]->szUserName, usernameSize);
 	}
-
+	
 	xlive_users_info[dwUserIndex]->UserSigninState = bLiveEnabled ? eXUserSigninState_SignedInToLive : eXUserSigninState_SignedInLocally;
 	//xlive_users_info[dwUserIndex]->xuid = 0xE000007300000000 + dwUserId;
 	xlive_users_info[dwUserIndex]->xuid = (bLiveEnabled ? XUID_LIVE_ENABLED_FLAG : 0xE000000000000000) + dwUserId;
 	xlive_users_info[dwUserIndex]->dwInfoFlags = bLiveEnabled ? XUSER_INFO_FLAG_LIVE_ENABLED : 0;
-
+	
 	xlive_users_info_changed[dwUserIndex] = TRUE;
 	xlive_users_auto_login[dwUserIndex] = FALSE;
-
+	
 	if (dwUserIndex == xlln_login_player) {
 		SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
 		CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, bLiveEnabled ? BST_CHECKED : BST_UNCHECKED);
-
+		
 		CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, BST_UNCHECKED);
-
+		
 		BOOL checked = TRUE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
 		//CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], checked ? MF_CHECKED : MF_UNCHECKED);
-
+		
 		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
 		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
 	}
-
+	
 	return ERROR_SUCCESS;
 }
 
 // #41141
-DWORD WINAPI XLLNLogout(DWORD dwUserIndex)
+uint32_t WINAPI XLLNLogout(uint32_t dwUserIndex)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
@@ -314,79 +317,99 @@ DWORD WINAPI XLLNLogout(DWORD dwUserIndex)
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s User %u is not signed in.", __func__, dwUserIndex);
 		return ERROR_NOT_LOGGED_ON;
 	}
-
+	
 	xlive_users_info[dwUserIndex]->UserSigninState = eXUserSigninState_NotSignedIn;
 	xlive_users_info_changed[dwUserIndex] = TRUE;
-
+	
 	if (dwUserIndex == xlln_login_player) {
 		BOOL checked = FALSE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
 		//CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], checked ? MF_CHECKED : MF_UNCHECKED);
-
+		
 		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), checked ? SW_HIDE : SW_SHOWNORMAL);
 		ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), checked ? SW_SHOWNORMAL : SW_HIDE);
 	}
-
+	
 	return ERROR_SUCCESS;
 }
 
 // #41142
-DWORD WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, DWORD *newValue, DWORD *oldValue)
+uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uint32_t *newValue, uint32_t *oldValue)
 {
 	TRACE_FX();
-	if (propertyId == XLLNModifyPropertyTypes::tUNKNOWN)
-		return ERROR_INVALID_PARAMETER;
-
-	if (propertyId == XLLNModifyPropertyTypes::tFPS_LIMIT) {
-		if (oldValue && !newValue) {
-			*oldValue = xlive_fps_limit;
-		}
-		else if (newValue) {
-			DWORD old_value = SetFPSLimit(*newValue);
-			if (oldValue) {
-				*oldValue = old_value;
-			}
-		}
-		else {
-			return ERROR_NOT_SUPPORTED;
-		}
-		return ERROR_SUCCESS;
-	}
-	else if (propertyId == XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_REGISTER) {
-		// TODO
-		XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)newValue;
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_INFO
-			, "XLLN-Module is registering a recvfrom handler 0x%08x."
-			, handler->Identifier
-		);
-		DWORD idLen = strlen(handler->Identifier) + 1;
-		char *identifier = (char*)malloc(sizeof(char) * idLen);
-		strcpy_s(identifier, idLen, handler->Identifier);
-
-		if (oldValue && newValue) {
+	switch (propertyId) {
+		case XLLNModifyPropertyTypes::tUNKNOWN: {
 			return ERROR_INVALID_PARAMETER;
 		}
-		EnterCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-		if (oldValue) {
-			if (!xlive_recvfrom_handler_funcs.count((DWORD)oldValue)) {
-				LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-				return ERROR_NOT_FOUND;
+		case XLLNModifyPropertyTypes::tFPS_LIMIT: {
+			if (oldValue && !newValue) {
+				*oldValue = xlive_fps_limit;
 			}
-			xlive_recvfrom_handler_funcs.erase((DWORD)oldValue);
-		}
-		else {
-			if (xlive_recvfrom_handler_funcs.count((DWORD)handler->FuncPtr)) {
-				LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-				return ERROR_ALREADY_REGISTERED;
+			else if (newValue) {
+				uint32_t old_value = SetFPSLimit(*newValue);
+				if (oldValue) {
+					*oldValue = old_value;
+				}
 			}
-			xlive_recvfrom_handler_funcs[(DWORD)handler->FuncPtr] = identifier;
+			else {
+				return ERROR_NOT_SUPPORTED;
+			}
+			return ERROR_SUCCESS;
 		}
-		LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-		return ERROR_SUCCESS;
+		case XLLNModifyPropertyTypes::tBASE_PORT: {
+			if (oldValue && !newValue) {
+				*(uint16_t*)oldValue = xlive_base_port;
+			}
+			else if (newValue) {
+				uint16_t old_value = xlive_base_port;
+				xlive_base_port = *(uint16_t*)newValue;
+				if (oldValue) {
+					*(uint16_t*)oldValue = old_value;
+				}
+			}
+			else {
+				return ERROR_NOT_SUPPORTED;
+			}
+			return ERROR_SUCCESS;
+		}
+		case XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_REGISTER: {
+			// TODO
+			return ERROR_NOT_SUPPORTED;
+			XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)newValue;
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_INFO
+				, "XLLN-Module is registering a recvfrom handler 0x%08x."
+				, handler->Identifier
+			);
+			uint32_t idLen = strlen(handler->Identifier) + 1;
+			char *identifier = (char*)malloc(sizeof(char) * idLen);
+			strcpy_s(identifier, idLen, handler->Identifier);
+			
+			if (oldValue && newValue) {
+				return ERROR_INVALID_PARAMETER;
+			}
+			EnterCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+			if (oldValue) {
+				if (!xlive_recvfrom_handler_funcs.count((uint32_t)oldValue)) {
+					LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+					return ERROR_NOT_FOUND;
+				}
+				xlive_recvfrom_handler_funcs.erase((uint32_t)oldValue);
+			}
+			else {
+				if (xlive_recvfrom_handler_funcs.count((uint32_t)handler->FuncPtr)) {
+					LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+					return ERROR_ALREADY_REGISTERED;
+				}
+				xlive_recvfrom_handler_funcs[(uint32_t)handler->FuncPtr] = identifier;
+			}
+			LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
+			return ERROR_SUCCESS;
+		}
+		case XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_UNREGISTER: {
+			// TODO
+			return ERROR_NOT_SUPPORTED;
+		}
 	}
-	else if (propertyId == XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_UNREGISTER) {
-		// TODO
-	}
-
+	
 	return ERROR_UNKNOWN_PROPERTY;
 }
 
@@ -417,10 +440,10 @@ uint32_t __stdcall XLLNGetXLLNStoragePath(uint32_t module_handle, uint32_t *resu
 			*result_storage_path_buffer_size = 0;
 			return ERROR_PATH_NOT_FOUND;
 		}
-
+		
 		size_t configPathLen = wcslen(configPath);
 		size_t configPathBufSize = (configPathLen + 1) * sizeof(wchar_t);
-
+		
 		if (configPathBufSize > *result_storage_path_buffer_size) {
 			*result_storage_path_buffer_size = configPathBufSize;
 			delete[] configPath;
@@ -484,28 +507,28 @@ uint32_t __stdcall XLLNSetBasePortOffsetMapping(uint8_t *port_offsets, uint16_t 
 	return ERROR_SUCCESS;
 }
 
-void UpdateUserInputBoxes(DWORD dwUserIndex)
+void UpdateUserInputBoxes(uint32_t dwUserIndex)
 {
-	for (DWORD i = 0; i < 4; i++) {
+	for (uint32_t i = 0; i < 4; i++) {
 		BOOL checked = i == xlln_login_player ? TRUE : FALSE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
 		CheckMenuItem(xlln_window_hMenu, xlln_login_player_h[i], checked ? MF_CHECKED : MF_UNCHECKED);
 	}
-
+	
 	if (dwUserIndex != xlln_login_player) {
 		return;
 	}
-
+	
 	SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
-
+	
 	bool liveEnabled = xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive || xlive_users_live_enabled[dwUserIndex];
 	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_LIVEENABLE, liveEnabled ? BST_CHECKED : BST_UNCHECKED);
-
+	
 	CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, xlive_users_auto_login[dwUserIndex] ? BST_CHECKED : BST_UNCHECKED);
-
+	
 	bool loggedIn = xlive_users_info[dwUserIndex]->UserSigninState != eXUserSigninState_NotSignedIn;
 	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGIN), loggedIn ? SW_HIDE : SW_SHOWNORMAL);
 	ShowWindow(GetDlgItem(xlln_window_hwnd, MYWINDOW_BTN_LOGOUT), loggedIn ? SW_SHOWNORMAL : SW_HIDE);
-
+	
 	InvalidateRect(xlln_window_hwnd, NULL, FALSE);
 }
 
@@ -514,23 +537,23 @@ static bool IsBroadcastAddress(const SOCKADDR_STORAGE *sockaddr)
 	if (sockaddr->ss_family != AF_INET) {
 		return false;
 	}
-
+	
 	const uint32_t ipv4NBO = ((struct sockaddr_in*)sockaddr)->sin_addr.s_addr;
 	const uint32_t ipv4HBO = ntohl(ipv4NBO);
-
+	
 	if (ipv4HBO == INADDR_BROADCAST) {
 		return true;
 	}
 	if (ipv4HBO == INADDR_ANY) {
 		return true;
 	}
-
+	
 	for (EligibleAdapter* ea : xlive_eligible_network_adapters) {
 		if (ea->hBroadcast == ipv4HBO) {
 			return true;
 		}
 	}
-
+	
 	return false;
 }
 
@@ -856,13 +879,13 @@ Executable Launch Parameters:\n\
 			if (jlbuffer[0] != 0) {
 				memcpy(xlive_users_username[xlln_login_player], jlbuffer, XUSER_NAME_SIZE);
 			}
-			DWORD result_login = XLLNLogin(xlln_login_player, liveEnabled, NULL, jlbuffer[0] == 0 ? NULL : jlbuffer);
+			uint32_t result_login = XLLNLogin(xlln_login_player, liveEnabled, NULL, jlbuffer[0] == 0 ? NULL : jlbuffer);
 			xlive_users_auto_login[xlln_login_player] = autoLoginChecked;
 			CheckDlgButton(xlln_window_hwnd, MYWINDOW_CHK_AUTOLOGIN, autoLoginChecked ? BST_CHECKED : BST_UNCHECKED);
 			break;
 		}
 		case MYWINDOW_BTN_LOGOUT: {
-			DWORD result_logout = XLLNLogout(xlln_login_player);
+			uint32_t result_logout = XLLNLogout(xlln_login_player);
 			break;
 		}
 #define XLLN_CHK_DBG_TOGGLE(checkbox_menu_btn_id, log_level_flag) {\
@@ -977,20 +1000,20 @@ xlln_debuglog_level = checked ? (xlln_debuglog_level | log_level_flag) : (xlln_d
 
 static DWORD WINAPI ThreadShowXlln(LPVOID lpParam)
 {
-	DWORD *threadArgs = (DWORD*)lpParam;
-	DWORD mainThreadId = threadArgs[0];
-	DWORD dwShowType = threadArgs[1];
+	uint32_t *threadArgs = (uint32_t*)lpParam;
+	uint32_t mainThreadId = threadArgs[0];
+	uint32_t dwShowType = threadArgs[1];
 	delete[] threadArgs;
-
+	
 	// Wait a moment for some Titles to process user input that triggers this event before poping the menu.
 	// Otherwise the Title might have issues consuming input correctly and for example repeat the action over and over.
 	Sleep(200);
-
-	DWORD currentThreadId = GetCurrentThreadId();
-
+	
+	uint32_t currentThreadId = GetCurrentThreadId();
+	
 	// Attach to the main thread as secondary threads cannot use GUI functions.
 	AttachThreadInput(currentThreadId, mainThreadId, TRUE);
-
+	
 	if (dwShowType == XLLN_SHOW_HIDE) {
 		ShowWindow(xlln_window_hwnd, SW_HIDE);
 	}
@@ -1003,17 +1026,17 @@ static DWORD WINAPI ThreadShowXlln(LPVOID lpParam)
 		SetWindowPos(xlln_window_hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 		SendMessage(xlln_window_hwnd, WM_NEXTDLGCTL, (WPARAM)GetDlgItem(xlln_window_hwnd, MYWINDOW_TBX_USERNAME), TRUE);
 	}
-
+	
 	AttachThreadInput(currentThreadId, mainThreadId, FALSE);
-
+	
 	return ERROR_SUCCESS;
 }
 
-uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId)
+uint32_t ShowXLLN(uint32_t dwShowType, uint32_t threadId)
 {
 	if (dwShowType == XLLN_SHOW_LOGIN) {
 		bool anyGotAutoLogged = false;
-
+		
 		// Check if there are any accounts already logged in.
 		for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
 			if (xlive_users_info[i]->UserSigninState != eXUserSigninState_NotSignedIn) {
@@ -1021,7 +1044,7 @@ uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId)
 				break;
 			}
 		}
-
+		
 		// If no accounts are logged in then auto login the ones that have the flag.
 		if (!anyGotAutoLogged) {
 			for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
@@ -1035,21 +1058,21 @@ uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId)
 					}
 				}
 			}
-
+			
 			// If there were accounts that were auto logged in then do not pop the XLLN window.
 			if (anyGotAutoLogged) {
 				return ERROR_SUCCESS;
 			}
 		}
 	}
-
-	DWORD *threadArgs = new DWORD[2]{ threadId, dwShowType };
+	
+	uint32_t *threadArgs = new uint32_t[2]{ threadId, dwShowType };
 	CreateThread(0, NULL, ThreadShowXlln, (LPVOID)threadArgs, NULL, NULL);
-
+	
 	return ERROR_SUCCESS;
 }
 
-uint32_t ShowXLLN(DWORD dwShowType)
+uint32_t ShowXLLN(uint32_t dwShowType)
 {
 	return ShowXLLN(dwShowType, GetCurrentThreadId());
 }
@@ -1171,7 +1194,7 @@ void UninitCriticalSections()
 bool InitXLLN(HMODULE hModule)
 {
 	BOOL xlln_debug_pause = FALSE;
-
+	
 	int nArgs;
 	// GetCommandLineW() does not need de-allocating but ToArgv does.
 	LPWSTR* lpwszArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
@@ -1192,11 +1215,11 @@ bool InitXLLN(HMODULE hModule)
 #endif
 		}
 	}
-
+	
 	while (xlln_debug_pause && !IsDebuggerPresent()) {
 		Sleep(500L);
 	}
-
+	
 	for (int i = 1; i < nArgs; i++) {
 		if (wcscmp(lpwszArglist[i], L"-xlivedebug") == 0) {
 			xlive_debug_pause = TRUE;
@@ -1218,12 +1241,12 @@ bool InitXLLN(HMODULE hModule)
 			}
 		}
 	}
-
+	
 	if (xlln_local_instance_index) {
 		wchar_t *mutexName = FormMallocString(L"Global\\XLiveLessNessInstanceIndex#%u", xlln_local_instance_index);
 		HANDLE mutex = CreateMutexW(0, FALSE, mutexName);
 		free(mutexName);
-		DWORD mutex_last_error = GetLastError();
+		uint32_t mutex_last_error = GetLastError();
 		if (mutex_last_error != ERROR_SUCCESS) {
 			char *messageDescription = FormMallocString("Failed to get XLiveLessNess Local Instance Index %u.", xlln_local_instance_index);
 			MessageBoxA(NULL, messageDescription, "XLLN Local Instance Index Fail", MB_OK);
@@ -1232,7 +1255,7 @@ bool InitXLLN(HMODULE hModule)
 		}
 	}
 	else {
-		DWORD mutex_last_error;
+		uint32_t mutex_last_error;
 		HANDLE mutex = NULL;
 		do {
 			if (mutex) {
@@ -1244,11 +1267,11 @@ bool InitXLLN(HMODULE hModule)
 			mutex_last_error = GetLastError();
 		} while (mutex_last_error != ERROR_SUCCESS);
 	}
-
+	
 	if (!broadcastAddrInput) {
 		broadcastAddrInput = new char[1]{ "" };
 	}
-
+	
 	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
 		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
 		memset(xlive_users_info[i], 0, sizeof(XUSER_SIGNIN_INFO));
@@ -1256,15 +1279,15 @@ bool InitXLLN(HMODULE hModule)
 		xlive_users_info_changed[i] = FALSE;
 		xlive_users_auto_login[i] = FALSE;
 	}
-
+	
 	uint32_t errorXllnConfig = InitXllnConfig();
 	uint32_t errorXllnDebugLog = InitDebugLog();
-
+	
 	WSADATA wsaData;
 	INT result_wsaStartup = WSAStartup(2, &wsaData);
-
+	
 	ReadTitleConfig(lpwszArglist[0]);
-
+	
 	for (int i = 1; i < nArgs; i++) {
 		if (wcsstr(lpwszArglist[i], L"-xlivefps=") != NULL) {
 			uint32_t tempuint32 = 0;
@@ -1292,13 +1315,13 @@ bool InitXLLN(HMODULE hModule)
 		}
 	}
 	LocalFree(lpwszArglist);
-
+	
 	xlln_hModule = hModule;
 	CreateThread(0, NULL, ThreadProc, (LPVOID)NULL, NULL, NULL);
-
+	
 	uint32_t errorXllnWndSockets = InitXllnWndSockets();
 	uint32_t errorXllnWndConnections = InitXllnWndConnections();
-
+	
 	return true;
 }
 

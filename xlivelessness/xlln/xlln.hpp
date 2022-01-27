@@ -49,6 +49,7 @@ namespace XLLNModifyPropertyTypes {
 		"LiveOverLan_BROADCAST_HANDLER",
 		"RECVFROM_CUSTOM_HANDLER_REGISTER",
 		"RECVFROM_CUSTOM_HANDLER_UNREGISTER",
+		"BASE_PORT",
 	};
 	typedef enum : BYTE {
 		tUNKNOWN = 0,
@@ -56,13 +57,18 @@ namespace XLLNModifyPropertyTypes {
 		tLiveOverLan_BROADCAST_HANDLER,
 		tRECVFROM_CUSTOM_HANDLER_REGISTER,
 		tRECVFROM_CUSTOM_HANDLER_UNREGISTER,
+		tBASE_PORT,
 	} TYPE;
+
 #pragma pack(push, 1) // Save then set byte alignment setting.
+
 	typedef struct {
 		char *Identifier;
-		DWORD *FuncPtr;
+		uint32_t *FuncPtr;
 	} RECVFROM_CUSTOM_HANDLER_REGISTER;
+
 #pragma pack(pop) // Return to original alignment setting.
+
 }
 
 struct BASE_PORT_OFFSET_MAPPING {
@@ -82,21 +88,21 @@ extern std::map<uint8_t, BASE_PORT_OFFSET_MAPPING*> xlln_base_port_mappings_offs
 extern std::map<uint16_t, BASE_PORT_OFFSET_MAPPING*> xlln_base_port_mappings_original;
 
 // #41140
-typedef DWORD(WINAPI *tXLLNLogin)(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
+typedef uint32_t(WINAPI *tXLLNLogin)(uint32_t dwUserIndex, BOOL bLiveEnabled, uint32_t dwUserId, const CHAR *szUsername);
 // #41141
-typedef DWORD(WINAPI *tXLLNLogout)(DWORD dwUserIndex);
+typedef uint32_t(WINAPI *tXLLNLogout)(uint32_t dwUserIndex);
 // #41142
-typedef DWORD(WINAPI *tXLLNModifyProperty)(XLLNModifyPropertyTypes::TYPE propertyId, DWORD *newValue, DWORD *oldValue);
+typedef uint32_t(WINAPI *tXLLNModifyProperty)(XLLNModifyPropertyTypes::TYPE propertyId, uint32_t *newValue, uint32_t *oldValue);
 
-DWORD WINAPI XLLNLogin(DWORD dwUserIndex, BOOL bLiveEnabled, DWORD dwUserId, const CHAR *szUsername);
-DWORD WINAPI XLLNLogout(DWORD dwUserIndex);
+uint32_t WINAPI XLLNLogin(uint32_t dwUserIndex, BOOL bLiveEnabled, uint32_t dwUserId, const CHAR *szUsername);
+uint32_t WINAPI XLLNLogout(uint32_t dwUserIndex);
 void InitCriticalSections();
 void UninitCriticalSections();
 bool InitXLLN(HMODULE hModule);
 bool UninitXLLN();
-uint32_t ShowXLLN(DWORD dwShowType, DWORD threadId);
-uint32_t ShowXLLN(DWORD dwShowType);
-void UpdateUserInputBoxes(DWORD dwUserIndex);
+uint32_t ShowXLLN(uint32_t dwShowType, uint32_t threadId);
+uint32_t ShowXLLN(uint32_t dwShowType);
+void UpdateUserInputBoxes(uint32_t dwUserIndex);
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
 void ParseBroadcastAddrInput(char *jlbuffer);
 
