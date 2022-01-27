@@ -578,8 +578,9 @@ static uint32_t XllnConfig(bool save_config)
 	}
 	
 	wchar_t *configAutoPath = 0;
-	wchar_t *configAutoFallbackPath1 = 0;
-	wchar_t *configAutoFallbackPath2 = 0;
+	wchar_t *configAutoFallbackPathAppdata = 0;
+	wchar_t *configAutoFallbackPathWorkingDir = 0;
+	bool saveConfigFileToWorkingDirectoryOverride = false;
 	bool readConfigFromOtherInstance = false;
 	// Do not use auto paths if an exec arg path was provided.
 	if (!fileConfig && !xlln_file_config_path) {
@@ -600,26 +601,43 @@ static uint32_t XllnConfig(bool save_config)
 				}
 				if (appdataDirectory) {
 					configAutoPath = FormMallocString(L"%s/XLiveLessNess/xlln-config-%u.ini", appdataPath, searchInstanceIndex);
-					if (!configAutoFallbackPath1) {
-						configAutoFallbackPath1 = CloneString(configAutoPath);
+					if (!configAutoFallbackPathAppdata) {
+						configAutoFallbackPathAppdata = CloneString(configAutoPath);
 					}
 				}
 				else {
 					configAutoPath = FormMallocString(L"./XLiveLessNess/xlln-config-%u.ini", searchInstanceIndex);
-					if (!configAutoFallbackPath2) {
-						configAutoFallbackPath2 = CloneString(configAutoPath);
+					if (!configAutoFallbackPathWorkingDir) {
+						configAutoFallbackPathWorkingDir = CloneString(configAutoPath);
 					}
 				}
 				errorFopen = _wfopen_s(&fileConfig, configAutoPath, L"rb");
 				if (fileConfig) {
-					searchInstanceIndex = 0;
-					break;
-				}
-				if (errorFopen == ENOENT) {
-					XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file not found: \"%ls\".", configAutoPath);
+					fseek(fileConfig, (long)0, SEEK_END);
+					uint32_t fileSize = ftell(fileConfig);
+					fseek(fileConfig, (long)0, SEEK_SET);
+					fileSize -= ftell(fileConfig);
+					
+					if (fileSize == 0) {
+						fclose(fileConfig);
+						fileConfig = 0;
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file is empty: \"%ls\".", configAutoPath);
+						if (!appdataDirectory && searchInstanceIndex == xlln_local_instance_index) {
+							saveConfigFileToWorkingDirectoryOverride = true;
+						}
+					}
+					else {
+						searchInstanceIndex = 0;
+						break;
+					}
 				}
 				else {
-					XLLN_DEBUG_LOG_ECODE(errorFopen, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file \"%ls\" read error:", configAutoPath);
+					if (errorFopen == ENOENT) {
+						XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file not found: \"%ls\".", configAutoPath);
+					}
+					else {
+						XLLN_DEBUG_LOG_ECODE(errorFopen, XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_LEVEL_WARN, "Auto config file \"%ls\" read error:", configAutoPath);
+					}
 				}
 			} while (!errorEnvVar && (appdataDirectory = !appdataDirectory));
 			if (searchInstanceIndex == 0) {
@@ -661,11 +679,15 @@ static uint32_t XllnConfig(bool save_config)
 			saveToConfigFilePath = xlln_file_config_path;
 			i = 2;
 		}
+		else if (saveConfigFileToWorkingDirectoryOverride) {
+			saveToConfigFilePath = configAutoFallbackPathWorkingDir;
+			i = 2;
+		}
 		else if (i == 0) {
-			saveToConfigFilePath = configAutoFallbackPath1;
+			saveToConfigFilePath = configAutoFallbackPathAppdata;
 		}
 		else if (i == 1) {
-			saveToConfigFilePath = configAutoFallbackPath2;
+			saveToConfigFilePath = configAutoFallbackPathWorkingDir;
 		}
 		
 		if (saveToConfigFilePath) {
@@ -694,13 +716,13 @@ static uint32_t XllnConfig(bool save_config)
 		}
 	}
 	
-	if (configAutoFallbackPath1) {
-		delete[] configAutoFallbackPath1;
-		configAutoFallbackPath1 = 0;
+	if (configAutoFallbackPathAppdata) {
+		delete[] configAutoFallbackPathAppdata;
+		configAutoFallbackPathAppdata = 0;
 	}
-	if (configAutoFallbackPath2) {
-		delete[] configAutoFallbackPath2;
-		configAutoFallbackPath2 = 0;
+	if (configAutoFallbackPathWorkingDir) {
+		delete[] configAutoFallbackPathWorkingDir;
+		configAutoFallbackPathWorkingDir = 0;
 	}
 	
 	if (interpretationContext) {
