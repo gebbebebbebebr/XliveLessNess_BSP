@@ -3,6 +3,7 @@
 #include "packet-handler.hpp"
 #include "live-over-lan.hpp"
 #include "../xlln/xlln.hpp"
+#include "../xlln/wnd-main.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../utils/utils.hpp"
 #include "../utils/util-socket.hpp"

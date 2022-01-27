@@ -3,6 +3,7 @@
 #include "../xlln/debug-text.hpp"
 #include "xlive.hpp"
 #include "../xlln/xlln.hpp"
+#include "../xlln/wnd-main.hpp"
 #include "xrender.hpp"
 
 // #5206

@@ -78,9 +78,10 @@ struct BASE_PORT_OFFSET_MAPPING {
 };
 
 extern HINSTANCE xlln_hModule;
-extern HWND xlln_window_hwnd;
 extern uint32_t xlln_local_instance_index;
 extern HMENU hMenu_network_adapters;
+extern uint32_t xlln_login_player;
+extern uint32_t xlln_login_player_h[];
 extern BOOL xlln_debug;
 extern char *broadcastAddrInput;
 extern CRITICAL_SECTION xlln_critsec_base_port_offset_mappings;
@@ -100,11 +101,5 @@ void InitCriticalSections();
 void UninitCriticalSections();
 bool InitXLLN(HMODULE hModule);
 bool UninitXLLN();
-uint32_t ShowXLLN(uint32_t dwShowType, uint32_t threadId);
-uint32_t ShowXLLN(uint32_t dwShowType);
-void UpdateUserInputBoxes(uint32_t dwUserIndex);
 INT WINAPI XSocketRecvFromCustomHelper(INT result, SOCKET s, char *buf, int len, int flags, sockaddr *from, int *fromlen);
 void ParseBroadcastAddrInput(char *jlbuffer);
-
-int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth);
-int CreateItem(HWND hwndListView, int iItem);

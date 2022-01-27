@@ -135,6 +135,9 @@
     <ClCompile Include="xlive\live-over-lan.cpp">
       <Filter>Source Files\xlive</Filter>
     </ClCompile>
+    <ClCompile Include="xlln\wnd-main.cpp">
+      <Filter>Source Files\xlln</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -259,6 +262,9 @@
     </ClInclude>
     <ClInclude Include="xlive\xnetqos.hpp">
       <Filter>Source Files\xlive</Filter>
+    </ClInclude>
+    <ClInclude Include="xlln\wnd-main.hpp">
+      <Filter>Source Files\xlln</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

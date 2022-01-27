@@ -5,6 +5,7 @@
 #include "xrender.hpp"
 #include "xnet.hpp"
 #include "../xlln/xlln.hpp"
+#include "../xlln/wnd-main.hpp"
 #include "../utils/utils.hpp"
 #include "xsocket.hpp"
 #include "xwsa.hpp"

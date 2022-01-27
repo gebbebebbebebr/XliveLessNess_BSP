@@ -208,6 +208,7 @@
     <ClCompile Include="xlive\xwsa.cpp" />
     <ClCompile Include="xlln\debug-text.cpp" />
     <ClCompile Include="xlln\wnd-connections.cpp" />
+    <ClCompile Include="xlln\wnd-main.cpp" />
     <ClCompile Include="xlln\wnd-sockets.cpp" />
     <ClCompile Include="xlln\xlln-config.cpp" />
     <ClCompile Include="xlln\xlln-keep-alive.cpp" />
@@ -254,6 +255,7 @@
     <ClInclude Include="xlive\xwsa.hpp" />
     <ClInclude Include="xlln\debug-text.hpp" />
     <ClInclude Include="xlln\wnd-connections.hpp" />
+    <ClInclude Include="xlln\wnd-main.hpp" />
     <ClInclude Include="xlln\wnd-sockets.hpp" />
     <ClInclude Include="xlln\xlln-config.hpp" />
     <ClInclude Include="xlln\xlln-keep-alive.hpp" />

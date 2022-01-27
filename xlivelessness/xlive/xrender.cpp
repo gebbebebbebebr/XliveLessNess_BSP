@@ -2,6 +2,7 @@
 #include "xrender.hpp"
 #include "../xlln/debug-text.hpp"
 #include "../xlln/xlln.hpp"
+#include "../xlln/wnd-main.hpp"
 #include <chrono>
 #include <thread>
 #include <condition_variable>

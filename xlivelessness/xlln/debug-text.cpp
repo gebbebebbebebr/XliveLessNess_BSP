@@ -4,6 +4,7 @@
 #include "../utils/utils.hpp"
 #include "../xlln/xlln.hpp"
 #include "../xlln/xlln-config.hpp"
+#include "../xlln/wnd-main.hpp"
 #include <string>
 #include <stdint.h>
 #include <vector>

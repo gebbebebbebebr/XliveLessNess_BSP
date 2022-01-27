@@ -13,6 +13,42 @@
 static HWND xlln_hwnd_sockets = NULL;
 static HWND hwndListView = NULL;
 
+static int CreateColumn(HWND hwndLV, int iCol, const wchar_t *text, int iWidth)
+{
+	LVCOLUMN lvc;
+	
+	lvc.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT | LVCF_SUBITEM;
+	lvc.fmt = LVCFMT_LEFT;
+	lvc.cx = iWidth;
+	lvc.pszText = (wchar_t*)text;
+	lvc.iSubItem = iCol;
+	return ListView_InsertColumn(hwndLV, iCol, &lvc);
+}
+
+static int CreateItem(HWND hwndListView, int iItem)
+{
+	LV_ITEM item;
+	item.mask = LVIF_TEXT;
+	item.iItem = iItem;
+	item.iIndent = 0;
+	item.iSubItem = 0;
+	item.state = 0;
+	item.cColumns = 0;
+	item.pszText = (wchar_t*)L"";
+	return ListView_InsertItem(hwndListView, &item);
+	/*{
+		LV_ITEM item;
+		item.mask = LVIF_TEXT;
+		item.iItem = 0;
+		item.iIndent = 0;
+		item.iSubItem = 1;
+		item.state = 0;
+		item.cColumns = 0;
+		item.pszText = (wchar_t*)L"Toothbrush";
+		ListView_SetItem(hwndList, &item);
+	}*/
+}
+
 void XllnWndSocketsShow(bool showWindow)
 {
 	ShowWindow(xlln_hwnd_sockets, showWindow ? SW_NORMAL : SW_HIDE);
