@@ -214,6 +214,7 @@ Executable Launch Parameters:\n\
 				}
 				case MYMENU_NETWORK_ADAPTER_REFRESH: {
 					INT errorNetworkAdapter = RefreshNetworkAdapters();
+					XSocketRebindAllSockets();
 					break;
 				}
 				case MYMENU_NETWORK_ADAPTER_AUTO_SELECT: {
@@ -368,6 +369,7 @@ xlln_debuglog_level = checked ? (xlln_debuglog_level | log_level_flag) : (xlln_d
 								}
 								LeaveCriticalSection(&xlive_critsec_network_adapter);
 							}
+							XSocketRebindAllSockets();
 							break;
 						}
 					}

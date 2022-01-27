@@ -126,8 +126,7 @@ uint8_t XSocketPerpetualSocketChanged_(SOCKET perpetual_socket, SOCKET transitor
 	return result;
 }
 
-// TODO expose this feature.
-static void RebindAllSockets()
+void XSocketRebindAllSockets()
 {
 	EnterCriticalSection(&xlive_critsec_sockets);
 	

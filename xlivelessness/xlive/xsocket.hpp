@@ -37,6 +37,7 @@ SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket);
 bool XSocketPerpetualSocketChangedError_(int errorSocket, SOCKET perpetual_socket, SOCKET transitory_socket);
 bool XSocketPerpetualSocketChangedError(int errorSocket, SOCKET perpetual_socket, SOCKET transitory_socket);
 uint8_t XSocketPerpetualSocketChanged_(SOCKET perpetual_socket, SOCKET transitory_socket);
+void XSocketRebindAllSockets();
 INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen);
 
 void XLLNCloseCoreSocket();
