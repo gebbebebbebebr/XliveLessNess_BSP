@@ -87,7 +87,7 @@ static uint32_t InjectModuleEntryPointHook(HMODULE hModule, void(post_imports_ho
 		return ERROR_BAD_EXE_FORMAT;
 	}
 
-	xlln_post_imports_hook_source_address = (DWORD)((DWORD)xlln_hmod_title + (DWORD)nt_headers->OptionalHeader.AddressOfEntryPoint);
+	xlln_post_imports_hook_source_address = (DWORD)((DWORD)hModule + (DWORD)nt_headers->OptionalHeader.AddressOfEntryPoint);
 	xlln_post_imports_hook = post_imports_hook;
 
 	{

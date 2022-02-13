@@ -169,9 +169,13 @@ void PatchWinAPICall(DWORD call_addr, DWORD new_function_ptr)
 
 void PatchWithJump(DWORD instruction_addr, DWORD new_function_ptr)
 {
-	BYTE jmp = 0xE9;
-	WriteValue(instruction_addr, jmp);
+	WriteValue<uint8_t>(instruction_addr, 0xE9);
+	PatchCall(instruction_addr, new_function_ptr);
+}
 
+void PatchWithCall(DWORD instruction_addr, DWORD new_function_ptr)
+{
+	WriteValue<uint8_t>(instruction_addr, 0xE8);
 	PatchCall(instruction_addr, new_function_ptr);
 }
 

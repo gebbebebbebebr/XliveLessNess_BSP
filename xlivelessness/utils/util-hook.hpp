@@ -42,6 +42,15 @@ inline void PatchWithJump(void *instruction_addr, void *new_function_ptr)
 {
 	PatchWithJump(reinterpret_cast<DWORD>(instruction_addr), reinterpret_cast<DWORD>(new_function_ptr));
 }
+void PatchWithCall(DWORD instruction_addr, DWORD new_function_ptr);
+inline void PatchWithCall(DWORD instruction_addr, void *new_function_ptr)
+{
+	PatchWithCall(instruction_addr, reinterpret_cast<DWORD>(new_function_ptr));
+}
+inline void PatchWithCall(void *instruction_addr, void *new_function_ptr)
+{
+	PatchWithCall(reinterpret_cast<DWORD>(instruction_addr), reinterpret_cast<DWORD>(new_function_ptr));
+}
 VOID CodeCaveJumpTo(DWORD destAddress, VOID(*func)(VOID), BYTE nopCount);
 void NopFill(uint32_t address, int length);
 

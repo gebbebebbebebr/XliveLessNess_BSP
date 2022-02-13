@@ -71,6 +71,7 @@ VOID SendUnknownUserAskRequest(SOCKET perpetual_socket, const char* data, int da
 		SOCKET transitorySocket = XSocketGetTransitorySocket_(perpetual_socket);
 		if (transitorySocket == INVALID_SOCKET) {
 			LeaveCriticalSection(&xlive_critsec_sockets);
+			delete[] packetBuffer;
 			return;
 		}
 		
@@ -103,6 +104,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET perpetual_
 	const int packetSizeHeaderType = sizeof(XLLNNetPacketType::TYPE);
 	const int packetSizeTypeForwarded = sizeof(XLLNNetPacketType::PACKET_FORWARDED);
 	const int packetSizeTypeUnknownUser = sizeof(XLLNNetPacketType::UNKNOWN_USER);
+	const int packetSizeTypeNetUser = sizeof(XLLNNetPacketType::NET_USER_PACKET);
 	const int packetSizeTypeHubRequest = sizeof(XLLNNetPacketType::HUB_REQUEST_PACKET);
 	const int packetSizeTypeHubReply = sizeof(XLLNNetPacketType::HUB_REPLY_PACKET);
 	const int packetSizeTypeLiveOverLanUnadvertise = sizeof(XLLNNetPacketType::LIVE_OVER_LAN_UNADVERTISE);
@@ -155,7 +157,7 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET perpetual_
 				
 				packetForwardedSockAddrSize = sizeof(SOCKADDR_STORAGE);
 				memcpy(&packetForwardedSockAddr, &packetForwarded.originSockAddr, packetForwardedSockAddrSize);
-				memcpy(&packetForwardedNetter, &packetForwarded.netter, sizeof(XLLNNetPacketType::NET_USER_PACKET));
+				memcpy(&packetForwardedNetter, &packetForwarded.netter, packetSizeTypeNetUser);
 				
 				break;
 			}
