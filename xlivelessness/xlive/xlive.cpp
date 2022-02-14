@@ -17,6 +17,7 @@
 #include "net-entity.hpp"
 #include "live-over-lan.hpp"
 #include "xuser.hpp"
+#include "xnotify.hpp"
 #include <time.h>
 #include <string>
 #include <vector>
@@ -25,25 +26,13 @@
 
 BOOL xlive_debug_pause = FALSE;
 
-BOOL xlive_users_info_changed[XLIVE_LOCAL_USER_COUNT];
 BOOL xlive_users_auto_login[XLIVE_LOCAL_USER_COUNT];
 BOOL xlive_users_live_enabled[XLIVE_LOCAL_USER_COUNT];
 CHAR xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
 XUSER_SIGNIN_INFO* xlive_users_info[XLIVE_LOCAL_USER_COUNT];
 
-struct NOTIFY_LISTENER {
-	HANDLE id;
-	ULONGLONG area;
-};
-static NOTIFY_LISTENER g_listener[50];
-static int g_dwListener = 0;
-
-bool xlive_invite_to_game = false;
-
 uint32_t xlive_title_id = 0;
 uint32_t xlive_title_version = 0;
-
-CRITICAL_SECTION xlive_critsec_xnotify;
 
 CRITICAL_SECTION xlive_critsec_xfriends_enumerators;
 // Key: enumerator handle (id).
@@ -290,103 +279,6 @@ void Check_Overlapped(XOVERLAPPED *pXOverlapped)
 	}
 }
 
-BOOL XNotifyGetNextHelper(ULONGLONG notificationArea, PDWORD pdwId, PULONG_PTR pParam)
-{
-	if (notificationArea & XNOTIFY_SYSTEM) {
-
-		*pParam = 0x00000000;
-
-		for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
-			if (xlive_users_info_changed[i]) {
-				xlive_users_info_changed[i] = FALSE;
-				*pParam |= 1 << i;
-			}
-		}
-
-		if (*pParam) {
-			*pdwId = XN_SYS_SIGNINCHANGED;
-			return TRUE;
-		}
-	}
-	if (false && notificationArea & XNOTIFY_SYSTEM) {
-
-		//*pParam = XONLINE_S_LOGON_CONNECTION_ESTABLISHED;
-		*pParam = XONLINE_S_LOGON_DISCONNECTED;
-
-		if (*pParam) {
-			*pdwId = XN_LIVE_CONNECTIONCHANGED;
-			return TRUE;
-		}
-	}
-	if (notificationArea & XNOTIFY_LIVE) {
-		if (xlive_invite_to_game) {
-			*pdwId = XN_LIVE_INVITE_ACCEPTED;
-			*pParam = 0x00000000;
-			return TRUE;
-		}
-	}
-	return FALSE;
-}
-
-// #651
-BOOL WINAPI XNotifyGetNext(HANDLE hNotification, DWORD dwMsgFilter, PDWORD pdwId, PULONG_PTR pParam)
-{
-	TRACE_FX();
-	EnterCriticalSection(&xlive_critsec_xnotify);
-	ResetEvent(hNotification);
-
-	BOOL result = FALSE;
-
-	int noteId = 0;
-	for (; noteId < g_dwListener; noteId++) {
-		if (g_listener[noteId].id == hNotification) {
-			break;
-		}
-	}
-	if (noteId == g_dwListener) {
-		//noteId = -1;
-		__debugbreak();
-	}
-	else {
-		result = XNotifyGetNextHelper(dwMsgFilter ? dwMsgFilter : g_listener[noteId].area, pdwId, pParam);
-	}
-
-	if (result) {
-		SetEvent(hNotification);
-	}
-	LeaveCriticalSection(&xlive_critsec_xnotify);
-	return result;
-}
-
-#define XNOTIFYUI_POS_TOPLEFT ?
-#define XNOTIFYUI_POS_TOPCENTER ?
-#define XNOTIFYUI_POS_TOPRIGHT ?
-#define XNOTIFYUI_POS_CENTERLEFT ?
-#define XNOTIFYUI_POS_CENTER ?
-#define XNOTIFYUI_POS_CENTERRIGHT ?
-#define XNOTIFYUI_POS_BOTTOMLEFT ?
-#define XNOTIFYUI_POS_BOTTOMCENTER ?
-#define XNOTIFYUI_POS_BOTTOMRIGHT ?
-
-// #652
-VOID WINAPI XNotifyPositionUI(DWORD dwPosition)
-{
-	TRACE_FX();
-	// Invalid dwPos--check XNOTIFYUI_POS_* bits.  Do not specify both TOP and BOTTOM or both LEFT and RIGHT.
-	if (dwPosition & 0xFFFFFFF0 || dwPosition & 1 && dwPosition & 2 || dwPosition & 8 && dwPosition & 4) {
-		return;
-	}
-
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-}
-
-// #653
-DWORD WINAPI XNotifyDelayUI(ULONG ulMilliSeconds)
-{
-	TRACE_FX();
-	return ERROR_SUCCESS;
-}
-
 // #1082
 DWORD WINAPI XGetOverlappedExtendedError(XOVERLAPPED *pXOverlapped)
 {
@@ -459,6 +351,7 @@ VOID WINAPI XLiveUninitialize()
 	
 	xlive_initialised = FALSE;
 	
+	bool errorXNotify = UninitXNotify();
 	INT errorXSession = UninitXSession();
 	INT errorXRender = UninitXRender();
 	INT errorXNet = UninitXNet();
@@ -701,7 +594,7 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
-
+	
 	bool foundEnumerator = false;
 	
 	if (!foundEnumerator) {
@@ -730,7 +623,7 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		}
 		LeaveCriticalSection(&xlive_critsec_xuser_stats);
 	}
-
+	
 	if (!foundEnumerator) {
 		EnterCriticalSection(&xlive_critsec_xfriends_enumerators);
 		if (xlive_xfriends_enumerators.count(hObject)) {
@@ -739,7 +632,7 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		}
 		LeaveCriticalSection(&xlive_critsec_xfriends_enumerators);
 	}
-
+	
 	if (!foundEnumerator) {
 		EnterCriticalSection(&xlive_critsec_title_server_enumerators);
 		if (xlive_title_server_enumerators.count(hObject)) {
@@ -748,7 +641,7 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		}
 		LeaveCriticalSection(&xlive_critsec_title_server_enumerators);
 	}
-
+	
 	if (!foundEnumerator) {
 		EnterCriticalSection(&xlive_critsec_presence_enumerators);
 		if (xlive_presence_enumerators.count(hObject)) {
@@ -757,7 +650,7 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		}
 		LeaveCriticalSection(&xlive_critsec_presence_enumerators);
 	}
-
+	
 	if (!foundEnumerator) {
 		EnterCriticalSection(&xlive_critsec_xmarketplace);
 		if (xlive_xmarketplace_enumerators.count(hObject)) {
@@ -766,7 +659,7 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		}
 		LeaveCriticalSection(&xlive_critsec_xmarketplace);
 	}
-
+	
 	if (!foundEnumerator) {
 		EnterCriticalSection(&xlive_critsec_xcontent);
 		if (xlive_xcontent_enumerators.count(hObject)) {
@@ -775,13 +668,19 @@ BOOL WINAPI XCloseHandle(HANDLE hObject)
 		}
 		LeaveCriticalSection(&xlive_critsec_xcontent);
 	}
-
+	
+	if (!foundEnumerator) {
+		if (XLiveNotifyDeleteListener(hObject)) {
+			foundEnumerator = true;
+		}
+	}
+	
 	if (!foundEnumerator) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s unknown handle 0x%08x.", __func__, (uint32_t)hObject);
 		SetLastError(ERROR_INVALID_HANDLE);
 		return FALSE;
 	}
-
+	
 	if (!CloseHandle(hObject)) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s Failed to close handle 0x%08x.", __func__, (uint32_t)hObject);
 		SetLastError(ERROR_INVALID_HANDLE);
@@ -1386,25 +1285,6 @@ HRESULT WINAPI XLiveSignin(PWSTR pszLiveIdName, PWSTR pszLiveIdPassword, DWORD d
 	return S_OK;
 }
 
-// #5270: Requires XNotifyGetNext to process the listener.
-HANDLE WINAPI XNotifyCreateListener(ULONGLONG qwAreas)
-{
-	TRACE_FX();
-	if (HIDWORD(qwAreas) | qwAreas & 0xFFFFFF10) {
-		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (HIDWORD(qwAreas) | qwAreas & 0xFFFFFF10).", __func__);
-		return NULL;
-	}
-
-	HANDLE g_dwFakeListener = CreateMutex(NULL, NULL, NULL);
-
-	g_listener[g_dwListener].id = g_dwFakeListener;
-	g_listener[g_dwListener].area = qwAreas;
-	g_dwListener++;
-
-	SetEvent(g_dwFakeListener);
-	return g_dwFakeListener;
-}
-
 // #5297
 HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLiveVersion)
 {
@@ -1475,6 +1355,7 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 	INT errorXNet = InitXNet();
 	INT errorXRender = InitXRender();
 	INT errorXSession = InitXSession();
+	bool errorXNotify = InitXNotify();
 	
 	HRESULT errorD3D = S_OK;
 	if (pPii->pD3D) {
@@ -1637,9 +1518,7 @@ DWORD WINAPI XInviteGetAcceptedInfo(DWORD dwUserIndex, XINVITE_INFO *pInfo)
 	}
 
 	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	if (xlive_invite_to_game) {
-		xlive_invite_to_game = false;
-
+	if (false) {
 		//pInfo->hostInfo.hostAddress.ina.s_addr = resolvedNetAddr;
 		pInfo->hostInfo.hostAddress.wPortOnline = htons(2000);
 

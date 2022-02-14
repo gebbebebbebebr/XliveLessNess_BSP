@@ -196,6 +196,7 @@
     <ClCompile Include="xlive\xmarketplace.cpp" />
     <ClCompile Include="xlive\xnet.cpp" />
     <ClCompile Include="xlive\xnetqos.cpp" />
+    <ClCompile Include="xlive\xnotify.cpp" />
     <ClCompile Include="xlive\xpbuffer.cpp" />
     <ClCompile Include="xlive\xpresence.cpp" />
     <ClCompile Include="xlive\xprotect.cpp" />
@@ -243,6 +244,7 @@
     <ClInclude Include="xlive\xmarketplace.hpp" />
     <ClInclude Include="xlive\xnet.hpp" />
     <ClInclude Include="xlive\xnetqos.hpp" />
+    <ClInclude Include="xlive\xnotify.hpp" />
     <ClInclude Include="xlive\xpbuffer.hpp" />
     <ClInclude Include="xlive\xpresence.hpp" />
     <ClInclude Include="xlive\xprotect.hpp" />

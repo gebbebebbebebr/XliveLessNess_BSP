@@ -11,7 +11,6 @@ extern BOOL xlive_debug_pause;
 #define XLIVE_LOCAL_USER_COUNT 4
 #define XLIVE_LOCAL_USER_INVALID 0xFFFFFFFF
 
-extern BOOL xlive_users_info_changed[XLIVE_LOCAL_USER_COUNT];
 extern BOOL xlive_users_auto_login[XLIVE_LOCAL_USER_COUNT];
 extern BOOL xlive_users_live_enabled[XLIVE_LOCAL_USER_COUNT];
 extern CHAR xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
@@ -30,8 +29,6 @@ struct EligibleAdapter {
 	UINT64 minLinkSpeed;
 	BOOL hasDnsServer;
 };
-
-extern CRITICAL_SECTION xlive_critsec_xnotify;
 
 extern CRITICAL_SECTION xlive_critsec_xfriends_enumerators;
 extern std::map<HANDLE, std::vector<uint32_t>> xlive_xfriends_enumerators;

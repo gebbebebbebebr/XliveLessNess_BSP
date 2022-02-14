@@ -138,6 +138,9 @@
     <ClCompile Include="xlln\wnd-main.cpp">
       <Filter>Source Files\xlln</Filter>
     </ClCompile>
+    <ClCompile Include="xlive\xnotify.cpp">
+      <Filter>Source Files\xlive</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="xlln\debug-text.hpp">
@@ -265,6 +268,9 @@
     </ClInclude>
     <ClInclude Include="xlln\wnd-main.hpp">
       <Filter>Source Files\xlln</Filter>
+    </ClInclude>
+    <ClInclude Include="xlive\xnotify.hpp">
+      <Filter>Source Files\xlive</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

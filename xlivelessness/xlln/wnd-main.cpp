@@ -14,6 +14,7 @@
 #include "../xlive/live-over-lan.hpp"
 #include "../xlive/xnetqos.hpp"
 #include "../xlive/xrender.hpp"
+#include "../xlive/xnotify.hpp"
 #include <time.h>
 #include <CommCtrl.h>
 
@@ -325,9 +326,8 @@ xlln_debuglog_level = checked ? (xlln_debuglog_level | log_level_flag) : (xlln_d
 					break;
 				}
 				case MYWINDOW_BTN_TEST: {
-					// WIP.
-					extern bool xlive_invite_to_game;
-					xlive_invite_to_game = true;
+					// WIP. User index 0.
+					XLiveNotifyAddEvent(XN_LIVE_INVITE_ACCEPTED, 0);
 					break;
 				}
 				default: {

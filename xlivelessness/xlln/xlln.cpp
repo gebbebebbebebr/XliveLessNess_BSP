@@ -21,6 +21,7 @@
 #include "../xlive/xpresence.hpp"
 #include "../xlive/xmarketplace.hpp"
 #include "../xlive/xcontent.hpp"
+#include "../xlive/xnotify.hpp"
 #include <ws2tcpip.h>
 #include "../third-party/rapidxml/rapidxml.hpp"
 #include "../third-party/fantasyname/namegen.h"
@@ -102,8 +103,19 @@ uint32_t WINAPI XLLNLogin(uint32_t dwUserIndex, BOOL bLiveEnabled, uint32_t dwUs
 	xlive_users_info[dwUserIndex]->xuid = (bLiveEnabled ? XUID_LIVE_ENABLED_FLAG : 0xE000000000000000) + dwUserId;
 	xlive_users_info[dwUserIndex]->dwInfoFlags = bLiveEnabled ? XUSER_INFO_FLAG_LIVE_ENABLED : 0;
 	
-	xlive_users_info_changed[dwUserIndex] = TRUE;
 	xlive_users_auto_login[dwUserIndex] = FALSE;
+	XLiveNotifyAddEvent(XN_SYS_SIGNINCHANGED, 1 << dwUserIndex);
+	
+	bool othersSignedIntoLive = false;
+	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
+		if (i != dwUserIndex && xlive_users_info[i]->UserSigninState == eXUserSigninState_SignedInToLive) {
+			othersSignedIntoLive = true;
+			break;
+		}
+	}
+	if (!othersSignedIntoLive && xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive) {
+		XLiveNotifyAddEvent(XN_LIVE_CONNECTIONCHANGED, XONLINE_S_LOGON_CONNECTION_ESTABLISHED);
+	}
 	
 	if (dwUserIndex == xlln_login_player) {
 		SetDlgItemTextA(xlln_window_hwnd, MYWINDOW_TBX_USERNAME, xlive_users_info[dwUserIndex]->szUserName);
@@ -134,8 +146,20 @@ uint32_t WINAPI XLLNLogout(uint32_t dwUserIndex)
 		return ERROR_NOT_LOGGED_ON;
 	}
 	
+	bool wasSignedIntoLive = xlive_users_info[dwUserIndex]->UserSigninState == eXUserSigninState_SignedInToLive;
 	xlive_users_info[dwUserIndex]->UserSigninState = eXUserSigninState_NotSignedIn;
-	xlive_users_info_changed[dwUserIndex] = TRUE;
+	XLiveNotifyAddEvent(XN_SYS_SIGNINCHANGED, 1 << dwUserIndex);
+	
+	bool othersSignedIntoLive = false;
+	for (int i = 0; i < XLIVE_LOCAL_USER_COUNT; i++) {
+		if (i != dwUserIndex && xlive_users_info[i]->UserSigninState == eXUserSigninState_SignedInToLive) {
+			othersSignedIntoLive = true;
+			break;
+		}
+	}
+	if (!othersSignedIntoLive && wasSignedIntoLive) {
+		XLiveNotifyAddEvent(XN_LIVE_CONNECTIONCHANGED, XONLINE_S_LOGON_DISCONNECTED);
+	}
 	
 	if (dwUserIndex == xlln_login_player) {
 		BOOL checked = FALSE;//GetMenuState(xlln_window_hMenu, xlln_login_player_h[xlln_login_player], 0) != MF_CHECKED;
@@ -647,7 +671,6 @@ bool InitXLLN(HMODULE hModule)
 		xlive_users_info[i] = (XUSER_SIGNIN_INFO*)malloc(sizeof(XUSER_SIGNIN_INFO));
 		memset(xlive_users_info[i], 0, sizeof(XUSER_SIGNIN_INFO));
 		memset(xlive_users_username[i], 0, sizeof(xlive_users_username[i]));
-		xlive_users_info_changed[i] = FALSE;
 		xlive_users_auto_login[i] = FALSE;
 	}
 	
