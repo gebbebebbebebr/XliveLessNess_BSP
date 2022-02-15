@@ -28,7 +28,7 @@ BOOL xlive_debug_pause = FALSE;
 
 BOOL xlive_users_auto_login[XLIVE_LOCAL_USER_COUNT];
 BOOL xlive_users_live_enabled[XLIVE_LOCAL_USER_COUNT];
-CHAR xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
+char xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
 XUSER_SIGNIN_INFO* xlive_users_info[XLIVE_LOCAL_USER_COUNT];
 
 uint32_t xlive_title_id = 0;
@@ -365,20 +365,32 @@ VOID WINAPI XLiveUninitialize()
 }
 
 // #5010: This function is deprecated.
-HRESULT WINAPI XLiveRegisterDataSection(DWORD a1, DWORD a2, DWORD a3)
+HRESULT WINAPI XLiveRegisterDataSection(const wchar_t *section_name, uint8_t *section_data, uint32_t section_size)
 {
 	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	XLLN_DEBUG_LOG(
+		XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+		, "%s TODO. \"%ls\" size 0x%08x."
+		, __func__
+		, section_name
+		, section_size
+	);
 	return S_OK;
 	//if (XLivepGetTitleXLiveVersion() < 0x20000000)
 	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
 }
 
 // #5011: This function is deprecated.
-HRESULT WINAPI XLiveUnregisterDataSection(DWORD a1)
+HRESULT WINAPI XLiveUnregisterDataSection(const wchar_t *section_name)
 {
 	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	
+	XLLN_DEBUG_LOG(
+		XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+		, "%s TODO. \"%ls\"."
+		, __func__
+		, section_name
+	);
 	return S_OK;
 	//if (XLivepGetTitleXLiveVersion() < 0x20000000)
 	return HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
@@ -395,7 +407,7 @@ HRESULT WINAPI XLiveUpdateHashes(DWORD a1, DWORD a2)
 }
 
 // #5022
-HRESULT WINAPI XLiveGetUpdateInformation(PXLIVEUPDATE_INFORMATION pXLiveUpdateInfo)
+HRESULT WINAPI XLiveGetUpdateInformation(XLIVEUPDATE_INFORMATION *pXLiveUpdateInfo)
 {
 	TRACE_FX();
 	if (!pXLiveUpdateInfo) {
@@ -406,23 +418,30 @@ HRESULT WINAPI XLiveGetUpdateInformation(PXLIVEUPDATE_INFORMATION pXLiveUpdateIn
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s (pXLiveUpdateInfo->cbSize != sizeof(XLIVEUPDATE_INFORMATION)) Invalid buffer.", __func__);
 		return HRESULT_FROM_WIN32(ERROR_INVALID_USER_BUFFER);//0x800706F8;
 	}
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	// No update?
-	return S_FALSE;
+	
+	pXLiveUpdateInfo->bSystemUpdate = FALSE;
+	pXLiveUpdateInfo->dwFromVersion = xlive_title_version;
+	pXLiveUpdateInfo->dwToVersion = 0;
+	pXLiveUpdateInfo->szUpdateDownloadPath[0] = 0;
+	
+	return S_OK;
 }
 
 // #5024
-HRESULT WINAPI XLiveUpdateSystem(LPCWSTR lpwszRelaunchCmdLine)
+HRESULT WINAPI XLiveUpdateSystem(const wchar_t *lpwszRelaunchCmdLine)
 {
 	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
+	XLLN_DEBUG_LOG(
+		XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+		, "%s TODO. \"%ls\"."
+		, __func__
+		, lpwszRelaunchCmdLine ? lpwszRelaunchCmdLine : L"NULL"
+	);
 	return S_OK;
-	// No update?
-	return S_FALSE;
 }
 
 // #5025
-HRESULT WINAPI XLiveGetLiveIdError(HRESULT *phrAuthState, HRESULT *phrRequestState, LPWSTR wszWebFlowUrl, DWORD *pdwUrlLen)
+HRESULT WINAPI XLiveGetLiveIdError(HRESULT *phrAuthState, HRESULT *phrRequestState, wchar_t *wszWebFlowUrl, DWORD *pdwUrlLen)
 {
 	TRACE_FX();
 	if (!phrAuthState) {
@@ -452,7 +471,7 @@ HRESULT WINAPI XLiveGetLiveIdError(HRESULT *phrAuthState, HRESULT *phrRequestSta
 }
 
 // #5026
-HRESULT WINAPI XLiveSetSponsorToken(LPCWSTR lpwszToken, DWORD dwTitleId)
+HRESULT WINAPI XLiveSetSponsorToken(const wchar_t *lpwszToken, DWORD dwTitleId)
 {
 	TRACE_FX();
 	if (!lpwszToken) {
@@ -480,7 +499,7 @@ HRESULT WINAPI XLiveUninstallTitle(DWORD dwTitleId)
 }
 
 // #5028
-DWORD WINAPI XLiveLoadLibraryEx(LPCWSTR lpwszModuleFileName, HINSTANCE *phModule, DWORD dwFlags)
+DWORD WINAPI XLiveLoadLibraryEx(const wchar_t *lpwszModuleFileName, HINSTANCE *phModule, DWORD dwFlags)
 {
 	TRACE_FX();
 	if (!lpwszModuleFileName) {
@@ -542,7 +561,7 @@ HRESULT WINAPI XLiveFreeLibrary(HMODULE hModule)
 }
 
 // #5030
-BOOL WINAPI XLivePreTranslateMessage(const LPMSG lpMsg)
+BOOL WINAPI XLivePreTranslateMessage(const MSG *lpMsg)
 {
 	TRACE_FX();
 	if (!lpMsg) {
@@ -1155,7 +1174,7 @@ DWORD WINAPI XEnumerate(HANDLE hEnum, void *pvBuffer, DWORD cbBuffer, DWORD *pcI
 }
 
 // #5257
-HRESULT WINAPI XLiveManageCredentials(LPCWSTR lpwszLiveIdName, LPCWSTR lpszLiveIdPassword, DWORD dwCredFlags, XOVERLAPPED *pXOverlapped)
+HRESULT WINAPI XLiveManageCredentials(const wchar_t *lpwszLiveIdName, const wchar_t *lpszLiveIdPassword, DWORD dwCredFlags, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwCredFlags & XLMGRCREDS_FLAG_SAVE && dwCredFlags & XLMGRCREDS_FLAG_DELETE) {
@@ -1230,7 +1249,7 @@ HRESULT WINAPI XLiveSignout(XOVERLAPPED *pXOverlapped)
 }
 
 // #5259
-HRESULT WINAPI XLiveSignin(PWSTR pszLiveIdName, PWSTR pszLiveIdPassword, DWORD dwFlags, XOVERLAPPED *pXOverlapped)
+HRESULT WINAPI XLiveSignin(wchar_t *pszLiveIdName, wchar_t *pszLiveIdPassword, DWORD dwFlags, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (!pszLiveIdName) {
@@ -1241,41 +1260,49 @@ HRESULT WINAPI XLiveSignin(PWSTR pszLiveIdName, PWSTR pszLiveIdPassword, DWORD d
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s *pszLiveIdName is NULL.", __func__);
 		return E_INVALIDARG;
 	}
-	//FIXME password isn't being passed in.
+	//TODO password may not get passed in.
 	//if (!pszLiveIdPassword || !*pszLiveIdPassword)
 	//	return E_INVALIDARG;
-
+	
 	if (dwFlags & XLSIGNIN_FLAG_SAVECREDS) {
-
+		
 	}
 	//XLSIGNIN_FLAG_ALLOWTITLEUPDATES XLSIGNIN_FLAG_ALLOWSYSTEMUPDATES
+	
+	size_t usernameLenSize = wcslen(pszLiveIdName) + 1;
 
-	size_t usernameSize = wcslen(pszLiveIdName) + 1;
-	char *username = new char[usernameSize];
-	wcstombs2(username, pszLiveIdName, usernameSize);
+	char *username = new char[usernameLenSize];
+	wcstombs2(username, pszLiveIdName, usernameLenSize);
 	ReplaceFilePathSensitiveChars(username);
-
+	
+	memset(pszLiveIdName, 0, usernameLenSize * sizeof(wchar_t));
+	
+	if (pszLiveIdPassword) {
+		size_t passwordLenSize = wcslen(pszLiveIdName) + 1;
+		memset(pszLiveIdPassword, 0, passwordLenSize * sizeof(wchar_t));
+	}
+	
 	uint32_t result = XLLNLogin(0, TRUE, 0, username);
 	if (result) {
 		XLLN_DEBUG_LOG_ECODE(result, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s XLLNLogin(..., \"%s\") failed with error:", __func__, username);
 		result = E_INVALIDARG;
 	}
-
+	
 	delete[] username;
-
+	
 	if (result) {
 		return result;
 	}
-
+	
 	if (pXOverlapped) {
 		//asynchronous
-
+		
 		pXOverlapped->InternalLow = ERROR_SUCCESS;
 		pXOverlapped->InternalHigh = ERROR_SUCCESS;
 		pXOverlapped->dwExtendedError = ERROR_SUCCESS;
-
+		
 		Check_Overlapped(pXOverlapped);
-
+		
 		return ERROR_IO_PENDING;
 	}
 	else {
@@ -1374,7 +1401,7 @@ HRESULT WINAPI XLiveInitializeEx(XLIVE_INITIALIZE_INFO *pPii, DWORD dwTitleXLive
 }
 
 // #5303
-DWORD WINAPI XStringVerify(DWORD dwFlags, const CHAR *szLocale, DWORD dwNumStrings, const STRING_DATA *pStringData, DWORD cbResults, STRING_VERIFY_RESPONSE *pResults, XOVERLAPPED *pXOverlapped)
+DWORD WINAPI XStringVerify(DWORD dwFlags, const char *szLocale, DWORD dwNumStrings, const STRING_DATA *pStringData, DWORD cbResults, STRING_VERIFY_RESPONSE *pResults, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwFlags) {
@@ -1549,7 +1576,7 @@ DWORD WINAPI XInviteGetAcceptedInfo(DWORD dwUserIndex, XINVITE_INFO *pInfo)
 }
 
 // #5316
-DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees, const WCHAR *pszText, XOVERLAPPED *pXOverlapped)
+DWORD XInviteSend(DWORD dwUserIndex, DWORD cInvitees, const XUID *pXuidInvitees, const wchar_t *pszText, XOVERLAPPED *pXOverlapped)
 {
 	TRACE_FX();
 	if (dwUserIndex >= XLIVE_LOCAL_USER_COUNT) {
@@ -1620,7 +1647,7 @@ DWORD WINAPI XOnlineGetServiceInfo(DWORD dwServiceID, XONLINE_SERVICE_INFO *pSer
 }
 
 // #5335
-DWORD WINAPI XTitleServerCreateEnumerator(LPCSTR pszServerInfo, DWORD cItem, DWORD *pcbBuffer, HANDLE *phEnum)
+DWORD WINAPI XTitleServerCreateEnumerator(const char *pszServerInfo, DWORD cItem, DWORD *pcbBuffer, HANDLE *phEnum)
 {
 	TRACE_FX();
 	if (pszServerInfo && strnlen_s(pszServerInfo, XTITLE_SERVER_MAX_SERVER_INFO_SIZE) > XTITLE_SERVER_MAX_SERVER_INFO_LEN) {

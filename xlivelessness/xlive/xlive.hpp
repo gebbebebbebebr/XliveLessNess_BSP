@@ -13,7 +13,7 @@ extern BOOL xlive_debug_pause;
 
 extern BOOL xlive_users_auto_login[XLIVE_LOCAL_USER_COUNT];
 extern BOOL xlive_users_live_enabled[XLIVE_LOCAL_USER_COUNT];
-extern CHAR xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
+extern char xlive_users_username[XLIVE_LOCAL_USER_COUNT][XUSER_NAME_SIZE];
 extern XUSER_SIGNIN_INFO* xlive_users_info[XLIVE_LOCAL_USER_COUNT];
 
 void Check_Overlapped(XOVERLAPPED *pXOverlapped);

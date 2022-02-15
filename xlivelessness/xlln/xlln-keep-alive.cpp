@@ -25,7 +25,7 @@ static void ThreadKeepAlive()
 {
 	const size_t hubRequestPacketBufferSize = sizeof(XLLNNetPacketType::TYPE) + sizeof(XLLNNetPacketType::HUB_REQUEST_PACKET);
 	uint8_t *hubRequestPacketBuffer = new uint8_t[hubRequestPacketBufferSize];
-	hubRequestPacketBuffer[0] = XLLNNetPacketType::TYPE::tHUB_REQUEST;
+	hubRequestPacketBuffer[0] = XLLNNetPacketType::tHUB_REQUEST;
 	XLLNNetPacketType::HUB_REQUEST_PACKET *hubRequest = (XLLNNetPacketType::HUB_REQUEST_PACKET*)&hubRequestPacketBuffer[sizeof(XLLNNetPacketType::TYPE)];
 	hubRequest->xllnVersion = (DLL_VERSION_MAJOR << 24) + (DLL_VERSION_MINOR << 16) + (DLL_VERSION_REVISION << 8) + DLL_VERSION_BUILD;
 	hubRequest->titleId = xlive_title_id;
