@@ -97,6 +97,7 @@ VOID SendUnknownUserAskRequest(SOCKET perpetual_socket, const char* data, int da
 	delete[] packetBuffer;
 }
 
+// Process connectionless sockets only (UDP). sockAddrXlive as well as sockAddrXliveLen may be null.
 INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET perpetual_socket, char *dataBuffer, const int dataBufferSize, const int flags, const SOCKADDR_STORAGE *sockAddrExternal, const int sockAddrExternalLen, sockaddr *sockAddrXlive, int *sockAddrXliveLen)
 {
 	TRACE_FX();
@@ -646,11 +647,13 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET perpetual_
 			}
 			
 			if (packetForwardedSockAddrSize && packetForwardedNetter.instanceId) {
-				sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
-				sockAddrIpv4Xlive->sin_family = AF_INET;
-				sockAddrIpv4Xlive->sin_addr.s_addr = htonl(packetForwardedNetter.instanceId);
-				sockAddrIpv4Xlive->sin_port = htons(packetForwardedNetter.socketInternalPortHBO);
-				*sockAddrXliveLen = sizeof(sockaddr_in);
+				if (sockAddrXlive && sockAddrXliveLen) {
+					sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
+					sockAddrIpv4Xlive->sin_family = AF_INET;
+					sockAddrIpv4Xlive->sin_addr.s_addr = htonl(packetForwardedNetter.instanceId);
+					sockAddrIpv4Xlive->sin_port = htons(packetForwardedNetter.socketInternalPortHBO);
+					*sockAddrXliveLen = sizeof(sockaddr_in);
+				}
 			}
 			else {
 				// We do not want whatever this was being passed to the Title.
@@ -670,17 +673,20 @@ INT WINAPI XSocketRecvFromHelper(const int dataRecvSize, const SOCKET perpetual_
 				free(sockAddrInfo);
 			}
 			
-			sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
-			sockAddrIpv4Xlive->sin_family = AF_INET;
-			sockAddrIpv4Xlive->sin_addr.s_addr = htonl(instanceId);
-			sockAddrIpv4Xlive->sin_port = htons(portHBO);
-			*sockAddrXliveLen = sizeof(sockaddr_in);
+			if (sockAddrXlive && sockAddrXliveLen) {
+				sockaddr_in* sockAddrIpv4Xlive = ((struct sockaddr_in*)sockAddrXlive);
+				sockAddrIpv4Xlive->sin_family = AF_INET;
+				sockAddrIpv4Xlive->sin_addr.s_addr = htonl(instanceId);
+				sockAddrIpv4Xlive->sin_port = htons(portHBO);
+				*sockAddrXliveLen = sizeof(sockaddr_in);
+			}
 		}
 	}
 	
 	return resultDataRecvSize;
 }
 
+// Process connectionless sockets only (UDP).
 // dataBuffer data must be wrapped in PacketType.
 INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int dataSendSize, int flags, const sockaddr *to, int tolen)
 {

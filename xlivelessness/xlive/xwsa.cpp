@@ -98,8 +98,65 @@ int WINAPI XWSARecv(
 )
 {
 	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return WSARecv(perpetual_socket, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
+	if (*lpFlags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s lpFlags value (0x%08x) must be 0 on Perpetual Socket 0x%08x."
+			, __func__
+			, *lpFlags
+			, perpetual_socket
+		);
+		
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
+	if (dwBufferCount != 1) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s dwBufferCount value (%u) must be 1 on Perpetual Socket 0x%08x."
+			, __func__
+			, dwBufferCount
+			, perpetual_socket
+		);
+		
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
+	if (lpCompletionRoutine) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s lpCompletionRoutine must be NULL on Perpetual Socket 0x%08x."
+			, __func__
+			, perpetual_socket
+		);
+		
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultRecv = WSARecv(transitorySocket, lpBuffers, dwBufferCount, lpNumberOfBytesRecvd, lpFlags, lpOverlapped, lpCompletionRoutine);
+		int errorRecv = WSAGetLastError();
+		
+		if (resultRecv == SOCKET_ERROR && errorRecv != WSA_IO_PENDING && XSocketPerpetualSocketChangedError(errorRecv, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultRecv != ERROR_SUCCESS && errorRecv != WSA_IO_PENDING) {
+			XLLN_DEBUG_LOG_ECODE(errorRecv, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s recv error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorRecv);
+		return resultRecv;
+	}
 }
 
 // #21
@@ -132,8 +189,54 @@ int WINAPI XWSASend(
 )
 {
 	TRACE_FX();
-	XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR, "%s TODO.", __func__);
-	return WSASend(perpetual_socket, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpOverlapped, lpCompletionRoutine);
+	if (dwFlags) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s dwFlags value (0x%08x) must be 0 on Perpetual Socket 0x%08x."
+			, __func__
+			, dwFlags
+			, perpetual_socket
+		);
+		
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
+	if (lpCompletionRoutine) {
+		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+			, "%s lpCompletionRoutine must be NULL on Perpetual Socket 0x%08x."
+			, __func__
+			, perpetual_socket
+		);
+		
+		WSASetLastError(WSAEOPNOTSUPP);
+		return SOCKET_ERROR;
+	}
+	
+	while (1) {
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		INT resultSend = WSASend(perpetual_socket, lpBuffers, dwBufferCount, lpNumberOfBytesSent, dwFlags, lpOverlapped, lpCompletionRoutine);
+		int errorSend = WSAGetLastError();
+		
+		if (resultSend == SOCKET_ERROR && errorSend != WSA_IO_PENDING && XSocketPerpetualSocketChangedError(errorSend, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultSend == SOCKET_ERROR && errorSend != WSA_IO_PENDING) {
+			XLLN_DEBUG_LOG_ECODE(errorSend, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s send error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		
+		WSASetLastError(errorSend);
+		return resultSend;
+	}
 }
 
 // #25

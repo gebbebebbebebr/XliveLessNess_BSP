@@ -57,7 +57,7 @@ SOCKET XSocketGetTransitorySocket_(SOCKET perpetual_socket)
 	return transitorySocket;
 }
 // Get transitorySocket (real socket) from perpetualSocket (fake handle).
-SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket)
+SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket, bool *connectionless_socket)
 {
 	SOCKET transitorySocket = INVALID_SOCKET;
 	
@@ -66,6 +66,10 @@ SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket)
 		
 		if (xlive_xsocket_perpetual_to_transitory_socket.count(perpetual_socket)) {
 			transitorySocket = xlive_xsocket_perpetual_to_transitory_socket[perpetual_socket];
+			
+			if (connectionless_socket) {
+				*connectionless_socket = xlive_socket_info[transitorySocket]->protocol == IPPROTO_UDP;
+			}
 		}
 		
 		LeaveCriticalSection(&xlive_critsec_sockets);
@@ -80,6 +84,10 @@ SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket)
 	}
 	
 	return transitorySocket;
+}
+SOCKET XSocketGetTransitorySocket(SOCKET perpetual_socket)
+{
+	return XSocketGetTransitorySocket(perpetual_socket, 0);
 }
 
 bool XSocketPerpetualSocketChangedError_(int errorSocket, SOCKET perpetual_socket, SOCKET transitory_socket)
@@ -1104,13 +1112,14 @@ INT WINAPI XSocketSelect(int nfds, fd_set *readfds, fd_set *writefds, fd_set *ex
 }
 
 // #18
-INT WINAPI XSocketRecv(SOCKET perpetual_socket, char *buf, int len, int flags)
+INT WINAPI XSocketRecv(SOCKET perpetual_socket, char *data_buffer, int data_buffer_size, int flags)
 {
 	TRACE_FX();
 	if (flags) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, "%s flags value (0x%08x) must be 0 on Perpetual Socket 0x%08x."
 			, __func__
+			, flags
 			, perpetual_socket
 		);
 		
@@ -1125,7 +1134,7 @@ INT WINAPI XSocketRecv(SOCKET perpetual_socket, char *buf, int len, int flags)
 			return SOCKET_ERROR;
 		}
 		
-		INT resultDataRecvSize = recv(transitorySocket, buf, len, flags);
+		INT resultDataRecvSize = recv(transitorySocket, data_buffer, data_buffer_size, flags);
 		int errorRecv = WSAGetLastError();
 		
 		if (resultDataRecvSize == SOCKET_ERROR && XSocketPerpetualSocketChangedError(errorRecv, perpetual_socket, transitorySocket)) {
@@ -1158,13 +1167,14 @@ INT WINAPI XSocketRecv(SOCKET perpetual_socket, char *buf, int len, int flags)
 static uint16_t xlive_xsocket_large_data_buffer_size = 1024;
 
 // #20
-INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBufferSize, int flags, sockaddr *from, int *fromlen)
+INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *data_buffer, int data_buffer_size, int flags, sockaddr *from, int *fromlen)
 {
 	TRACE_FX();
 	if (flags) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, "%s flags value (0x%08x) must be 0 on Perpetual Socket 0x%08x."
 			, __func__
+			, flags
 			, perpetual_socket
 		);
 		
@@ -1173,15 +1183,16 @@ INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBu
 	}
 	
 	uint8_t *largeDataBuffer = 0;
-	if (xlive_xsocket_large_data_buffer_size && dataBufferSize > 0 && dataBufferSize < xlive_xsocket_large_data_buffer_size) {
+	if (xlive_xsocket_large_data_buffer_size && data_buffer_size > 0 && data_buffer_size < xlive_xsocket_large_data_buffer_size) {
 		largeDataBuffer = new uint8_t[xlive_xsocket_large_data_buffer_size];
 	}
 	
 	while (1) {
+		bool connectionlessSocket = false;
 		SOCKADDR_STORAGE sockAddrExternal;
 		int sockAddrExternalLen = sizeof(sockAddrExternal);
 		
-		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket);
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket, &connectionlessSocket);
 		if (transitorySocket == INVALID_SOCKET) {
 			if (largeDataBuffer) {
 				delete[] largeDataBuffer;
@@ -1194,11 +1205,11 @@ INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBu
 		
 		INT resultDataRecvSize = recvfrom(
 			transitorySocket
-			, largeDataBuffer ? (char*)largeDataBuffer : dataBuffer
-			, largeDataBuffer ? xlive_xsocket_large_data_buffer_size : dataBufferSize
+			, (connectionlessSocket && largeDataBuffer) ? (char*)largeDataBuffer : data_buffer
+			, (connectionlessSocket && largeDataBuffer) ? xlive_xsocket_large_data_buffer_size : data_buffer_size
 			, flags
-			, (sockaddr*)&sockAddrExternal
-			, &sockAddrExternalLen
+			, connectionlessSocket ? (sockaddr*)&sockAddrExternal : from
+			, connectionlessSocket ? &sockAddrExternalLen : fromlen
 		);
 		int errorRecvFrom = WSAGetLastError();
 		
@@ -1225,11 +1236,21 @@ INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBu
 			return resultDataRecvSize;
 		}
 		
+		if (!connectionlessSocket) {
+			if (largeDataBuffer) {
+				delete[] largeDataBuffer;
+				largeDataBuffer = 0;
+			}
+			
+			WSASetLastError(errorRecvFrom);
+			return resultDataRecvSize;
+		}
+		
 		INT resultDataRecvSizeFromHelper = XSocketRecvFromHelper(
 			resultDataRecvSize
 			, perpetual_socket
-			, largeDataBuffer ? (char*)largeDataBuffer : dataBuffer
-			, largeDataBuffer ? xlive_xsocket_large_data_buffer_size : dataBufferSize
+			, largeDataBuffer ? (char*)largeDataBuffer : data_buffer
+			, largeDataBuffer ? xlive_xsocket_large_data_buffer_size : data_buffer_size
 			, flags
 			, &sockAddrExternal
 			, sockAddrExternalLen
@@ -1241,14 +1262,14 @@ INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBu
 		}
 		
 		if (resultDataRecvSizeFromHelper > 0 && largeDataBuffer) {
-			if (resultDataRecvSizeFromHelper > dataBufferSize) {
+			if (resultDataRecvSizeFromHelper > data_buffer_size) {
 				delete[] largeDataBuffer;
 				largeDataBuffer = 0;
 				WSASetLastError(WSAEMSGSIZE);
 				return SOCKET_ERROR;
 			}
 			
-			memcpy(dataBuffer, largeDataBuffer, resultDataRecvSizeFromHelper);
+			memcpy(data_buffer, largeDataBuffer, resultDataRecvSizeFromHelper);
 		}
 		
 		if (largeDataBuffer) {
@@ -1262,13 +1283,14 @@ INT WINAPI XSocketRecvFrom(SOCKET perpetual_socket, char *dataBuffer, int dataBu
 }
 
 // #22
-INT WINAPI XSocketSend(SOCKET perpetual_socket, const char *buf, int len, int flags)
+INT WINAPI XSocketSend(SOCKET perpetual_socket, const char *data_buffer, int data_buffer_size, int flags)
 {
 	TRACE_FX();
 	if (flags) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, "%s flags value (0x%08x) must be 0 on Perpetual Socket 0x%08x."
 			, __func__
+			, flags
 			, perpetual_socket
 		);
 		
@@ -1283,7 +1305,7 @@ INT WINAPI XSocketSend(SOCKET perpetual_socket, const char *buf, int len, int fl
 			return SOCKET_ERROR;
 		}
 		
-		INT resultDataSendSize = send(transitorySocket, buf, len, flags);
+		INT resultDataSendSize = send(transitorySocket, data_buffer, data_buffer_size, flags);
 		int errorSend = WSAGetLastError();
 		
 		if (resultDataSendSize == SOCKET_ERROR && XSocketPerpetualSocketChangedError(errorSend, perpetual_socket, transitorySocket)) {
@@ -1304,7 +1326,7 @@ INT WINAPI XSocketSend(SOCKET perpetual_socket, const char *buf, int len, int fl
 				, __func__
 				, perpetual_socket
 				, transitorySocket
-				, len
+				, data_buffer_size
 				, resultDataSendSize
 			);
 		}
@@ -1315,13 +1337,14 @@ INT WINAPI XSocketSend(SOCKET perpetual_socket, const char *buf, int len, int fl
 }
 
 // #24
-INT WINAPI XSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int dataSendSize, int flags, sockaddr *to, int tolen)
+INT WINAPI XSocketSendTo(SOCKET perpetual_socket, const char *data_buffer, int data_buffer_size, int flags, sockaddr *to, int tolen)
 {
 	TRACE_FX();
 	if (flags) {
 		XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-			, "%s flags argument must be 0 on Perpetual Socket 0x%08x."
+			, "%s flags value (0x%08x) must be 0 on Perpetual Socket 0x%08x."
 			, __func__
+			, flags
 			, perpetual_socket
 		);
 		
@@ -1329,9 +1352,51 @@ INT WINAPI XSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int da
 		return SOCKET_ERROR;
 	}
 	
+	while (1) {
+		bool connectionlessSocket = false;
+		SOCKET transitorySocket = XSocketGetTransitorySocket(perpetual_socket, &connectionlessSocket);
+		if (transitorySocket == INVALID_SOCKET) {
+			WSASetLastError(WSAENOTSOCK);
+			return SOCKET_ERROR;
+		}
+		
+		if (connectionlessSocket && to && tolen) {
+			break;
+		}
+		
+		INT resultDataSendToSize = sendto(transitorySocket, data_buffer, data_buffer_size, flags, to, tolen);
+		int errorSendTo = WSAGetLastError();
+		
+		if (resultDataSendToSize == SOCKET_ERROR && XSocketPerpetualSocketChangedError(errorSendTo, perpetual_socket, transitorySocket)) {
+			continue;
+		}
+		
+		if (resultDataSendToSize == SOCKET_ERROR) {
+			XLLN_DEBUG_LOG_ECODE(errorSendTo, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+				, "%s sendto error on socket (P,T) (0x%08x,0x%08x)."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+			);
+		}
+		else {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "%s socket (P,T) (0x%08x,0x%08x) data to send size 0x%08x sent size 0x%08x."
+				, __func__
+				, perpetual_socket
+				, transitorySocket
+				, data_buffer_size
+				, resultDataSendToSize
+			);
+		}
+		
+		WSASetLastError(errorSendTo);
+		return resultDataSendToSize;
+	}
+	
 	const int packetSizeHeaderType = sizeof(XLLNNetPacketType::TYPE);
 	
-	int newPacketBufferTitleDataSize = packetSizeHeaderType + dataSendSize;
+	int newPacketBufferTitleDataSize = packetSizeHeaderType + data_buffer_size;
 	
 	// Check overflow condition.
 	if (newPacketBufferTitleDataSize < 0) {
@@ -1350,24 +1415,24 @@ INT WINAPI XSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int da
 	newPacketBufferTitleDataAlreadyProcessedOffset += packetSizeHeaderType;
 	newPacketTitleDataType = (((SOCKADDR_STORAGE*)to)->ss_family == AF_INET && (ipv4HBO == INADDR_BROADCAST || ipv4HBO == INADDR_ANY)) ? XLLNNetPacketType::tTITLE_BROADCAST_PACKET : XLLNNetPacketType::tTITLE_PACKET;
 	
-	memcpy(&newPacketBufferTitleData[newPacketBufferTitleDataAlreadyProcessedOffset], dataBuffer, dataSendSize);
+	memcpy(&newPacketBufferTitleData[newPacketBufferTitleDataAlreadyProcessedOffset], data_buffer, data_buffer_size);
 	
-	INT resultDataSendSize = XllnSocketSendTo(perpetual_socket, (char*)newPacketBufferTitleData, newPacketBufferTitleDataSize, flags, to, tolen);
-	int errorSendTo = WSAGetLastError();
+	INT resultDataXllnSendToSize = XllnSocketSendTo(perpetual_socket, (char*)newPacketBufferTitleData, newPacketBufferTitleDataSize, flags, to, tolen);
+	int errorXllnSendTo = WSAGetLastError();
 	
 	delete[] newPacketBufferTitleData;
 	
-	if (resultDataSendSize > 0) {
-		int32_t unsentDataSize = newPacketBufferTitleDataSize - resultDataSendSize;
-		int32_t newPacketDataSizeDifference = newPacketBufferTitleDataSize - dataSendSize;
-		resultDataSendSize = dataSendSize - unsentDataSize;
-		if (resultDataSendSize <= newPacketDataSizeDifference) {
-			resultDataSendSize = 0;
+	if (resultDataXllnSendToSize > 0) {
+		int32_t unsentDataSize = newPacketBufferTitleDataSize - resultDataXllnSendToSize;
+		int32_t newPacketDataSizeDifference = newPacketBufferTitleDataSize - data_buffer_size;
+		resultDataXllnSendToSize = data_buffer_size - unsentDataSize;
+		if (resultDataXllnSendToSize <= newPacketDataSizeDifference) {
+			resultDataXllnSendToSize = 0;
 		}
 	}
 	
-	WSASetLastError(errorSendTo);
-	return resultDataSendSize;
+	WSASetLastError(errorXllnSendTo);
+	return resultDataXllnSendToSize;
 }
 
 // #26
