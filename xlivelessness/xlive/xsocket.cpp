@@ -224,6 +224,21 @@ void XSocketRebindAllSockets()
 				}
 			}
 			
+			for (const auto &optionNameValue : *socketMappingInfoNew.socketIoctl) {
+				u_long cmdValue = optionNameValue.second;
+				int resultIoctlSocket = ioctlsocket(socketMappingInfoNew.transitorySocket, optionNameValue.first, &cmdValue);
+				if (resultIoctlSocket) {
+					int errorIoctlSocket = WSAGetLastError();
+					XLLN_DEBUG_LOG_ECODE(errorIoctlSocket, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+						, "%s ioctlsocket failed to set command (0x%08x, 0x%08x) on new transitorySocket 0x%08x with error:"
+						, __func__
+						, optionNameValue.first
+						, optionNameValue.second
+						, socketMappingInfoNew.transitorySocket
+					);
+				}
+			}
+			
 			sockaddr_in socketBindAddress;
 			socketBindAddress.sin_family = AF_INET;
 			socketBindAddress.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -334,6 +349,7 @@ SOCKET WINAPI XSocketCreate(int af, int type, int protocol)
 	
 	SOCKET_MAPPING_INFO* socketMappingInfo = new SOCKET_MAPPING_INFO;
 	socketMappingInfo->socketOptions = new std::map<int32_t, uint32_t>();
+	socketMappingInfo->socketIoctl = new std::map<int32_t, uint32_t>();
 	socketMappingInfo->transitorySocket = transitorySocket;
 	socketMappingInfo->perpetualSocket = perpetualSocket;
 	socketMappingInfo->type = type;
@@ -430,6 +446,9 @@ INT WINAPI XSocketClose(SOCKET perpetual_socket)
 			
 			if (socketMappingInfo->socketOptions) {
 				delete socketMappingInfo->socketOptions;
+			}
+			if (socketMappingInfo->socketIoctl) {
+				delete socketMappingInfo->socketIoctl;
 			}
 			delete socketMappingInfo;
 			
@@ -528,16 +547,66 @@ INT WINAPI XSocketIOCTLSocket(SOCKET perpetual_socket, __int32 cmd, ULONG *argp)
 		INT resultIoctlSocket = ioctlsocket(transitorySocket, cmd, argp);
 		int errorIoctlSocket = WSAGetLastError();
 		
-		if (resultIoctlSocket && XSocketPerpetualSocketChangedError(errorIoctlSocket, perpetual_socket, transitorySocket)) {
-			continue;
+		bool ignoreLogging = false;
+		
+		{
+			EnterCriticalSection(&xlive_critsec_sockets);
+			
+			if (resultIoctlSocket) {
+				if (XSocketPerpetualSocketChangedError_(errorIoctlSocket, perpetual_socket, transitorySocket)) {
+					LeaveCriticalSection(&xlive_critsec_sockets);
+					continue;
+				}
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				
+				XLLN_DEBUG_LOG_ECODE(errorIoctlSocket, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
+					, "%s ioctlsocket error on socket (P,T) (0x%08x,0x%08x)."
+					, __func__
+					, perpetual_socket
+					, transitorySocket
+				);
+				
+				WSASetLastError(errorIoctlSocket);
+				return SOCKET_ERROR;
+			}
+			
+			uint8_t resultPerpetualChanged = XSocketPerpetualSocketChanged_(perpetual_socket, transitorySocket);
+			if (resultPerpetualChanged) {
+				LeaveCriticalSection(&xlive_critsec_sockets);
+				if (resultPerpetualChanged == 2) {
+					continue;
+				}
+				WSASetLastError(WSAENOTSOCK);
+				return SOCKET_ERROR;
+			}
+			
+			SOCKET_MAPPING_INFO *socketMappingInfo = xlive_socket_info[transitorySocket];
+			
+			switch (cmd) {
+				// Ignore read commands.
+				case FIONREAD:
+				case SIOCGHIWAT:
+				case SIOCGLOWAT:
+				case SIOCATMARK:
+					ignoreLogging = true;
+					break;
+				default: {
+					(*socketMappingInfo->socketIoctl)[cmd] = *argp;
+					
+					XllnWndSocketsInvalidateSockets();
+					break;
+				}
+			}
+			
+			LeaveCriticalSection(&xlive_critsec_sockets);
 		}
 		
-		if (resultIoctlSocket) {
-			XLLN_DEBUG_LOG_ECODE(errorIoctlSocket, XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_ERROR
-				, "%s ioctlsocket error on socket (P,T) (0x%08x,0x%08x)."
+		if (!ignoreLogging) {
+			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVE | XLLN_LOG_LEVEL_DEBUG
+				, "%s cmd (0x%08x) value (0x%08x)."
 				, __func__
-				, perpetual_socket
-				, transitorySocket
+				, cmd
+				, *argp
 			);
 		}
 		

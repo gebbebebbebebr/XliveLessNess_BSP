@@ -25,6 +25,8 @@ struct SOCKET_MAPPING_INFO {
 	// Key: optname. Value: optval.
 	// Note: optname keys will either be SO or TCP options depending on if this is a UDP or TCP socket.
 	std::map<int32_t, uint32_t> *socketOptions = 0;
+	// Key: cmd. Value: cmd value.
+	std::map<int32_t, uint32_t> *socketIoctl = 0;
 };
 
 extern CRITICAL_SECTION xlive_critsec_sockets;
