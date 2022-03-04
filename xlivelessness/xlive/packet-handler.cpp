@@ -773,18 +773,15 @@ INT WINAPI XllnSocketSendTo(SOCKET perpetual_socket, const char *dataBuffer, int
 				}
 				
 				uint8_t portBaseOffset = portHBO % 100;
-				if (!IsUsingBasePort(xlive_base_port)) {
-					portBaseOffset = 0xFF;
-					{
-						EnterCriticalSection(&xlln_critsec_base_port_offset_mappings);
-						
-						if (xlln_base_port_mappings_original.count(portHBO)) {
-							BASE_PORT_OFFSET_MAPPING *mappingOriginal = xlln_base_port_mappings_original[portHBO];
-							portBaseOffset = mappingOriginal->offset;
-						}
-						
-						LeaveCriticalSection(&xlln_critsec_base_port_offset_mappings);
+				{
+					EnterCriticalSection(&xlln_critsec_base_port_offset_mappings);
+					
+					if (xlln_base_port_mappings_original.count(portHBO)) {
+						BASE_PORT_OFFSET_MAPPING *mappingOriginal = xlln_base_port_mappings_original[portHBO];
+						portBaseOffset = mappingOriginal->offset;
 					}
+					
+					LeaveCriticalSection(&xlln_critsec_base_port_offset_mappings);
 				}
 				
 				if (broadcastEntity.entityType == XLLNBroadcastEntity::tHUB_SERVER) {
