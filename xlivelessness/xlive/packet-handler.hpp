@@ -18,6 +18,7 @@ namespace XLLNNetPacketType {
 		"QOS_REQUEST",
 		"QOS_RESPONSE",
 		"HUB_OUT_OF_BAND",
+		"HUB_RELAY",
 	};
 	typedef enum : uint8_t {
 		tUNKNOWN = 0,
@@ -34,6 +35,7 @@ namespace XLLNNetPacketType {
 		tQOS_REQUEST,
 		tQOS_RESPONSE,
 		tHUB_OUT_OF_BAND,
+		tHUB_RELAY,
 	} TYPE;
 
 #pragma pack(push, 1) // Save then set byte alignment setting.
@@ -102,6 +104,12 @@ namespace XLLNNetPacketType {
 		uint8_t portOffsetHBO = 0xFF;
 		uint16_t portOriginalHBO = 0;
 	} HUB_OUT_OF_BAND;
+	
+	typedef struct {
+		SOCKADDR_STORAGE destSockAddr;
+		NET_USER_PACKET netterOrigin;
+		// The data following this is the packet data.
+	} HUB_RELAY;
 
 #pragma pack(pop) // Return to original alignment setting.
 
