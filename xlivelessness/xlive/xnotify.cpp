@@ -271,7 +271,9 @@ HANDLE WINAPI XNotifyCreateListener(ULONGLONG qwAreas)
 		uint32_t iArea = 1;
 		while (1) {
 			if (iArea & sanitisedAreas) {
-				xlive_notify_listener_areas[iArea & sanitisedAreas].push_back(xnotifyListener);
+				// Insert the listener at the start as the main listener for that area (should there already be one).
+				auto listenerArea = &xlive_notify_listener_areas[iArea & sanitisedAreas];
+				(*listenerArea).insert((*listenerArea).begin(), xnotifyListener);
 			}
 			
 			if (iArea == (1 << 31)) {
