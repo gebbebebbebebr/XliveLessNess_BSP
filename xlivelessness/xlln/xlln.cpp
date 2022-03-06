@@ -173,7 +173,7 @@ uint32_t WINAPI XLLNLogout(uint32_t dwUserIndex)
 }
 
 // #41142
-uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uint32_t *newValue, uint32_t *oldValue)
+uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uint32_t *new_value, uint32_t *old_value)
 {
 	TRACE_FX();
 	switch (propertyId) {
@@ -181,13 +181,13 @@ uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uin
 			return ERROR_INVALID_PARAMETER;
 		}
 		case XLLNModifyPropertyTypes::tFPS_LIMIT: {
-			if (oldValue && !newValue) {
-				*oldValue = xlive_fps_limit;
+			if (old_value && !new_value) {
+				*old_value = xlive_fps_limit;
 			}
-			else if (newValue) {
-				uint32_t old_value = SetFPSLimit(*newValue);
-				if (oldValue) {
-					*oldValue = old_value;
+			else if (new_value) {
+				uint32_t old_value2 = SetFPSLimit(*new_value);
+				if (old_value) {
+					*old_value = old_value2;
 				}
 			}
 			else {
@@ -196,15 +196,14 @@ uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uin
 			return ERROR_SUCCESS;
 		}
 		case XLLNModifyPropertyTypes::tBASE_PORT: {
-			if (oldValue && !newValue) {
-				*(uint16_t*)oldValue = xlive_base_port;
+			if (old_value && !new_value) {
+				*(uint16_t*)old_value = xlive_base_port;
 			}
-			else if (newValue) {
-				uint16_t old_value = xlive_base_port;
-				xlive_base_port = *(uint16_t*)newValue;
-				if (oldValue) {
-					*(uint16_t*)oldValue = old_value;
+			else if (new_value) {
+				if (old_value) {
+					*(uint16_t*)old_value = xlive_base_port;
 				}
+				xlive_base_port = *(uint16_t*)new_value;
 			}
 			else {
 				return ERROR_NOT_SUPPORTED;
@@ -214,7 +213,7 @@ uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uin
 		case XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_REGISTER: {
 			// TODO
 			return ERROR_NOT_SUPPORTED;
-			XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)newValue;
+			XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER *handler = (XLLNModifyPropertyTypes::RECVFROM_CUSTOM_HANDLER_REGISTER*)new_value;
 			XLLN_DEBUG_LOG(XLLN_LOG_CONTEXT_XLIVELESSNESS | XLLN_LOG_CONTEXT_XLLN_MODULE | XLLN_LOG_LEVEL_INFO
 				, "XLLN-Module is registering a recvfrom handler 0x%08x."
 				, handler->Identifier
@@ -223,16 +222,16 @@ uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uin
 			char *identifier = (char*)malloc(sizeof(char) * idLen);
 			strcpy_s(identifier, idLen, handler->Identifier);
 			
-			if (oldValue && newValue) {
+			if (old_value && new_value) {
 				return ERROR_INVALID_PARAMETER;
 			}
 			EnterCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
-			if (oldValue) {
-				if (!xlive_recvfrom_handler_funcs.count((uint32_t)oldValue)) {
+			if (old_value) {
+				if (!xlive_recvfrom_handler_funcs.count((uint32_t)old_value)) {
 					LeaveCriticalSection(&xlive_critsec_recvfrom_handler_funcs);
 					return ERROR_NOT_FOUND;
 				}
-				xlive_recvfrom_handler_funcs.erase((uint32_t)oldValue);
+				xlive_recvfrom_handler_funcs.erase((uint32_t)old_value);
 			}
 			else {
 				if (xlive_recvfrom_handler_funcs.count((uint32_t)handler->FuncPtr)) {
@@ -247,6 +246,46 @@ uint32_t WINAPI XLLNModifyProperty(XLLNModifyPropertyTypes::TYPE propertyId, uin
 		case XLLNModifyPropertyTypes::tRECVFROM_CUSTOM_HANDLER_UNREGISTER: {
 			// TODO
 			return ERROR_NOT_SUPPORTED;
+		}
+		case XLLNModifyPropertyTypes::tGUIDE_UI_HANDLER: {
+			if (old_value && !new_value) {
+				// TODO
+				*old_value = 0;
+				return ERROR_NOT_SUPPORTED;
+			}
+			else if (new_value) {
+				GUIDE_UI_HANDLER_INFO handlerInfoNew;
+				handlerInfoNew.xllnModule = 0;
+				handlerInfoNew.guideUiHandler = (tGuideUiHandler)*new_value;
+				
+				EnterCriticalSection(&xlln_critsec_guide_ui_handlers);
+				GUIDE_UI_HANDLER_INFO *handlerInfo = 0;
+				for (auto itrGuideUiHandlerInfo = xlln_guide_ui_handlers.begin(); itrGuideUiHandlerInfo != xlln_guide_ui_handlers.end(); itrGuideUiHandlerInfo++) {
+					if (itrGuideUiHandlerInfo->xllnModule == handlerInfoNew.xllnModule) {
+						if (!handlerInfoNew.guideUiHandler) {
+							xlln_guide_ui_handlers.erase(itrGuideUiHandlerInfo);
+							break;
+						}
+						handlerInfo = &(*itrGuideUiHandlerInfo);
+						break;
+					}
+				}
+				if (old_value) {
+					// TODO
+					*old_value = 0;
+				}
+				if (handlerInfo) {
+					*handlerInfo = handlerInfoNew;
+				}
+				else if (handlerInfoNew.guideUiHandler) {
+					xlln_guide_ui_handlers.push_back(handlerInfoNew);
+				}
+				LeaveCriticalSection(&xlln_critsec_guide_ui_handlers);
+			}
+			else {
+				return ERROR_NOT_SUPPORTED;
+			}
+			return ERROR_SUCCESS;
 		}
 	}
 	
@@ -551,6 +590,7 @@ void InitCriticalSections()
 	InitializeCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	InitializeCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	InitializeCriticalSection(&xlive_critsec_fps_limit);
+	InitializeCriticalSection(&xlln_critsec_guide_ui_handlers);
 	InitializeCriticalSection(&xlive_critsec_sockets);
 	InitializeCriticalSection(&xlive_critsec_xnet_session_keys);
 	InitializeCriticalSection(&xlive_critsec_broadcast_addresses);
@@ -579,6 +619,7 @@ void UninitCriticalSections()
 	DeleteCriticalSection(&xlln_critsec_liveoverlan_broadcast);
 	DeleteCriticalSection(&xlln_critsec_liveoverlan_sessions);
 	DeleteCriticalSection(&xlive_critsec_fps_limit);
+	DeleteCriticalSection(&xlln_critsec_guide_ui_handlers);
 	DeleteCriticalSection(&xlive_critsec_sockets);
 	DeleteCriticalSection(&xlive_critsec_xnet_session_keys);
 	DeleteCriticalSection(&xlive_critsec_broadcast_addresses);

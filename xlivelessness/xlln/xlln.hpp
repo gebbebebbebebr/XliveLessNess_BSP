@@ -50,6 +50,7 @@ namespace XLLNModifyPropertyTypes {
 		"RECVFROM_CUSTOM_HANDLER_REGISTER",
 		"RECVFROM_CUSTOM_HANDLER_UNREGISTER",
 		"BASE_PORT",
+		"GUIDE_UI_HANDLER",
 	};
 	typedef enum : BYTE {
 		tUNKNOWN = 0,
@@ -58,6 +59,7 @@ namespace XLLNModifyPropertyTypes {
 		tRECVFROM_CUSTOM_HANDLER_REGISTER,
 		tRECVFROM_CUSTOM_HANDLER_UNREGISTER,
 		tBASE_PORT,
+		tGUIDE_UI_HANDLER,
 	} TYPE;
 
 #pragma pack(push, 1) // Save then set byte alignment setting.

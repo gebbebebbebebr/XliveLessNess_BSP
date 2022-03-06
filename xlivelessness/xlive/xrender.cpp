@@ -33,10 +33,24 @@ static std::thread thread_hotkeys;
 static std::atomic<bool> exit_thread_hotkeys = TRUE;
 static uint32_t thread_id_gui = 0;
 
+CRITICAL_SECTION xlln_critsec_guide_ui_handlers;
+std::vector<GUIDE_UI_HANDLER_INFO> xlln_guide_ui_handlers;
 uint16_t xlive_hotkey_id_guide = VK_HOME;
+
 static void hotkeyFuncGuide()
 {
-	ShowXLLN(XLLN_SHOW_HOME, thread_id_gui);
+	EnterCriticalSection(&xlln_critsec_guide_ui_handlers);
+	bool consumed = false;
+	for (auto itrGuideUiHandlerInfo = xlln_guide_ui_handlers.begin(); itrGuideUiHandlerInfo != xlln_guide_ui_handlers.end(); itrGuideUiHandlerInfo++) {
+		consumed = itrGuideUiHandlerInfo->guideUiHandler();
+		if (consumed) {
+			break;
+		}
+	}
+	LeaveCriticalSection(&xlln_critsec_guide_ui_handlers);
+	if (!consumed) {
+		ShowXLLN(XLLN_SHOW_HOME, thread_id_gui);
+	}
 }
 
 static const int hotkeyLen = 1;
