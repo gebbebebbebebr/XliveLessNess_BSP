@@ -253,7 +253,7 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 
 	InitCommonControls();
 
-	ShowWindow(xlln_hwnd_sockets, xlln_debug ? SW_NORMAL : SW_HIDE);
+	ShowWindow(xlln_hwnd_sockets, SW_HIDE);
 
 	int textBoxes[] = { MYWINDOW_TBX_TEST };
 

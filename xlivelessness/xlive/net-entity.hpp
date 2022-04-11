@@ -26,6 +26,7 @@ extern std::map<SOCKADDR_STORAGE*, NET_ENTITY*> xlln_net_entity_external_addr_to
 BOOL InitNetEntity();
 BOOL UninitNetEntity();
 
+uint32_t NetterEntityClearAllPortMappings();
 uint32_t NetterEntityEnsureExists(const uint32_t instanceId, const uint16_t portBaseHBO);
 uint32_t NetterEntityGetAddrByInstanceIdPort(SOCKADDR_STORAGE *externalAddr, const uint32_t instanceId, const uint16_t portHBO);
 uint32_t NetterEntityGetInstanceIdPortByExternalAddr(uint32_t *instanceId, uint16_t *portHBO, const SOCKADDR_STORAGE *externalAddr);

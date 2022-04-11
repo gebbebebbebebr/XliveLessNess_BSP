@@ -21,11 +21,33 @@ uint32_t NetterEntityClearPortMappings_(NET_ENTITY *netter)
 		delete externalAddrToPortInternal.first;
 	}
 	netter->external_addr_to_port_internal.clear();
-
+	
 	netter->port_internal_to_external_addr.clear();
 	netter->port_internal_offset_to_external_addr.clear();
-
+	
 	return ERROR_SUCCESS;
+}
+
+uint32_t NetterEntityClearAllPortMappings_()
+{
+	for (auto const &instanceIdToNetter: xlln_net_entity_instanceid_to_netentity) {
+		NET_ENTITY *netter = instanceIdToNetter.second;
+		NetterEntityClearPortMappings_(netter);
+		delete netter;
+	}
+	
+	xlln_net_entity_instanceid_to_netentity.clear();
+	xlln_net_entity_external_addr_to_netentity.clear();
+	
+	return ERROR_SUCCESS;
+}
+uint32_t NetterEntityClearAllPortMappings()
+{
+	uint32_t result = ERROR_UNHANDLED_ERROR;
+	EnterCriticalSection(&xlln_critsec_net_entity);
+	result = NetterEntityClearAllPortMappings_();
+	LeaveCriticalSection(&xlln_critsec_net_entity);
+	return result;
 }
 
 uint32_t NetterEntityEnsureExists_(const uint32_t instanceId, const uint16_t portBaseHBO)

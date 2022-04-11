@@ -109,7 +109,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 				"Local Instance Id: 0x%08x."
 				, ntohl(xlive_local_xnAddr.inaOnline.s_addr)
 			);
-			TextOutA(hdc, 100, 15, textLabel, strlen(textLabel));
+			TextOutA(hdc, 190, 15, textLabel, strlen(textLabel));
 			free(textLabel);
 		}
 
@@ -169,6 +169,10 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 		else if (wParam == MYWINDOW_BTN_REFRESH_CONNS) {
 			XllnWndConnectionsInvalidateConnections();
 		}
+		else if (wParam == MYWINDOW_BTN_DELETE_CONNS) {
+			NetterEntityClearAllPortMappings();
+			XllnWndConnectionsInvalidateConnections();
+		}
 		
 		return 0;
 	}
@@ -179,15 +183,18 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 		return (INT_PTR)CreateSolidBrush(0x00C8C8C8);
 	}
 	else if (message == WM_CREATE) {
-
+		
 		CreateWindowA(WC_BUTTONA, "Refresh", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
 			10, 10, 75, 25, hWnd, (HMENU)MYWINDOW_BTN_REFRESH_CONNS, xlln_hModule, NULL);
-
+		
+		CreateWindowA(WC_BUTTONA, "Clear", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+			100, 10, 75, 25, hWnd, (HMENU)MYWINDOW_BTN_DELETE_CONNS, xlln_hModule, NULL);
+		
 		hwndTreeView = CreateWindowA(WC_TREEVIEWA, "",
 			WS_VISIBLE | WS_BORDER | WS_CHILD | TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT,
 			10, 40, 400, 300,
 			hWnd, (HMENU)MYWINDOW_TRE_CONNECTIONS, xlln_hModule, 0);
-
+		
 	}
 	else if (message == WM_DESTROY) {
 		PostQuitMessage(0);
@@ -197,7 +204,7 @@ static LRESULT CALLBACK DLLWindowProc(HWND hWnd, UINT message, WPARAM wParam, LP
 		// Stupid textbox causes the window to close.
 		return 0;
 	}
-
+	
 	return DefWindowProcW(hWnd, message, wParam, lParam);
 }
 
@@ -233,7 +240,7 @@ static DWORD WINAPI ThreadProc(LPVOID lpParam)
 
 	InitCommonControls();
 
-	ShowWindow(xlln_hwnd_sockets, xlln_debug ? SW_NORMAL : SW_HIDE);
+	ShowWindow(xlln_hwnd_sockets, SW_HIDE);
 
 	int textBoxes[] = { MYWINDOW_TBX_TEST };
 
