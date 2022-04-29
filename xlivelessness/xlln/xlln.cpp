@@ -7,6 +7,7 @@
 #include "wnd-sockets.hpp"
 #include "wnd-connections.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/util-socket.hpp"
 #include "../utils/util-checksum.hpp"
 #include "../xlive/xdefs.hpp"
 #include "../xlive/xlive.hpp"
@@ -455,13 +456,13 @@ void ParseBroadcastAddrInput(char *jlbuffer)
 					hints.ai_protocol = IPPROTO_UDP;
 					
 					struct in6_addr serveraddr;
-					int rc = inet_pton(AF_INET, current, &serveraddr);
+					int rc = WS2_32_inet_pton(AF_INET, current, &serveraddr);
 					if (rc == 1) {
 						hints.ai_family = AF_INET;
 						hints.ai_flags |= AI_NUMERICHOST;
 					}
 					else {
-						rc = inet_pton(AF_INET6, current, &serveraddr);
+						rc = WS2_32_inet_pton(AF_INET6, current, &serveraddr);
 						if (rc == 1) {
 							hints.ai_family = AF_INET6;
 							hints.ai_flags |= AI_NUMERICHOST;

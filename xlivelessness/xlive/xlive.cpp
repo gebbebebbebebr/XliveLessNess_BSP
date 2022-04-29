@@ -7,6 +7,7 @@
 #include "../xlln/xlln.hpp"
 #include "../xlln/wnd-main.hpp"
 #include "../utils/utils.hpp"
+#include "../utils/util-socket.hpp"
 #include "xsocket.hpp"
 #include "xwsa.hpp"
 #include "xlocator.hpp"
@@ -135,8 +136,8 @@ INT RefreshNetworkAdapters()
 						if (pUnicast->Address.lpSockaddr->sa_family == AF_INET)
 						{
 							sockaddr_in *sa_in = (sockaddr_in *)pUnicast->Address.lpSockaddr;
-							ULONG dwMask = 0;
-							dwRetVal = ConvertLengthToIpv4Mask(pUnicast->OnLinkPrefixLength, &dwMask);
+							uint32_t dwMask = 0;
+							dwRetVal = IPHLPAPI_ConvertLengthToIpv4Mask(pUnicast->OnLinkPrefixLength, &dwMask);
 							if (dwRetVal == NO_ERROR) {
 								EligibleAdapter *ea = new EligibleAdapter;
 								ea->name = CloneString(pCurrAddresses->AdapterName);
