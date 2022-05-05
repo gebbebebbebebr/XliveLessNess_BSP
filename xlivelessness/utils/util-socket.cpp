@@ -97,11 +97,7 @@ DWORD IPHLPAPI_ConvertLengthToIpv4Mask(uint32_t mask_length, uint32_t *mask)
 		return ERROR_INVALID_PARAMETER;
 	}
 	
-	*mask = 0;
-	
-	for (uint8_t iBit = 0; iBit < mask_length; iBit++) {
-		*mask |= (1 << iBit);
-	}
+	*mask = (1 << (mask_length - 1)) | ((1 << (mask_length - 1)) - 1);
 	
 	return NO_ERROR;
 }
