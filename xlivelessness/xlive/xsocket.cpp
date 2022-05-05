@@ -1615,6 +1615,8 @@ USHORT WINAPI XSocketHTONS(USHORT hostshort)
 
 void XLLNCloseCoreSocket()
 {
+	TRACE_FX();
+	
 	EnterCriticalSection(&xlive_critsec_sockets);
 
 	if (xlive_xsocket_perpetual_core_socket == INVALID_SOCKET) {
@@ -1657,6 +1659,8 @@ void XLLNCloseCoreSocket()
 
 static void XLLNCreateCoreSocket()
 {
+	TRACE_FX();
+	
 	XLLNCloseCoreSocket();
 	
 	if (xlive_netsocket_abort) {
@@ -1713,6 +1717,8 @@ static void XLLNCreateCoreSocket()
 
 BOOL InitXSocket()
 {
+	TRACE_FX();
+	
 	XLLNCreateCoreSocket();
 	XLLNKeepAliveStart();
 	XLiveThreadQosStart();
@@ -1722,6 +1728,8 @@ BOOL InitXSocket()
 
 BOOL UninitXSocket()
 {
+	TRACE_FX();
+	
 	XLiveThreadQosStop();
 	XLLNCloseCoreSocket();
 	XLLNKeepAliveStop();

@@ -749,6 +749,19 @@ bool InitXLLN(HMODULE hModule)
 			broadcastAddrInput = new char[bufferLen];
 			wcstombs2(broadcastAddrInput, broadcastAddrInputTemp, bufferLen);
 		}
+		else if (wcsstr(lpwszArglist[i], L"-xlivenetworkadapter=") == lpwszArglist[i]) {
+			wchar_t *networkAdapterTemp = &lpwszArglist[i][21];
+			size_t bufferLen = wcslen(networkAdapterTemp) + 1;
+			{
+				EnterCriticalSection(&xlive_critsec_network_adapter);
+				if (xlive_config_preferred_network_adapter_name) {
+					delete[] xlive_config_preferred_network_adapter_name;
+				}
+				xlive_config_preferred_network_adapter_name = new char[bufferLen];
+				wcstombs2(xlive_config_preferred_network_adapter_name, networkAdapterTemp, bufferLen);
+				LeaveCriticalSection(&xlive_critsec_network_adapter);
+			}
+		}
 	}
 	LocalFree(lpwszArglist);
 	

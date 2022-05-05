@@ -186,6 +186,7 @@ Executable Launch Parameters:\n\
 -xlivenetdisable ? Disable all network functionality.\n\
 -xliveportbase=<ushort> ? Change the Base Port (default 2000).\n\
 -xllnbroadcastaddr=<string> ? Set the broadcast address.\n\
+-xlivenetworkadapter=<string> ? Set the desired network adapter (via {GUID} format).\n\
 -xllnconfig=<string> ? Sets the location of the config file.\n\
 -xllnlocalinstanceindex=<uint> ? 0 (default) to automatically assign the Local Instance Index."
 						, "About"
@@ -221,15 +222,19 @@ Executable Launch Parameters:\n\
 				case MYMENU_NETWORK_ADAPTER_AUTO_SELECT: {
 					bool checked = GetMenuState(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_AUTO_SELECT, 0) != MF_CHECKED;
 					CheckMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_AUTO_SELECT, checked ? MF_CHECKED : MF_UNCHECKED);
-					if (xlive_config_preferred_network_adapter_name) {
-						delete[] xlive_config_preferred_network_adapter_name;
-						xlive_config_preferred_network_adapter_name = NULL;
-					}
 					EnableMenuItem(hMenu_network_adapters, MYMENU_NETWORK_ADAPTER_IGNORE_TITLE, checked ? MF_ENABLED : MF_DISABLED);
-					if (!checked) {
-						if (xlive_network_adapter && xlive_network_adapter->name) {
-							xlive_config_preferred_network_adapter_name = CloneString(xlive_network_adapter->name);
+					{
+						EnterCriticalSection(&xlive_critsec_network_adapter);
+						if (xlive_config_preferred_network_adapter_name) {
+							delete[] xlive_config_preferred_network_adapter_name;
+							xlive_config_preferred_network_adapter_name = NULL;
 						}
+						if (!checked) {
+							if (xlive_network_adapter && xlive_network_adapter->name) {
+								xlive_config_preferred_network_adapter_name = CloneString(xlive_network_adapter->name);
+							}
+						}
+						LeaveCriticalSection(&xlive_critsec_network_adapter);
 					}
 					break;
 				}

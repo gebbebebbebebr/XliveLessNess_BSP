@@ -128,6 +128,8 @@ static void ThreadCoreSocket()
 
 void XLLNKeepAliveStart()
 {
+	TRACE_FX();
+	
 	XLLNKeepAliveStop();
 	xlln_keep_alive_exit = FALSE;
 	xlln_keep_alive_thread = std::thread(ThreadKeepAlive);
@@ -136,6 +138,8 @@ void XLLNKeepAliveStart()
 
 void XLLNKeepAliveStop()
 {
+	TRACE_FX();
+	
 	if (xlln_keep_alive_exit == FALSE) {
 		xlln_keep_alive_exit = TRUE;
 		xlln_keep_alive_cond.notify_all();
@@ -147,6 +151,8 @@ void XLLNKeepAliveStop()
 
 void XLLNKeepAliveAbort()
 {
+	TRACE_FX();
+	
 	if (xlln_keep_alive_exit == FALSE) {
 		xlln_keep_alive_exit = TRUE;
 		xlln_keep_alive_cond.notify_all();
